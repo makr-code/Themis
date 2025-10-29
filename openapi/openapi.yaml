@@ -1,0 +1,585 @@
+openapi: 3.1.0
+info:
+  title: VCCDB HTTP API
+  version: 0.1.0
+  description: |
+    HTTP API für VCC Multi‑Modell‑Datenbank. Beinhaltet Health, CRUD, Indexverwaltung, Query,
+    und Observability (/stats, /metrics). Die Query-Engine unterstützt AND-Gleichheitsprädikate,
+    Range-Prädikate (gte/lte) und ORDER BY über Range-Indizes. Optional: Fallback Full-Scan.
+servers:
+  - url: http://localhost:8765
+paths:
+  /health:
+    get:
+      summary: Health Check
+      operationId: getHealth
+      tags: [system]
+      responses:
+        '200':
+          description: Server ist gesund
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /stats:
+    get:
+      summary: Statistiken (Server + RocksDB)
+      operationId: getStats
+      tags: [observability]
+      responses:
+        '200':
+          description: Laufzeitmetriken und RocksDB-Statistiken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+  /metrics:
+    get:
+      summary: Prometheus Metriken
+      operationId: getMetrics
+      tags: [observability]
+      responses:
+        '200':
+          description: Prometheus Text Exposition Format
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP process_uptime_seconds Process uptime in seconds
+                  # TYPE process_uptime_seconds gauge
+                  process_uptime_seconds 13
+                  # HELP vccdb_requests_total Total HTTP requests handled
+                  # TYPE vccdb_requests_total counter
+                  vccdb_requests_total 1
+                  ...
+  /entities:
+    post:
+      summary: Entity anlegen/ersetzen (Upsert)
+      operationId: postEntity
+      tags: [entities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutEntityRequest'
+      responses:
+        '201':
+          description: Entity erstellt/aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutEntityResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /entities/{key}:
+    get:
+      summary: Entity lesen
+      operationId: getEntity
+      tags: [entities]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Key im Format table:pk
+          schema: { type: string }
+      responses:
+        '200':
+          description: Entity gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEntityResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      summary: Entity anlegen/ersetzen (Upsert) mit Key in der URL
+      operationId: putEntity
+      tags: [entities]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Key im Format table:pk
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                blob:
+                  type: string
+                  description: Beliebiger JSON-Inhalt als String. Server speichert binär.
+              required: [blob]
+      responses:
+        '201':
+          description: Entity erstellt/aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutEntityResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      summary: Entity löschen
+      operationId: deleteEntity
+      tags: [entities]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Entity gelöscht
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteEntityResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /index/create:
+    post:
+      summary: Sekundärindex erstellen (Equality oder Range)
+      operationId: createIndex
+      tags: [indexes]
+      description: |
+        Erstellt einen Index auf einer Spalte. Zwei Typen verfügbar:
+        - equality: Für Gleichheitsfilter (default). Optional: unique=true für Unique-Constraint.
+        - range: Für gte/lte-Prädikate und ORDER BY.
+        
+        Ein Range-Index kann unabhängig von einem Equality-Index existieren.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexRequest'
+            examples:
+              equality_index:
+                summary: Equality-Index
+                value:
+                  table: users
+                  column: age
+                  type: equality
+              range_index:
+                summary: Range-Index
+                value:
+                  table: users
+                  column: salary
+                  type: range
+              unique_index:
+                summary: Unique Equality-Index
+                value:
+                  table: users
+                  column: email
+                  type: equality
+                  unique: true
+      responses:
+        '200':
+          description: Index erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /index/drop:
+    post:
+      summary: Sekundärindex löschen
+      operationId: dropIndex
+      tags: [indexes]
+      description: |
+        Löscht einen Index. Der Typ (equality oder range) kann angegeben werden, um
+        zwischen Equality- und Range-Index auf derselben Spalte zu unterscheiden.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexRequest'
+            examples:
+              drop_equality:
+                summary: Equality-Index löschen
+                value:
+                  table: users
+                  column: age
+                  type: equality
+              drop_range:
+                summary: Range-Index löschen
+                value:
+                  table: users
+                  column: salary
+                  type: range
+      responses:
+        '200':
+          description: Index gelöscht
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /query:
+    post:
+      summary: Query mit Gleichheits-, Range-Prädikaten und ORDER BY
+      operationId: postQuery
+      tags: [query]
+      description: |
+        Führt eine Abfrage mit AND-Gleichheitsprädikaten, Range-Prädikaten (gte/lte) und
+        optionaler Sortierung über Range-Indizes aus. Range- und ORDER BY-Features erfordern
+        Range-Indizes auf den jeweiligen Spalten.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+            examples:
+              equality_only:
+                summary: Nur Gleichheitsfilter
+                value:
+                  table: users
+                  predicates:
+                    - column: age
+                      value: "30"
+                    - column: city
+                      value: Berlin
+                  return: keys
+              range_and_order:
+                summary: Range-Prädikat mit ORDER BY
+                value:
+                  table: employees
+                  predicates:
+                    - column: department
+                      value: Engineering
+                  range:
+                    - column: salary
+                      gte: "60000"
+                      lte: "100000"
+                      includeLower: true
+                      includeUpper: true
+                  order_by:
+                    column: salary
+                    desc: false
+                    limit: 10
+                  return: entities
+              order_by_only:
+                summary: Top-N via ORDER BY ohne weitere Prädikate
+                value:
+                  table: products
+                  order_by:
+                    column: price
+                    desc: true
+                    limit: 5
+                  return: keys
+      responses:
+        '200':
+          description: Abfrage erfolgreich
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/QueryKeysResponse'
+                  - $ref: '#/components/schemas/QueryEntitiesResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '501':
+          description: Nicht implementiert (z. B. Graph/Vector Platzhalter)
+  /graph/traverse:
+    post:
+      summary: Graph-Traversierung (BFS)
+      operationId: graphTraverse
+      tags: [graph]
+      description: |
+        Führt eine Breadth-First-Search (BFS) Traversierung ab einem Startknoten aus.
+        Graph-Kanten müssen als Entities mit Feldern `id`, `_from`, `_to` gespeichert sein.
+        Die Outdex- und Index-Indizes werden automatisch bei PUT/DELETE aktualisiert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphTraverseRequest'
+            examples:
+              simple_traverse:
+                summary: Einfache Traversierung
+                value:
+                  start_vertex: user1
+                  max_depth: 3
+      responses:
+        '200':
+          description: Traversierung erfolgreich
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphTraverseResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [healthy] }
+        version: { type: string }
+        database: { type: string }
+        uptime_seconds: { type: integer, format: int64 }
+      required: [status, version, database, uptime_seconds]
+    StatsResponse:
+      type: object
+      properties:
+        server:
+          type: object
+          properties:
+            uptime_seconds: { type: integer, format: int64 }
+            total_requests: { type: integer, format: int64 }
+            total_errors: { type: integer, format: int64 }
+            queries_per_second: { type: number, format: float }
+            threads: { type: integer }
+          required: [uptime_seconds, total_requests, total_errors, queries_per_second, threads]
+        storage:
+          type: object
+          properties:
+            rocksdb:
+              type: object
+              properties:
+                block_cache_usage_bytes: { type: integer, format: int64 }
+                block_cache_capacity_bytes: { type: integer, format: int64 }
+                estimate_num_keys: { type: integer, format: int64 }
+                estimate_live_data_size_bytes: { type: integer, format: int64 }
+                estimate_pending_compaction_bytes: { type: integer, format: int64 }
+                num_running_compactions: { type: integer }
+                num_running_flushes: { type: integer }
+                memtable_size_bytes: { type: integer, format: int64 }
+                cur_size_all_mem_tables_bytes: { type: integer, format: int64 }
+                files_per_level:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                block_cache_hit: { type: integer, format: int64 }
+                block_cache_miss: { type: integer, format: int64 }
+                cache_hit_rate_percent: { type: number }
+                bytes_written: { type: integer, format: int64 }
+                bytes_read: { type: integer, format: int64 }
+                compaction_keys_dropped: { type: integer, format: int64 }
+            raw_stats:
+              type: string
+              description: Vollständige RocksDB-Statistiken im Textformat
+      required: [server, storage]
+    PutEntityRequest:
+      type: object
+      description: Upsert einer Entität. Key kann im Body oder in der URL stehen.
+      properties:
+        key:
+          type: string
+          description: Key im Format table:pk (optional wenn in URL)
+        blob:
+          type: string
+          description: Beliebiger JSON-String; Server speichert als Binär-Blob
+      required: [blob]
+    PutEntityResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        key: { type: string }
+        blob_size: { type: integer }
+      required: [success, key, blob_size]
+    GetEntityResponse:
+      type: object
+      properties:
+        key: { type: string }
+        blob: { type: string }
+      required: [key, blob]
+    DeleteEntityResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        key: { type: string }
+      required: [success, key]
+    IndexRequest:
+      type: object
+      properties:
+        table: { type: string }
+        column: { type: string }
+        type:
+          type: string
+          enum: [equality, range]
+          default: equality
+          description: Index-Typ. equality für Gleichheitsfilter, range für gte/lte und ORDER BY
+        unique:
+          type: boolean
+          default: false
+          description: Nur für Equality-Indizes. Wenn true, wird eine Unique-Constraint erzwungen.
+      required: [table, column]
+    IndexResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        table: { type: string }
+        column: { type: string }
+      required: [success, table, column]
+    QueryPredicate:
+      type: object
+      properties:
+        column: { type: string }
+        value: { type: string }
+      required: [column, value]
+    RangePredicate:
+      type: object
+      description: Range-Prädikat für Spalten mit Range-Index
+      properties:
+        column: { type: string }
+        gte:
+          type: string
+          description: Untere Grenze (greater than or equal). Optional.
+        lte:
+          type: string
+          description: Obere Grenze (less than or equal). Optional.
+        includeLower:
+          type: boolean
+          default: true
+          description: Untere Grenze inklusiv?
+        includeUpper:
+          type: boolean
+          default: true
+          description: Obere Grenze inklusiv?
+      required: [column]
+    OrderBy:
+      type: object
+      description: Sortierung über Range-Index
+      properties:
+        column:
+          type: string
+          description: Spalte zum Sortieren (muss Range-Index haben)
+        desc:
+          type: boolean
+          default: false
+          description: Absteigend sortieren?
+        limit:
+          type: integer
+          default: 1000
+          description: Maximale Anzahl zurückgegebener Keys
+      required: [column]
+    QueryRequest:
+      type: object
+      properties:
+        table: { type: string }
+        predicates:
+          type: array
+          items: { $ref: '#/components/schemas/QueryPredicate' }
+          description: AND-verknüpfte Gleichheitsfilter
+        range:
+          type: array
+          items: { $ref: '#/components/schemas/RangePredicate' }
+          description: AND-verknüpfte Range-Prädikate (optional)
+        order_by:
+          $ref: '#/components/schemas/OrderBy'
+          description: Sortierung über Range-Index (optional)
+        optimize:
+          type: boolean
+          default: true
+        allow_full_scan:
+          type: boolean
+          default: false
+        explain:
+          type: boolean
+          default: false
+        return:
+          type: string
+          enum: [keys, entities]
+          default: entities
+      required: [table]
+    QueryPlan:
+      type: object
+      properties:
+        mode:
+          type: string
+          description: index_parallel | index_optimized | range_aware | full_scan_fallback
+        order:
+          type: array
+          items: { $ref: '#/components/schemas/QueryPredicate' }
+        estimates:
+          type: array
+          items:
+            type: object
+            properties:
+              column: { type: string }
+              value: { type: string }
+              estimatedCount: { type: integer }
+              capped: { type: boolean }
+    QueryKeysResponse:
+      type: object
+      properties:
+        table: { type: string }
+        count: { type: integer }
+        keys:
+          type: array
+          items: { type: string }
+        plan:
+          $ref: '#/components/schemas/QueryPlan'
+      required: [table, count, keys]
+    QueryEntitiesResponse:
+      type: object
+      properties:
+        table: { type: string }
+        count: { type: integer }
+        entities:
+          type: array
+          description: JSON-Strings, jede Entität als serialisiertes JSON
+          items: { type: string }
+        plan:
+          $ref: '#/components/schemas/QueryPlan'
+      required: [table, count, entities]
+    GraphTraverseRequest:
+      type: object
+      description: Graph-Traversierung via BFS
+      properties:
+        start_vertex:
+          type: string
+          description: Primärschlüssel des Startknotens
+        max_depth:
+          type: integer
+          minimum: 0
+          default: 3
+          description: Maximale Traversierungstiefe (0 = nur Startknoten)
+      required: [start_vertex, max_depth]
+    GraphTraverseResponse:
+      type: object
+      properties:
+        start_vertex: { type: string }
+        max_depth: { type: integer }
+        visited_count: { type: integer }
+        visited:
+          type: array
+          items: { type: string }
+          description: Liste der besuchten Knoten in BFS-Reihenfolge
+      required: [start_vertex, max_depth, visited_count, visited]
+  responses:
+    BadRequest:
+      description: Ungültige Anforderung
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Nicht gefunden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Interner Serverfehler
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: boolean }
+        message: { type: string }
+        status_code: { type: integer }
+      required: [error, message, status_code]

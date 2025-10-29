@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  vccdb:
+    build: .
+    image: vccdb:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./config/config.json:/etc/vccdb/config.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s

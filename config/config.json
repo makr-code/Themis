@@ -1,0 +1,23 @@
+{
+  "storage": {
+  "rocksdb_path": "C:\\VCC\\VCCDB\\data\\themis_server",
+    "memtable_size_mb": 256,
+    "block_cache_size_mb": 1024,
+    "enable_blobdb": true,
+    "compression": {
+      "default": "lz4",
+      "bottommost": "zstd"
+    }
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8765,
+    "worker_threads": 8
+  },
+  "vector_index": {
+    "engine": "hnsw",
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "use_gpu": false
+  }
+}

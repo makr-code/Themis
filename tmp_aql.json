@@ -1,0 +1,1 @@
+{"query":"FOR user IN users FILTER user.city == \"Berlin\" RETURN user","allow_full_scan":false}

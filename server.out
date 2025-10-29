@@ -1,0 +1,32 @@
+[2025-10-27 16:34:28.901] [vccdb] [info] [thread 19032] Logger initialized
+[2025-10-27 16:34:28.906] [vccdb] [info] [thread 19032] === VCC Multi-Model Database API Server ===
+[2025-10-27 16:34:28.909] [vccdb] [info] [thread 19032] Version: 0.1.0
+[2025-10-27 16:34:28.912] [vccdb] [info] [thread 19032] Database path: ./data/vccdb_server
+[2025-10-27 16:34:28.915] [vccdb] [info] [thread 19032] Server: 0.0.0.0:8080
+[2025-10-27 16:34:28.918] [vccdb] [info] [thread 19032] Opening RocksDB database...
+[2025-10-27 16:34:28.971] [vccdb] [info] [thread 19032] Opened RocksDB at: ./data/vccdb_server
+[2025-10-27 16:34:28.974] [vccdb] [info] [thread 19032] Database opened successfully
+[2025-10-27 16:34:28.977] [vccdb] [info] [thread 19032] Initializing index managers...
+[2025-10-27 16:34:28.978] [vccdb] [info] [thread 19032] All managers initialized
+[2025-10-27 16:34:28.978] [vccdb] [info] [thread 19032] HTTP Server created with 8 threads on 0.0.0.0:8080
+[2025-10-27 16:34:28.978] [vccdb] [info] [thread 19032] Starting HTTP server...
+[2025-10-27 16:34:28.979] [vccdb] [info] [thread 19032] HTTP Server listening on 0.0.0.0:8080
+[2025-10-27 16:34:28.979] [vccdb] [info] [thread 19032] HTTP Server started successfully
+[2025-10-27 16:34:28.979] [vccdb] [info] [thread 19032] 
+[2025-10-27 16:34:28.979] [vccdb] [info] [thread 19032] =================================================
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032]   VCC Database Server is running!
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032]   API Endpoint: http://0.0.0.0:8080
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032]   Press Ctrl+C to stop
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032] =================================================
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032] 
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032] Available endpoints:
+[2025-10-27 16:34:28.980] [vccdb] [info] [thread 19032]   GET  /health              - Health check
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   GET  /entities/:key       - Retrieve entity
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   POST /entities            - Create entity
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   PUT  /entities/:key       - Update entity
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   DELETE /entities/:key     - Delete entity
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   POST /query               - Execute query
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   POST /graph/traverse      - Graph traversal
+[2025-10-27 16:34:28.981] [vccdb] [info] [thread 19032]   POST /vector/search       - Vector search
+[2025-10-27 16:34:28.982] [vccdb] [info] [thread 19032]   POST /transaction         - Execute transaction
+[2025-10-27 16:34:28.982] [vccdb] [info] [thread 19032] 

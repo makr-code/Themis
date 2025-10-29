@@ -1,0 +1,74 @@
+// Build output
+build/
+out/
+bin/
+lib/
+
+// Dependencies
+vcpkg_installed/
+.vcpkg/
+
+// IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+// Compilation
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.pdb
+*.ilk
+
+// CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+// Data files
+data/
+*.db
+*.sst
+*.log
+
+// Logs
+logs/
+*.log
+
+// Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+// OS specific
+.DS_Store
+Thumbs.db
+
+// Documentation build
+docs/_build/
+docs/html/
+docs/latex/
+
+// Code coverage
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+// Profiling
+*.prof
+perf.data*

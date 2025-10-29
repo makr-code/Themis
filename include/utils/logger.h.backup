@@ -1,0 +1,94 @@
+#pragma once
+
+#include <spdlog/spdlog.h>
+#include <string>
+#include <memory>
+
+namespace vccdb {
+namespace utils {
+
+/// Centralized logging facility using spdlog
+class Logger {
+public:
+    enum class Level {
+        TRACE,
+        DEBUG,
+        INFO,
+        WARN,
+        ERROR,
+        CRITICAL
+    };
+    
+    /// Initialize logger with configuration
+    static void init(const std::string& log_file = "vccdb.log", Level level = Level::INFO);
+    
+    /// Shutdown logger
+    static void shutdown();
+    
+    /// Get logger instance
+    static std::shared_ptr<spdlog::logger> get();
+    
+    /// Convenience logging functions
+    template<typename... Args>
+    static void trace(const char* fmt, Args&&... args);
+    
+    template<typename... Args>
+    static void debug(const char* fmt, Args&&... args);
+    
+    template<typename... Args>
+    static void info(const char* fmt, Args&&... args);
+    
+    template<typename... Args>
+    static void warn(const char* fmt, Args&&... args);
+    
+    template<typename... Args>
+    static void error(const char* fmt, Args&&... args);
+    
+    template<typename... Args>
+    static void critical(const char* fmt, Args&&... args);
+    
+private:
+    static std::shared_ptr<spdlog::logger> logger_;
+};
+
+// Template implementations (must be in header)
+template<typename... Args>
+inline void Logger::trace(const char* fmt, Args&&... args) {
+    if (logger_) logger_->trace(fmt, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+inline void Logger::debug(const char* fmt, Args&&... args) {
+    if (logger_) logger_->debug(fmt, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+inline void Logger::info(const char* fmt, Args&&... args) {
+    if (logger_) logger_->info(fmt, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+inline void Logger::warn(const char* fmt, Args&&... args) {
+    if (logger_) logger_->warn(fmt, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+inline void Logger::error(const char* fmt, Args&&... args) {
+    if (logger_) logger_->error(fmt, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+inline void Logger::critical(const char* fmt, Args&&... args) {
+    if (logger_) logger_->critical(fmt, std::forward<Args>(args)...);
+}
+
+// Logging macros for convenience
+#define VCCDB_TRACE(...) ::vccdb::utils::Logger::trace(__VA_ARGS__)
+#define VCCDB_DEBUG(...) ::vccdb::utils::Logger::debug(__VA_ARGS__)
+#define VCCDB_INFO(...)  ::vccdb::utils::Logger::info(__VA_ARGS__)
+#define VCCDB_WARN(...)  ::vccdb::utils::Logger::warn(__VA_ARGS__)
+#define VCCDB_ERROR(...) ::vccdb::utils::Logger::error(__VA_ARGS__)
+#define VCCDB_CRITICAL(...) ::vccdb::utils::Logger::critical(__VA_ARGS__)
+
+} // namespace utils
+} // namespace vccdb
