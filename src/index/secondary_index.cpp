@@ -1240,20 +1240,23 @@ std::pair<SecondaryIndexManager::Status, std::vector<std::string>> SecondaryInde
         endKey = std::string("ridx:") + std::string(table) + ":" + std::string(column) + ":\xFF";
     }
 
-    if (!reversed) {
-        db_.scanRange(startKey, endKey, [&result, limit](std::string_view key, std::string_view /*value*/){
+	uint64_t steps = 0;
+	if (!reversed) {
+		db_.scanRange(startKey, endKey, [&result, limit, &steps](std::string_view key, std::string_view /*value*/){
             if (result.size() >= limit) return false;
             size_t lastColon = key.rfind(':');
             if (lastColon != std::string_view::npos) {
                 result.emplace_back(std::string(key.substr(lastColon+1)));
             }
+			++steps;
             return true;
         });
     } else {
         std::vector<std::string> tmp;
-        db_.scanRange(startKey, endKey, [&tmp](std::string_view key, std::string_view /*value*/){
+		db_.scanRange(startKey, endKey, [&tmp, &steps](std::string_view key, std::string_view /*value*/){
             size_t lastColon = key.rfind(':');
             if (lastColon != std::string_view::npos) tmp.emplace_back(std::string(key.substr(lastColon+1)));
+			++steps;
             return true;
         });
         std::reverse(tmp.begin(), tmp.end());
@@ -1261,8 +1264,120 @@ std::pair<SecondaryIndexManager::Status, std::vector<std::string>> SecondaryInde
         result = std::move(tmp);
     }
 
+	// Update range scan steps metric
+	query_metrics_.range_scan_steps_total.fetch_add(steps, std::memory_order_relaxed);
+
     return {Status::OK(), result};
 }
+
+	std::pair<SecondaryIndexManager::Status, std::vector<std::string>>
+	SecondaryIndexManager::scanKeysRangeAnchored(
+		std::string_view table,
+		std::string_view column,
+		const std::optional<std::string>& lowerValue,
+		const std::optional<std::string>& upperValue,
+		bool includeLowerValue,
+		bool includeUpperValue,
+		size_t limit,
+		bool reversed,
+		const std::optional<std::pair<std::string, std::string>>& anchor
+	) const {
+		// Fallback auf normalen Range-Scan, wenn kein Anchor übergeben
+		if (!anchor.has_value()) {
+			return scanKeysRange(table, column, lowerValue, upperValue, includeLowerValue, includeUpperValue, limit, reversed);
+		}
+
+		if (table.empty() || column.empty()) return {Status::Error("scanKeysRangeAnchored: table/column darf nicht leer sein"), {}};
+		if (!hasRangeIndex(table, column)) return {Status::Error("scanKeysRangeAnchored: kein Range-Index vorhanden für " + std::string(table) + "." + std::string(column)), {}};
+
+		const std::string& anchorValue = anchor->first;
+		const std::string& anchorPk = anchor->second;
+
+		// Count anchor usage
+		query_metrics_.cursor_anchor_hits_total.fetch_add(1, std::memory_order_relaxed);
+
+		std::vector<std::string> out;
+		out.reserve(limit);
+
+		// 1) Innerhalb des gleichen Wertes selektieren
+		//    Für asc: PKs > anchorPk, für desc: PKs < anchorPk
+		{
+			std::string prefix = makeRangeIndexPrefix(table, column, anchorValue);
+			std::vector<std::string> sameValuePks;
+			sameValuePks.reserve(limit);
+			db_.scanPrefix(prefix, [&sameValuePks](std::string_view key, std::string_view /*val*/){
+				size_t lastColon = key.rfind(':');
+				if (lastColon != std::string_view::npos) {
+					sameValuePks.emplace_back(std::string(key.substr(lastColon+1)));
+				}
+				return true;
+			});
+
+			// Add steps equal to scanned keys on the anchor value
+			query_metrics_.range_scan_steps_total.fetch_add(static_cast<uint64_t>(sameValuePks.size()), std::memory_order_relaxed);
+
+			if (!reversed) {
+				// ascending: > anchorPk
+				for (const auto& pk : sameValuePks) {
+					if (pk > anchorPk) {
+						out.push_back(pk);
+						if (out.size() >= limit) return {Status::OK(), std::move(out)};
+					}
+				}
+			} else {
+				// descending: < anchorPk, in umgekehrter Ordnung
+				// sameValuePks ist aktuell aufsteigend; wir iterieren rückwärts
+				for (auto it = sameValuePks.rbegin(); it != sameValuePks.rend(); ++it) {
+					if (*it < anchorPk) {
+						out.push_back(*it);
+						if (out.size() >= limit) return {Status::OK(), std::move(out)};
+					}
+				}
+			}
+		}
+
+		// 2) Über die benachbarten Werte hinaus
+		//    Für asc: Werte > anchorValue
+		//    Für desc: Werte < anchorValue
+		{
+			std::optional<std::string> lb = lowerValue;
+			std::optional<std::string> ub = upperValue;
+			bool il = includeLowerValue;
+			bool iu = includeUpperValue;
+
+			// An Bounds anpassen, sodass wir nicht außerhalb des gewünschten Bereichs scannen
+			if (!reversed) {
+				// Start nach anchorValue
+				// Falls upperBound < anchorValue, gibt es nichts mehr
+				if (ub.has_value() && *ub <= anchorValue && !iu) {
+					return {Status::OK(), std::move(out)};
+				}
+				// setze lb auf anchorValue und überspringe gleiche Werte
+				lb = anchorValue;
+				il = false; // exklusiv: Werte NACH anchorValue
+			} else {
+				// descending: Ende vor anchorValue
+				if (lb.has_value() && *lb >= anchorValue && !il) {
+					return {Status::OK(), std::move(out)};
+				}
+				// setze ub auf anchorValue und überspringe gleiche Werte
+				ub = anchorValue;
+				iu = false; // exklusiv: Werte VOR anchorValue
+			}
+
+			// Rest auffüllen
+			auto [st2, more] = scanKeysRange(table, column, lb, ub, il, iu, limit - out.size(), reversed);
+			if (!st2.ok) return {st2, {}};
+
+			// Anhängen
+			for (const auto& pk : more) {
+				out.push_back(pk);
+				if (out.size() >= limit) break;
+			}
+		}
+
+		return {Status::OK(), std::move(out)};
+	}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Geo-Index: Geohash-Encoding und Geo-Queries

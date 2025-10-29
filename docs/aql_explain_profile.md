@@ -206,6 +206,34 @@ Kardinalitätsschätzung pro Prädikat:
 
 ---
 
+## Cursor & Range-Scan Metriken (Relational)
+
+Zusätzlich zu Traversal-Metriken stellt THEMIS für relationale Abfragen (Sekundärindex-Pfad) optionale Cursor-/Range-Informationen bereit:
+
+### Explain-Plan Felder (bei `explain=true`)
+- `plan.mode`: z. B. `index_rangeaware`, `index_optimized`, `full_scan_fallback`.
+- `plan.cursor` (falls `use_cursor=true` im Request):
+  - `used`: Ob der Cursorpfad angewendet wurde.
+  - `cursor_present`: Ob ein Cursor-Token im Request vorhanden war.
+  - `sort_column`: Sortierspalte bei ORDER BY.
+  - `effective_limit`: Tatsächlich verwendetes Fetch-Limit (typisch `count+1` für `has_more`).
+  - `anchor_set`: Ob ein Cursor-Anker `(sort_value, pk)` in der Engine gesetzt wurde.
+  - `requested_count`: Angeforderte Seitengröße aus LIMIT.
+
+### Prometheus-Metriken (`GET /metrics`)
+- `vccdb_cursor_anchor_hits_total` (counter)
+  - Anzahl der Cursor-Anker-Verwendungen im ORDER BY-Paginationpfad.
+- `vccdb_range_scan_steps_total` (counter)
+  - Summe der besuchten Indexeinträge bei Range-Scans (einschließlich initialem Anker-Scan).
+- `vccdb_page_fetch_time_ms_bucket`, `vccdb_page_fetch_time_ms_sum`, `vccdb_page_fetch_time_ms_count` (histogram)
+  - Dauer der Seitenerzeugung in `handleQueryAql` für Cursoranfragen (Millisekunden). Buckets: 1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000, +Inf.
+
+Hinweise:
+- LIMIT/OFFSET ohne Cursor bleiben unverändert (post‑fetch Slicing im HTTP‑Handler).
+- Cursor mit ORDER BY: Die Engine holt `count+1` Elemente für `has_more`. Bei ungültigem/inkonsistentem Cursor wird eine leere Seite mit `has_more=false` zurückgegeben.
+
+---
+
 ## Best Practices
 
 ### 1. Pruning-Effektivität prüfen

@@ -12,6 +12,7 @@
 #include "transaction/transaction_manager.h"
 #include "utils/logger.h"
 #include "utils/logger_impl.h"
+#include "utils/cursor.h"
 #include "content/content_manager.h"
 #include "content/content_processor.h"
 // Für Graph-Kanten-Entities
@@ -35,6 +36,8 @@
 #include <functional>
 #include <cmath>
 #include <functional>
+#include <unordered_map>
+#include <limits>
 
 using json = nlohmann::json;
 
@@ -170,6 +173,8 @@ namespace {
         Stats,
         Metrics,
         Config,
+        AdminBackupPost,
+        AdminRestorePost,
         EntitiesGet,
         EntitiesPut,
         EntitiesDelete,
@@ -212,7 +217,9 @@ namespace {
         if (target == "/" || target == "/health") return Route::Health;
         if (target == "/stats" && method == http::verb::get) return Route::Stats;
         if (target == "/metrics" && method == http::verb::get) return Route::Metrics;
-        if (target == "/config" && method == http::verb::get) return Route::Config;
+    if (target == "/config" && method == http::verb::get) return Route::Config;
+    if (target == "/admin/backup" && method == http::verb::post) return Route::AdminBackupPost;
+    if (target == "/admin/restore" && method == http::verb::post) return Route::AdminRestorePost;
 
         // Parametrized entity by key
         if (target.rfind("/entities/", 0) == 0) {
@@ -291,6 +298,12 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::Config:
             response = handleConfig(req);
+            break;
+        case Route::AdminBackupPost:
+            response = handleAdminBackup(req);
+            break;
+        case Route::AdminRestorePost:
+            response = handleAdminRestore(req);
             break;
         case Route::EntitiesGet:
             response = handleGetEntity(req);
@@ -621,7 +634,7 @@ http::response<http::string_body> HttpServer::handleMetrics(
         out += "# TYPE vccdb_latency_count counter\n";
         out += "vccdb_latency_count " + std::to_string(total_count) + "\n";
 
-        // Index rebuild metrics
+    // Index rebuild metrics
         auto& rebuild_metrics = secondary_index_->getRebuildMetrics();
         uint64_t rebuild_count = rebuild_metrics.rebuild_count.load(std::memory_order_relaxed);
         uint64_t rebuild_duration_ms = rebuild_metrics.rebuild_duration_ms.load(std::memory_order_relaxed);
@@ -639,6 +652,39 @@ http::response<http::string_body> HttpServer::handleMetrics(
         out += "# TYPE vccdb_index_rebuild_entities_total counter\n";
         out += "vccdb_index_rebuild_entities_total " + std::to_string(rebuild_entities) + "\n";
 
+    // Query metrics from SecondaryIndexManager
+    auto& qmetrics = secondary_index_->getQueryMetrics();
+    uint64_t cursor_anchor_hits = qmetrics.cursor_anchor_hits_total.load(std::memory_order_relaxed);
+    uint64_t range_scan_steps = qmetrics.range_scan_steps_total.load(std::memory_order_relaxed);
+    out += "# HELP vccdb_cursor_anchor_hits_total Total number of cursor anchor usages in ORDER BY pagination\n";
+    out += "# TYPE vccdb_cursor_anchor_hits_total counter\n";
+    out += "vccdb_cursor_anchor_hits_total " + std::to_string(cursor_anchor_hits) + "\n";
+    out += "# HELP vccdb_range_scan_steps_total Total index scan steps performed during range scans\n";
+    out += "# TYPE vccdb_range_scan_steps_total counter\n";
+    out += "vccdb_range_scan_steps_total " + std::to_string(range_scan_steps) + "\n";
+
+    // Page fetch time histogram (ms) for cursor pagination
+    auto export_page_bucket = [&](const char* name, uint64_t val){ out += std::string(name) + " " + std::to_string(val) + "\n"; };
+    out += "# HELP vccdb_page_fetch_time_ms_bucket Cursor page fetch time histogram buckets (ms)\n";
+    out += "# TYPE vccdb_page_fetch_time_ms_bucket histogram\n";
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"1\"}", page_bucket_1ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"5\"}", page_bucket_5ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"10\"}", page_bucket_10ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"25\"}", page_bucket_25ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"50\"}", page_bucket_50ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"100\"}", page_bucket_100ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"250\"}", page_bucket_250ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"500\"}", page_bucket_500ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"1000\"}", page_bucket_1000ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"5000\"}", page_bucket_5000ms_.load(std::memory_order_relaxed));
+    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"+Inf\"}", page_bucket_inf_.load(std::memory_order_relaxed));
+    out += "# HELP vccdb_page_fetch_time_ms_sum Total cursor page fetch time in milliseconds\n";
+    out += "# TYPE vccdb_page_fetch_time_ms_sum counter\n";
+    out += "vccdb_page_fetch_time_ms_sum " + std::to_string(page_sum_ms_.load(std::memory_order_relaxed)) + "\n";
+    out += "# HELP vccdb_page_fetch_time_ms_count Total number of cursor pages fetched\n";
+    out += "# TYPE vccdb_page_fetch_time_ms_count counter\n";
+    out += "vccdb_page_fetch_time_ms_count " + std::to_string(page_count_.load(std::memory_order_relaxed)) + "\n";
+
         // Build plain text response with proper content-type
         http::response<http::string_body> res{http::status::ok, req.version()};
         res.set(http::field::server, "THEMIS/0.1.0");
@@ -651,6 +697,27 @@ http::response<http::string_body> HttpServer::handleMetrics(
         error_count_.fetch_add(1, std::memory_order_relaxed);
         return makeErrorResponse(http::status::internal_server_error, std::string("metrics error: ") + e.what(), req);
     }
+}
+
+void HttpServer::recordPageFetch(std::chrono::milliseconds duration_ms) {
+    using namespace std::chrono;
+    uint64_t ms = static_cast<uint64_t>(duration_ms.count());
+    // Cumulative buckets: each bucket counts all values <= its upper bound
+    // Buckets: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 5000ms, +Inf
+    if (ms <= 1) page_bucket_1ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 5) page_bucket_5ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 10) page_bucket_10ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 25) page_bucket_25ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 50) page_bucket_50ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 100) page_bucket_100ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 250) page_bucket_250ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 500) page_bucket_500ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 1000) page_bucket_1000ms_.fetch_add(1, std::memory_order_relaxed);
+    if (ms <= 5000) page_bucket_5000ms_.fetch_add(1, std::memory_order_relaxed);
+    // +Inf bucket always increments (cumulative count of all observations)
+    page_bucket_inf_.fetch_add(1, std::memory_order_relaxed);
+    page_sum_ms_.fetch_add(ms, std::memory_order_relaxed);
+    page_count_.fetch_add(1, std::memory_order_relaxed);
 }
 
 http::response<http::string_body> HttpServer::handleGetEntity(
@@ -937,7 +1004,7 @@ http::response<http::string_body> HttpServer::handleQuery(
             if (!res.first.ok) {
                 return makeErrorResponse(http::status::bad_request, res.first.message, req);
             }
-            // Serialize entities as JSON strings
+            // Serialize entities as JSON strings (default path)
             json entities = json::array();
             for (const auto& e : res.second) {
                 entities.push_back(e.toJson());
@@ -968,6 +1035,13 @@ http::response<http::string_body> HttpServer::handleQueryAql(
         bool explain = body.contains("explain") ? body["explain"].get<bool>() : false;
         bool optimize = body.contains("optimize") ? body["optimize"].get<bool>() : true;
         bool allow_full_scan = body.contains("allow_full_scan") ? body["allow_full_scan"].get<bool>() : false;
+        
+    // Cursor-based pagination parameters
+        std::string cursor_token = body.contains("cursor") ? body["cursor"].get<std::string>() : "";
+        bool use_cursor = body.contains("use_cursor") ? body["use_cursor"].get<bool>() : false;
+    auto page_fetch_start = std::chrono::steady_clock::now();
+        
+    // Cursor-Pagination: Wir verlagern Cursor-Handling in die Engine (Anker-basiert)
         
         // Optional: Frontier-Limits für Traversal (Soft-Limit)
         size_t max_frontier_size = body.contains("max_frontier_size") ? body["max_frontier_size"].get<size_t>() : 100000;
@@ -1849,9 +1923,60 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return makeResponse(http::status::ok, res.dump(), req);
         }
 
-        // Relationale Query
-        const auto& q = translate_result.query;
+        // Relationale Query (mutable Kopie für Cursor-Anker/Limit-Anpassungen)
+        auto q = translate_result.query;
         std::string table = q.table;
+
+        // Cursor-Integration in die QueryEngine: falls ORDER BY vorhanden
+        bool early_empty_due_to_cursor = false;
+        size_t requested_count_for_cursor = 0;
+        if (use_cursor && q.orderBy.has_value()) {
+            // Bestimme angeforderte Seitengröße aus LIMIT
+            if (parse_result.query && parse_result.query->limit) {
+                requested_count_for_cursor = static_cast<size_t>(std::max<int64_t>(1, parse_result.query->limit->count));
+            } else {
+                requested_count_for_cursor = 1000;
+            }
+            // Engine soll count+1 liefern (extra Element für has_more)
+            q.orderBy->limit = requested_count_for_cursor + 1;
+
+            // Wenn ein Cursor-Token übergeben wurde, ermittle Anker (value, pk)
+            if (!cursor_token.empty()) {
+                auto decoded = themis::utils::Cursor::decode(cursor_token);
+                if (!decoded.has_value()) {
+                    // Ungültiger Cursor: leere Seite zurück
+                    early_empty_due_to_cursor = true;
+                } else {
+                    auto [pk, collection] = *decoded;
+                    if (collection != table) {
+                        // Falsche Collection im Cursor
+                        early_empty_due_to_cursor = true;
+                    } else {
+                        // Entität laden, um Sortierspaltenwert zu extrahieren
+                        auto blob = storage_->get(table + ":" + pk);
+                        if (!blob.has_value()) {
+                            early_empty_due_to_cursor = true;
+                        } else {
+                            try {
+                                auto entity = themis::BaseEntity::deserialize(pk, *blob);
+                                // Sortierspalte extrahieren
+                                const std::string sortCol = q.orderBy->column;
+                                auto maybeVal = entity.extractField(sortCol);
+                                if (maybeVal.has_value()) {
+                                    q.orderBy->cursor_value = *maybeVal;
+                                    q.orderBy->cursor_pk = pk;
+                                } else {
+                                    // Ohne Sortwert kein sicherer Anker
+                                    early_empty_due_to_cursor = true;
+                                }
+                            } catch (...) {
+                                early_empty_due_to_cursor = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         
         // Execute query
         themis::QueryEngine engine(*storage_, *secondary_index_);
@@ -1860,6 +1985,10 @@ http::response<http::string_body> HttpServer::handleQueryAql(
         nlohmann::json plan_json;
         
         std::pair<themis::QueryEngine::Status, std::vector<themis::BaseEntity>> res;
+        if (early_empty_due_to_cursor && use_cursor) {
+            // Liefere leere Seite sofort zurück
+            res = { themis::QueryEngine::Status::OK(), {} };
+        } else {
         
         if (allow_full_scan) {
             exec_mode = "full_scan_fallback";
@@ -1905,22 +2034,217 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                 }
             }
         }
+        }
         
         if (!res.first.ok) {
             return makeErrorResponse(http::status::bad_request, res.first.message, req);
         }
         
+        // Apply LIMIT offset,count if provided in the AQL (post-fetch slicing)
+        std::vector<themis::BaseEntity> sliced;
+        sliced.reserve(res.second.size());
+        sliced = std::move(res.second);
+
+        if (!use_cursor && parse_result.query && parse_result.query->limit) {
+            // Klassisches LIMIT offset,count Verhalten
+            auto off = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->offset));
+            auto cnt = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->count));
+            if (off < sliced.size()) {
+                size_t last = std::min(sliced.size(), off + cnt);
+                std::vector<themis::BaseEntity> tmp;
+                tmp.reserve(last - off);
+                for (size_t i = off; i < last; ++i) tmp.emplace_back(std::move(sliced[i]));
+                sliced.swap(tmp);
+            } else {
+                sliced.clear();
+            }
+        }
+
+        // Enrich plan (for explain) with execution mode and cursor metadata
+        if (explain) {
+            if (plan_json.is_null()) plan_json = nlohmann::json::object();
+            if (!exec_mode.empty()) plan_json["mode"] = exec_mode;
+            if (use_cursor) {
+                nlohmann::json cursor_meta = nlohmann::json::object();
+                cursor_meta["used"] = true;
+                cursor_meta["cursor_present"] = !cursor_token.empty();
+                if (q.orderBy.has_value()) {
+                    cursor_meta["sort_column"] = q.orderBy->column;
+                    cursor_meta["effective_limit"] = static_cast<int>(q.orderBy->limit);
+                    cursor_meta["anchor_set"] = q.orderBy->cursor_pk.has_value();
+                }
+                cursor_meta["requested_count"] = static_cast<int>(requested_count_for_cursor);
+                plan_json["cursor"] = std::move(cursor_meta);
+            }
+        }
+
+        // COLLECT/GROUP BY (MVP): falls vorhanden, führe In-Memory-Gruppierung/Aggregation über die Ergebnisse aus
+        if (parse_result.query && parse_result.query->collect && !use_cursor) {
+            const auto& collect = *parse_result.query->collect;
+            using namespace themis::query;
+
+            // Extrahiere aus einem FieldAccess-Ausdruck die Feld-Pfad-Notation (z.B. doc.city -> "city", doc.addr.city -> "addr.city")
+            auto extractColumn = [&](const std::shared_ptr<themis::query::Expression>& expr)->std::string {
+                auto* fa = dynamic_cast<FieldAccessExpr*>(expr.get());
+                if (!fa) return std::string();
+                std::vector<std::string> parts;
+                parts.push_back(fa->field);
+                auto* cur = fa->object.get();
+                while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) {
+                    parts.push_back(fa2->field);
+                    cur = fa2->object.get();
+                }
+                // Root erwartet Variable; deren Name wird ignoriert
+                std::string col;
+                for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+                    if (!col.empty()) col += ".";
+                    col += *it;
+                }
+                return col;
+            };
+
+            // MVP: Unterstütze 0..1 Group-Variablen
+            std::string groupVarName;
+            std::string groupColumn;
+            if (!collect.groups.empty()) {
+                groupVarName = collect.groups[0].first;
+                if (collect.groups[0].second) {
+                    groupColumn = extractColumn(collect.groups[0].second);
+                }
+            }
+
+            struct AggSpec { std::string var; std::string func; std::string col; };
+            std::vector<AggSpec> aggs;
+            aggs.reserve(collect.aggregations.size());
+            for (const auto& a : collect.aggregations) {
+                std::string func = a.funcName; std::transform(func.begin(), func.end(), func.begin(), ::tolower);
+                std::string col;
+                if (a.argument) col = extractColumn(a.argument);
+                aggs.push_back({a.varName, func, col});
+            }
+
+            struct AggState { uint64_t cnt=0; double sum=0.0; double min=std::numeric_limits<double>::infinity(); double max=-std::numeric_limits<double>::infinity(); };
+            std::unordered_map<std::string, std::unordered_map<std::string, AggState>> acc;
+
+            auto toGroupKey = [&](const themis::BaseEntity& e)->std::string{
+                if (groupColumn.empty()) return std::string("__all__");
+                auto v = e.getFieldAsString(groupColumn);
+                return v.value_or(std::string(""));
+            };
+            auto toNumber = [&](const themis::BaseEntity& e, const std::string& col, std::optional<double>& out)->bool{
+                if (col.empty()) { out = 1.0; return true; }
+                auto dv = e.getFieldAsDouble(col);
+                if (dv.has_value()) { out = *dv; return true; }
+                auto sv = e.getFieldAsString(col);
+                if (sv.has_value()) {
+                    try { out = std::stod(*sv); return true; } catch (...) { /* ignore */ }
+                }
+                return false;
+            };
+
+            for (const auto& e : sliced) {
+                std::string key = toGroupKey(e);
+                auto& bucket = acc[key];
+                // Update je Aggregation
+                if (aggs.empty()) {
+                    bucket[std::string("count")].cnt += 1;
+                } else {
+                    for (const auto& a : aggs) {
+                        auto& st = bucket[a.var];
+                        if (a.func == "count") {
+                            st.cnt += 1;
+                        } else if (a.func == "sum" || a.func == "avg" || a.func == "min" || a.func == "max") {
+                            std::optional<double> num;
+                            if (toNumber(e, a.col, num) && num.has_value()) {
+                                st.cnt += 1;
+                                st.sum += *num;
+                                if (*num < st.min) st.min = *num;
+                                if (*num > st.max) st.max = *num;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Baue Ausgabe
+            nlohmann::json groups = nlohmann::json::array();
+            for (const auto& [k, mp] : acc) {
+                nlohmann::json row = nlohmann::json::object();
+                if (!groupVarName.empty()) row[groupVarName] = k;
+                if (aggs.empty()) {
+                    auto it = mp.find("count");
+                    uint64_t c = (it != mp.end()) ? it->second.cnt : 0;
+                    row["count"] = c;
+                } else {
+                    for (const auto& a : aggs) {
+                        const auto it = mp.find(a.var);
+                        if (it == mp.end()) continue;
+                        const auto& st = it->second;
+                        if (a.func == "count") row[a.var] = static_cast<uint64_t>(st.cnt);
+                        else if (a.func == "sum") row[a.var] = st.sum;
+                        else if (a.func == "avg") row[a.var] = (st.cnt ? (st.sum / static_cast<double>(st.cnt)) : 0.0);
+                        else if (a.func == "min") row[a.var] = (st.cnt ? st.min : 0.0);
+                        else if (a.func == "max") row[a.var] = (st.cnt ? st.max : 0.0);
+                    }
+                }
+                groups.push_back(std::move(row));
+            }
+
+            nlohmann::json response_body = {
+                {"table", table},
+                {"count", groups.size()},
+                {"groups", groups}
+            };
+            if (explain) {
+                response_body["query"] = aql_query;
+                response_body["ast"] = parse_result.query->toJSON();
+                if (!plan_json.is_null()) response_body["plan"] = plan_json;
+            }
+            return makeResponse(http::status::ok, response_body.dump(), req);
+        }
+
         // Serialize entities
         json entities = json::array();
-        for (const auto& e : res.second) {
+        for (const auto& e : sliced) {
             entities.push_back(e.toJson());
         }
         
-        json response_body = {
-            {"table", table},
-            {"count", res.second.size()},
-            {"entities", entities}
-        };
+        json response_body;
+        
+        if (use_cursor) {
+            // Cursor-basierte Antwort wurde nach Engine-Paginierung erstellt
+            themis::utils::PaginatedResponse paged;
+            // Bestimme angeforderte Seitengröße
+            size_t requested_count = parse_result.query && parse_result.query->limit 
+                ? static_cast<size_t>(std::max<int64_t>(1, parse_result.query->limit->count))
+                : 1000;
+
+            bool has_more = false;
+            if (sliced.size() > requested_count) {
+                has_more = true;
+                // Trenne das +1 Element ab (nur für has_more Erkennung)
+                sliced.resize(requested_count);
+            }
+
+            // Serialize final page
+            json page_items = json::array();
+            for (const auto& e : sliced) page_items.push_back(e.toJson());
+
+            paged.items = std::move(page_items);
+            paged.batch_size = sliced.size();
+            paged.has_more = has_more;
+            if (has_more && !sliced.empty()) {
+                paged.next_cursor = themis::utils::Cursor::encode(sliced.back().getPrimaryKey(), table);
+            }
+            response_body = paged.toJSON();
+        } else {
+            // Traditional response format
+            response_body = {
+                {"table", table},
+                {"count", sliced.size()},
+                {"entities", entities}
+            };
+        }
         
         if (explain) {
             response_body["query"] = aql_query;
@@ -1930,7 +2254,14 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             }
         }
         
-        return makeResponse(http::status::ok, response_body.dump(), req);
+        auto final_res = makeResponse(http::status::ok, response_body.dump(), req);
+        // Record page fetch time histogram for cursor-based pagination
+        if (use_cursor) {
+            auto end = std::chrono::steady_clock::now();
+            auto dur_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - page_fetch_start);
+            recordPageFetch(dur_ms);
+        }
+        return final_res;
         
     } catch (const json::exception& e) {
         return makeErrorResponse(http::status::bad_request,
@@ -1983,16 +2314,74 @@ http::response<http::string_body> HttpServer::handleVectorSearch(
     try {
         auto body_json = json::parse(req.body());
         
-        // TODO: Implement vector search endpoint
+        // Validate required fields
+        if (!body_json.contains("vector")) {
+            return makeErrorResponse(http::status::bad_request,
+                "Missing required field: vector", req);
+        }
+        
+        // Parse query vector
+        std::vector<float> queryVector;
+        if (body_json["vector"].is_array()) {
+            for (const auto& val : body_json["vector"]) {
+                if (val.is_number()) {
+                    queryVector.push_back(val.get<float>());
+                } else {
+                    return makeErrorResponse(http::status::bad_request,
+                        "Vector elements must be numbers", req);
+                }
+            }
+        } else {
+            return makeErrorResponse(http::status::bad_request,
+                "Field 'vector' must be an array", req);
+        }
+        
+        // Parse k (default: 10)
+        size_t k = body_json.value("k", 10);
+        if (k == 0) {
+            return makeErrorResponse(http::status::bad_request,
+                "Field 'k' must be greater than 0", req);
+        }
+        
+        // Validate dimension
+        int expectedDim = vector_index_->getDimension();
+        if (expectedDim > 0 && static_cast<int>(queryVector.size()) != expectedDim) {
+            return makeErrorResponse(http::status::bad_request,
+                "Vector dimension mismatch: expected " + std::to_string(expectedDim) +
+                ", got " + std::to_string(queryVector.size()), req);
+        }
+        
+        // Perform k-NN search
+        auto [status, results] = vector_index_->searchKnn(queryVector, k);
+        
+        if (!status.ok) {
+            return makeErrorResponse(http::status::internal_server_error,
+                "Vector search failed: " + status.message, req);
+        }
+        
+        // Format response
+        json resultJson = json::array();
+        for (const auto& result : results) {
+            resultJson.push_back({
+                {"pk", result.pk},
+                {"distance", result.distance}
+            });
+        }
+        
         json response = {
-            {"message", "Vector search endpoint not yet fully implemented"},
-            {"request", body_json}
+            {"results", resultJson},
+            {"k", k},
+            {"count", results.size()}
         };
-        return makeResponse(http::status::not_implemented, response.dump(), req);
+        
+        return makeResponse(http::status::ok, response.dump(), req);
 
     } catch (const json::exception& e) {
         return makeErrorResponse(http::status::bad_request,
             "Invalid JSON: " + std::string(e.what()), req);
+    } catch (const std::exception& e) {
+        THEMIS_ERROR("Vector search error: {}", e.what());
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
 }
 
@@ -2142,6 +2531,49 @@ http::response<http::string_body> HttpServer::handleVectorIndexStats(
 
     } catch (const std::exception& e) {
         THEMIS_ERROR("Vector stats error: {}", e.what());
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// ===================== Admin: Backup & Restore =====================
+
+http::response<http::string_body> HttpServer::handleAdminBackup(
+    const http::request<http::string_body>& req
+) {
+    try {
+        json body = json::parse(req.body());
+        std::string dir = body.value("directory", std::string("./data/backup_") + std::to_string(std::time(nullptr)));
+        bool ok = storage_->createCheckpoint(dir);
+        if (!ok) {
+            return makeErrorResponse(http::status::internal_server_error, std::string("Failed to create checkpoint at ") + dir, req);
+        }
+        json resp = {{"status", "ok"}, {"directory", dir}};
+        return makeResponse(http::status::ok, resp.dump(), req);
+    } catch (const json::exception& e) {
+        return makeErrorResponse(http::status::bad_request, std::string("Invalid JSON: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleAdminRestore(
+    const http::request<http::string_body>& req
+) {
+    try {
+        json body = json::parse(req.body());
+        if (!body.contains("directory") || !body["directory"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing required field: directory", req);
+        }
+        std::string dir = body["directory"].get<std::string>();
+        bool ok = storage_->restoreFromCheckpoint(dir);
+        if (!ok) {
+            return makeErrorResponse(http::status::internal_server_error, std::string("Failed to restore from checkpoint ") + dir, req);
+        }
+        json resp = {{"status", "ok"}, {"restored_from", dir}};
+        return makeResponse(http::status::ok, resp.dump(), req);
+    } catch (const json::exception& e) {
+        return makeErrorResponse(http::status::bad_request, std::string("Invalid JSON: ") + e.what(), req);
+    } catch (const std::exception& e) {
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
 }
@@ -2517,6 +2949,7 @@ http::response<http::string_body> HttpServer::makeErrorResponse(
 void HttpServer::recordLatency(std::chrono::microseconds duration) {
     uint64_t us = static_cast<uint64_t>(duration.count());
     latency_sum_us_.fetch_add(us, std::memory_order_relaxed);
+    // Cumulative buckets: each bucket counts all values <= its upper bound
     // Buckets: 100us, 500us, 1ms, 5ms, 10ms, 50ms, 100ms, 500ms, 1s, 5s, +Inf
     if (us <= 100) latency_bucket_100us_.fetch_add(1, std::memory_order_relaxed);
     if (us <= 500) latency_bucket_500us_.fetch_add(1, std::memory_order_relaxed);
@@ -2528,7 +2961,7 @@ void HttpServer::recordLatency(std::chrono::microseconds duration) {
     if (us <= 500000) latency_bucket_500ms_.fetch_add(1, std::memory_order_relaxed);
     if (us <= 1000000) latency_bucket_1s_.fetch_add(1, std::memory_order_relaxed);
     if (us <= 5000000) latency_bucket_5s_.fetch_add(1, std::memory_order_relaxed);
-    // +Inf bucket always increments
+    // +Inf bucket always increments (cumulative count of all observations)
     latency_bucket_inf_.fetch_add(1, std::memory_order_relaxed);
 }
 

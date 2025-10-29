@@ -287,6 +287,46 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '501':
           description: Nicht implementiert (z. B. Graph/Vector Platzhalter)
+  /query/aql:
+    post:
+      summary: AQL Query (FOR/FILTER/SORT/LIMIT/RETURN)
+      operationId: postAqlQuery
+      tags: [query]
+      description: |
+        Führt eine AQL-Query aus. Unterstützt relationale Abfragen (FOR/FILTER/SORT/LIMIT/RETURN)
+        sowie Cursor-basierte Pagination über `use_cursor`/`cursor`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AqlQueryRequest'
+            examples:
+              simple:
+                summary: Einfache AQL-Abfrage
+                value:
+                  query: |
+                    FOR user IN users
+                      FILTER user.city == "Berlin"
+                      SORT user.age ASC
+                      LIMIT 10
+                      RETURN user
+              with_cursor:
+                summary: Cursor-Pagination
+                value:
+                  query: 'FOR user IN users SORT user.name ASC LIMIT 10 RETURN user'
+                  use_cursor: true
+      responses:
+        '200':
+          description: Abfrage erfolgreich
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AqlStandardResponse'
+                  - $ref: '#/components/schemas/AqlPaginatedResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /graph/traverse:
     post:
       summary: Graph-Traversierung (BFS)
@@ -532,6 +572,85 @@ components:
         plan:
           $ref: '#/components/schemas/QueryPlan'
       required: [table, count, entities]
+    AqlQueryRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          description: AQL-Query (FOR/FILTER/SORT/LIMIT/RETURN)
+        explain:
+          type: boolean
+          default: false
+        optimize:
+          type: boolean
+          default: true
+        allow_full_scan:
+          type: boolean
+          default: false
+        use_cursor:
+          type: boolean
+          default: false
+          description: Cursor-basierte Pagination aktivieren (ändert Response-Format)
+        cursor:
+          type: string
+          nullable: true
+          description: Cursor-Token der vorherigen Seite (nur wenn use_cursor=true)
+      required: [query]
+    AqlExplainPlan:
+      type: object
+      properties:
+        mode:
+          type: string
+          description: index_parallel | index_optimized | index_rangeaware | full_scan_fallback
+        order:
+          type: array
+          items:
+            type: object
+            properties:
+              column: { type: string }
+              value: { type: string }
+        estimates:
+          type: array
+          items:
+            type: object
+            properties:
+              column: { type: string }
+              value: { type: string }
+              estimatedCount: { type: integer }
+              capped: { type: boolean }
+    AqlStandardResponse:
+      type: object
+      properties:
+        table: { type: string }
+        count: { type: integer }
+        entities:
+          type: array
+          items: { type: string }
+          description: Jede Entität als JSON-String (serialisiert)
+        plan: { $ref: '#/components/schemas/AqlExplainPlan' }
+        query: { type: string }
+        ast:
+          type: object
+          description: AST der AQL-Query (nur bei explain=true)
+      required: [table, count, entities]
+    AqlPaginatedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { type: string }
+          description: Seite von Entitäten (serialisierte JSON-Strings)
+        batch_size: { type: integer }
+        has_more: { type: boolean }
+        next_cursor:
+          type: string
+          description: Cursor-Token für die nächste Seite (falls has_more=true)
+        plan: { $ref: '#/components/schemas/AqlExplainPlan' }
+        query: { type: string }
+        ast:
+          type: object
+          description: AST der AQL-Query (nur bei explain=true)
+      required: [items, batch_size, has_more]
     GraphTraverseRequest:
       type: object
       description: Graph-Traversierung via BFS

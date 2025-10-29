@@ -35,10 +35,16 @@ public:
     };
 
     explicit VectorIndexManager(RocksDBWrapper& db);
+    ~VectorIndexManager();
 
     // Initialisierung eines Index-Namespace (z. B. "documents"): Dimension, M/ef, Metrik
     Status init(std::string_view objectName, int dim, Metric metric = Metric::COSINE,
-                int M = 16, int efConstruction = 200, int efSearch = 64);
+                int M = 16, int efConstruction = 200, int efSearch = 64,
+                const std::string& savePath = "");
+
+    // Lifecycle-Management
+        void setAutoSavePath(const std::string& savePath, bool autoSave = true);
+    Status shutdown(); // Speichert Index wenn auto_save aktiviert
 
     // HNSW Parameter zur Laufzeit anpassen (nur efSearch; M/efConstruction erfordern Rebuild)
     Status setEfSearch(int efSearch);
@@ -85,6 +91,7 @@ public:
     int getEfConstruction() const { return efConstruction_; }
     size_t getVectorCount() const { return pkToId_.size(); }
     bool isHnswEnabled() const { return useHnsw_; }
+        std::string getSavePath() const { return savePath_; }
 
 private:
     RocksDBWrapper& db_;
@@ -94,6 +101,8 @@ private:
     int efSearch_ = 64;
     int m_ = 16;
     int efConstruction_ = 200;
+        std::string savePath_; // Verzeichnis für saveIndex/loadIndex
+        bool autoSave_ = false; // Automatisches Speichern bei shutdown()
 
     // In-Memory Mapping PK <-> Label-ID (für HNSW) und Cache für Fallback
     mutable std::unordered_map<std::string, size_t> pkToId_;

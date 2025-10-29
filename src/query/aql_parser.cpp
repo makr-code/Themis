@@ -16,11 +16,13 @@ enum class TokenType {
     FOR, IN, FILTER, SORT, LIMIT, RETURN,
     ASC, DESC, AND, OR, XOR, NOT,
     GRAPH, OUTBOUND, INBOUND, ANY,
+    COLLECT, AGGREGATE,
     TRUE, FALSE, NULL_LITERAL,
     
     // Operators
     EQ, NEQ, LT, LTE, GT, GTE,
     PLUS, MINUS, STAR, SLASH,
+    ASSIGN,  // Single '=' for assignments (COLLECT var = expr, AGGREGATE var = func)
     
     // Literals
     IDENTIFIER, STRING, INTEGER, FLOAT,
@@ -207,6 +209,8 @@ private:
         if (lower == "outbound") return Token(TokenType::OUTBOUND, value, line, col);
         if (lower == "inbound") return Token(TokenType::INBOUND, value, line, col);
         if (lower == "any") return Token(TokenType::ANY, value, line, col);
+        if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
+        if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
         
         return Token(TokenType::IDENTIFIER, value, line, col);
     }
@@ -239,6 +243,7 @@ private:
         // Single-character operators/punctuation
         advance();
         switch (ch) {
+            case '=': return Token(TokenType::ASSIGN, "=", line, col);  // Single = for assignments
             case '<': return Token(TokenType::LT, "<", line, col);
             case '>': return Token(TokenType::GT, ">", line, col);
             case '+': return Token(TokenType::PLUS, "+", line, col);
@@ -338,6 +343,11 @@ private:
         // LIMIT clause (optional)
         if (match(TokenType::LIMIT)) {
             query->limit = parseLimitClause();
+        }
+
+        // COLLECT/GROUP BY clause (optional, MVP)
+        if (match(TokenType::COLLECT)) {
+            query->collect = parseCollectClause();
         }
         
         // RETURN clause (optional)
@@ -517,6 +527,57 @@ private:
         
         auto expr = parseExpression();
         return std::make_shared<ReturnNode>(expr);
+    }
+
+    std::shared_ptr<CollectNode> parseCollectClause() {
+        expect(TokenType::COLLECT, "Expected COLLECT");
+        auto node = std::make_shared<CollectNode>();
+
+        // Optional group variable(s): var = expr
+        if (!match(TokenType::AGGREGATE)) {
+            if (!match(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected variable name after COLLECT");
+            }
+            std::string var = current().value;
+            advance();
+            expect(TokenType::ASSIGN, "Expected '=' after group variable in COLLECT");
+            auto expr = parseExpression();
+            node->groups.emplace_back(var, expr);
+            // MVP: allow only one group; additional groups via comma could be added later
+        }
+
+        // Optional AGGREGATE section
+        if (match(TokenType::AGGREGATE)) {
+            advance();
+            // Parse list: var = FUNC(expr?) [, var = FUNC(expr?)]*
+            bool first = true;
+            while (first || match(TokenType::COMMA)) {
+                if (!first) advance();
+                first = false;
+                if (!match(TokenType::IDENTIFIER)) {
+                    throw std::runtime_error("Expected aggregation variable name after AGGREGATE");
+                }
+                std::string outVar = current().value;
+                advance();
+                expect(TokenType::ASSIGN, "Expected '=' in aggregation assignment");
+                // Expect function call
+                if (!match(TokenType::IDENTIFIER)) {
+                    throw std::runtime_error("Expected aggregation function name (COUNT, SUM, AVG, MIN, MAX)");
+                }
+                std::string funcName = current().value;
+                advance();
+                expect(TokenType::LPAREN, "Expected '(' after aggregation function");
+                std::shared_ptr<Expression> arg;
+                if (!match(TokenType::RPAREN)) {
+                    arg = parseExpression();
+                }
+                expect(TokenType::RPAREN, "Expected ')' to close aggregation function");
+                CollectNode::Aggregation ag{outVar, funcName, arg};
+                node->aggregations.push_back(std::move(ag));
+            }
+        }
+
+        return node;
     }
     
     std::shared_ptr<Expression> parseExpression() {

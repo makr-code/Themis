@@ -7,7 +7,7 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 
 **Projekt:** Themis - Multi-Modell-Datenbanksystem (Relational, Graph, Vektor, Dokument)  
 **Technologie-Stack:** C++, RocksDB TransactionDB (MVCC), Intel TBB, HNSWlib, Apache Arrow  
-**Datum:** 28. Oktober 2025
+**Datum:** 29. Oktober 2025
 
 ---
 
@@ -30,6 +30,16 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
     - Abfragen liefern erwartete Treffer für „LSG“/„Fließgewässer“ und Koordinaten; EXPLAIN zeigt Index-Nutzung; Dokumentation vollständig.
 
 ## �📋 Priorisierte Roadmap - Nächste Schritte
+
+### 29.10.2025 – Fokuspakete
+
+- [ ] Relational & AQL Ausbau: Equality-Joins via doppeltem `FOR + FILTER`, `LET`/Subqueries, `COLLECT`/Aggregationen samt Pagination und boolescher Vollständigkeit abschließen; bildet die Grundlage für hybride Queries.
+- [ ] Graph Traversal Vertiefung: Pfad-Constraints (`PATH.ALL/NONE/ANY`) umsetzen, Pfad-/Kanten-Prädikate in den Expand-Schritten prüfen und `shortestPath()` freischalten, damit Chunk-Graph und Security-Szenarien unterstützt werden.
+- [ ] Vector Index Operationen: Batch-Inserts, Reindex/Compaction sowie Score-basierte Pagination implementieren, um große Ingestion-Jobs und Reranking stabil zu fahren.
+- [ ] Phase 4 Content/Filesystem Start: Document-/Chunk-Schema festlegen, Upload- und Extraktionspipeline (Text → Chunks → Graph → Vector) prototypen und Hybrid-Query-Beispiele dokumentieren.
+- [x] Ops & Recovery Absicherung: Backup/Restore via RocksDB-Checkpoints implementiert; Telemetrie (Histogramme/Compaction) und strukturierte Logs noch offen.
+- [x] AQL LIMIT offset,count: Translator setzt ORDER BY Limit=offset+count; HTTP-Handler führt post-fetch Slicing durch; Unit- und HTTP-Tests grün.
+- [x] Cursor-basierte Pagination (HTTP): `use_cursor`/`cursor` unterstützt; Response `{items, has_more, next_cursor, batch_size}`; Doku in `docs/cursor_pagination.md`; Engine-Startkey als Follow-up.
 
 ## 🗺️ Themen & Inhaltsübersicht (inhaltlich sortiert)
 
@@ -147,9 +157,12 @@ Gating: Muss abgeschlossen sein, bevor Vector/Filesystem starten (Phasen 3/4)
 - ✅ Typbewusste Filter, Funktionen (ABS/CEIL/FLOOR/ROUND/POW/DATE_* / NOW)
 - ✅ Traversal in AQL: OUTBOUND/INBOUND/ANY mit min..max; RETURN v/e/p
 - ✅ EXPLAIN/PROFILE Doku inkl. Metriken (docs/aql_explain_profile.md)
+- ✅ LIMIT offset,count inkl. korrektes Offset-Slicing im HTTP-AQL-Handler; Translator setzt `orderBy.limit = offset+count`.
+- ✅ Cursor-Pagination (HTTP-Ebene): Base64-Token `{pk, collection, version}`; `next_cursor` und `has_more` implementiert; siehe `docs/cursor_pagination.md`.
 
 #### In Progress/Planned
-- Joins (doppeltes FOR + FILTER), Subqueries/LET, Aggregation (COLLECT), Pagination/Cursor
+- Joins (doppeltes FOR + FILTER), Subqueries/LET, Aggregation (COLLECT)
+- Pagination/Cursor (Engine): Start-after-Integration im Query-Pfad (RangeIndex `seek` ab Cursor-PK), saubere Interaktion mit ORDER BY + LIMIT (fetch `limit+1`), Entfernung des `allow_full_scan`-Workarounds.
 - EXPLAIN/PROFILE auf AQL-Ebene (Plan, Kosten, Timing)
 - Postgres/Arango Parität (1.2b/1.2e): OR/NOT-Optimierung, GROUP BY, Typ-/NULL-Semantik
 
@@ -199,10 +212,11 @@ Gating: Start erst, wenn Vector‑Persistenz & Graph‑Expansion stabil sind
 
 #### Done
 - ✅ /stats, /metrics (Prometheus), RocksDB-Statistiken, Server-Lifecycle stabil
+- ✅ Backup & Recovery Endpoints: `POST /admin/backup`, `POST /admin/restore` (RocksDB Checkpoints)
 
 #### Planned
 - Prometheus-Histogramme, RocksDB-Compaction-Metriken, OpenTelemetry Tracing
-- Backup & Recovery Endpoints (admin/backup, admin/restore) und Inkrementals
+- Inkrementelle Backups/WAL-Archiving, regelmäßige Restore-Verification (automatisiert)
 - POST /config (Hot-Reload), strukturierte JSON-Logs
  - Testing & Benchmarking Suite (PRIORITÄT 2.3): Hybride Queries, Concurrency, Performance‑Profile
 
@@ -331,6 +345,36 @@ Prereqs: Phase 0–1 (Core + AQL). Start nach Phase 5 empfohlen (Ops stabil)
 
 ---
 
+## Optionale Punkte / Follow-up (29.10.2025)
+
+- Cursor-Pagination Engine-Integration: Start-after im Range-Scan (SecondaryIndexManager::scanKeysRange mit Startschlüssel), sauberer ORDER BY + LIMIT Pfad ohne Full-Scan; fetch `limit+1` zur robusten `has_more`-Erkennung.
+- Cursor-Token erweitern: Sortierspalte und Richtung einbetten, versionsiert lassen, optional Ablaufzeit (Expiry) ergänzen.
+- AQL-Erweiterungen priorisieren: Equality-Joins (doppeltes FOR + FILTER), `LET`/Subqueries, `COLLECT`/Aggregationen inkl. Pagination.
+- Observability: Prometheus-Histogramme, RocksDB Compaction-Metriken, strukturierte JSON-Logs; einfache Traces für Query-Pfade.
+- Vector: `/vector/search` finalisieren (Score-basierte Pagination, Persistenz-APIs), Batch-Inserts, Reindex/Compaction.
+- Tests: Größere Datensätze für Pagination/Cursor, Property-Tests für Cursor-Konsistenz, Engine-Tests für Start-after; Performance-Benchmarks.
+  - Cursor-Kantenfälle (ergänzende Tests):
+    - Sort-Ties auf Sortierspalte: deterministische Reihenfolge via PK-Tiebreaker; Cursor setzt auf (wert, pk) strikt „start-after“
+    - DESC-Order mit Cursor: korrektes „start-before“ Verhalten; has_more bei absteigender Reihenfolge
+    - Kombinationen mit Equality-/Range-Filtern: Cursor-Position respektiert aktive Filtermenge
+    - Ungültige/inkonsistente Cursor: leere Seite, has_more=false, Status 200
+    - Nicht-Cursor-Pfad: LIMIT offset,count bleibt unverändert (Regressionstest)
+    - ✅ Smoke-Test Metriken:
+      - Verifiziert: `vccdb_cursor_anchor_hits_total` (1 nach Seite 2), `vccdb_range_scan_steps_total` (>0), `vccdb_page_fetch_time_ms_count`/`sum` (>0) nach zwei Cursor-Seiten
+ - Benchmarks & Metriken:
+   - ✅ Microbenchmarks für Pagination (Offset vs Cursor) in `benchmarks/bench_query.cpp` implementiert; Doku in `docs/search/pagination_benchmarks.md`.
+   - Metrik-Hooks als Follow-up (z. B. anchor_hits, range_scan_steps) – niedrige Priorität.
+ - Observability (OPTIONAL):
+   - Prometheus Counter/Gauge/Histogram ergänzen: `cursor_anchor_hits_total`, `range_scan_steps_total`, `page_fetch_time_ms` (Histogramm)
+   - Debug-Logging beim Cursor-Anker (nur `explain=true` oder Debug-Level), um Edgecases nachvollziehbar zu machen
+ - Doku (OPTIONAL):
+   - ✅ `docs/aql_explain_profile.md`: Abschnitt zu Cursor-/Range-Scan-Metriken inkl. `plan.cursor.*` ergänzt
+   - ✅ README: Hinweis auf /metrics-Erweiterungen (Cursor-/Range-/Page-Histogramm) ergänzt
+ - Qualität (OPTIONAL):
+   - Property-/Fuzz-Tests für Cursor-Token (invalid/malformed/collection mismatch/expired) hinzufügen
+   - Stabile, wiederholbare Benchmark-Settings (Warmup, Wiederholungen) dokumentieren
+- Doku & OpenAPI: `docs/cursor_pagination.md` referenzieren, AQL/OpenAPI mit Cursor-Parametern erweitern.
+
 ## Mapping: Alte → Neue Roadmap
 
 - PRIORITÄT 2.1/2.2/2.3 → Observability & Ops (Metriken, Backup/Restore, Testing/Benchmarking)
@@ -342,6 +386,21 @@ Prereqs: Phase 0–1 (Core + AQL). Start nach Phase 5 empfohlen (Ops stabil)
 - PRIORITÄT 4.3 → Vector/Text (Advanced Search / Hybrid‑Search)
 
 ---
+
+## Statuscheck (Alt‑Prioritäten, 29.10.2025)
+
+- [x] Priorität 2 – AQL‑ähnliche Query‑Sprache (Phase 6 in alter Planung)
+  - Basis abgeschlossen: Parser/Translator/Engine/HTTP `/query/aql`, LIMIT/OFFSET mit post‑fetch Slicing, Cursor‑Pagination inklusive `next_cursor/has_more`, EXPLAIN/PROFILE erweitert. OpenAPI und Doku aktualisiert; relevante Tests grün.
+  - Offen/Nächste Ausbauten: Joins (doppeltes FOR+FILTER), `LET`/Subqueries, `COLLECT`/Aggregationen.
+
+- [x] Priorität 3 – Testing & Benchmarking (Phase 5, Task 14)
+  - Tests: 221/221 PASS; HTTP‑AQL Fokus‑ und Cursor‑Edge‑Tests grün.
+  - Benchmarks: Microbenchmarks u. a. für Pagination Offset vs Cursor (siehe `benchmarks/bench_query.cpp`); Release‑Runs erfolgreich.
+  - Follow‑ups: Property/Fuzz‑Tests für Cursor‑Tokens; reproduzierbare Benchmark‑Settings dokumentieren.
+
+- [ ] Priorität 4 – Apache Arrow Integration (Phase 3, Task 9)
+  - Status: Noch offen. Arrow RecordBatches/Flight/OLAP‑Pfade sind geplant (siehe Kapitel „8) Analytics (Apache Arrow)“), aber im Code noch nicht integriert.
+
 
 ## Archiv (chronologisch)
 
@@ -405,7 +464,7 @@ Erweiterungen (Cross-Reference AQL):
 - [ ] Aggregationen: `COLLECT`/GROUP BY, `COUNT/SUM/AVG/MIN/MAX`, `HAVING`-ähnliche Filter; stabile Semantik und Streaming-Execution
 - [ ] OR/NOT und Klammerlogik: Vollständige boolesche Ausdrücke, De-Morgan-Optimierungen, Index-Union/-Intersection; Planner-Regeln für Disjunktionen
 - [ ] RETURN-Projektionen: Objekt-/Feldprojektionen, `DISTINCT`, Array-/Slice-Operatoren; stabile Feldzugriffe aus Variablen (z. B. `u.name`, `o.total`)
-- [ ] Pagination: `LIMIT offset, count` und Cursor-basierte Antworten (HTTP: `has_more`, `next_cursor`, `batch_size`)
+- [x] Pagination: `LIMIT offset, count` implementiert (Translator + HTTP-Slicing); Cursor-basierte Pagination implementiert mit `use_cursor` Parameter und `{items, has_more, next_cursor, batch_size}` Response-Format
 - [ ] Cross-Model-Bridges:
   - [ ] Relational → Graph: Startknoten aus relationaler Query (z. B. `FOR u IN users FILTER u.city == "MUC" FOR v IN 1..2 OUTBOUND u._id GRAPH 'social' RETURN v`)
   - [ ] Graph → Relational: Filter/Projektion auf Traversal-Variablen (`v`, `e`, `p`), z. B. `FILTER v.age >= 30`, `FILTER e.type == 'follows'`
@@ -447,7 +506,8 @@ Dokumentations- und API-Aufgaben (Cross-Reference AQL):
   - [ ] Mango-ähnliche einfache Filter-DSL als Brücke (Optional; Dokumentation/Adapter)
 
 - Operativ / Plattform:
-  - [ ] Backup/Restore Endpoints (Checkpoint-API, inkrementell) – bereits in Roadmap, Prio anheben
+  - [x] Backup/Restore Endpoints (Checkpoint-API via POST /admin/backup, /admin/restore)
+  - [ ] Inkrementelle Backups/WAL-Archiving
   - [ ] POST /config (Hot-Reload) – Konfigurationsänderungen zur Laufzeit
   - [ ] AuthN/AuthZ (Kerberos/RBAC) – Basis-RBAC vorziehen
   - [ ] Query/Plan-Cache (Heuristiken, TTL)
@@ -512,7 +572,8 @@ Ziel: Vergleichbare Funktionstiefe zu Milvus/Pinecone/Qdrant.
 
 - Distanzen & Genauigkeit
   - [x] L2-Distanz
-  - [ ] Cosine (inkl. Normalisierung) und Dot-Product
+  - [x] Cosine (inkl. Normalisierung via InnerProductSpace + L2-Norm)
+  - [ ] Dot-Product (separat)
   - [ ] Recall/Latency-Metriken, Qualitäts-Benchmarks und Tuning-Guides
 
 - Filter & Query-Features
@@ -888,9 +949,9 @@ Vector (Semantic Search über Chunks)
 #### 2.2 Backup & Recovery 💾 **PRODUCTION-CRITICAL**
 **Aufwand:** 3-4 Tage  
 
-- [ ] RocksDB Checkpoint-API Integration
-- [ ] Backup-Endpoint: POST /admin/backup
-- [ ] Restore-Endpoint: POST /admin/restore
+- [x] RocksDB Checkpoint-API Integration
+- [x] Backup-Endpoint: POST /admin/backup
+- [x] Restore-Endpoint: POST /admin/restore
 - [ ] Inkrementelle Backups
 - [ ] Export/Import (JSON/CSV)
 - [ ] Disaster Recovery Guide

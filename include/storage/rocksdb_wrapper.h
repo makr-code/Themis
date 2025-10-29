@@ -197,6 +197,16 @@ public:
     /// Get current configuration
     const Config& getConfig() const { return config_; }
 
+    // ===== Backup & Recovery (Checkpoints) =====
+    /// Create a RocksDB checkpoint (filesystem-level snapshot) at the given directory.
+    /// Returns true on success. Directory will be created if it doesn't exist.
+    bool createCheckpoint(const std::string& checkpoint_dir);
+
+    /// Restore the database from a previously created checkpoint directory.
+    /// This will close the current DB, replace the DB path contents with the checkpoint,
+    /// and reopen the DB. Returns true on success.
+    bool restoreFromCheckpoint(const std::string& checkpoint_dir);
+
 private:
     Config config_;
     std::unique_ptr<rocksdb::TransactionDB> db_;

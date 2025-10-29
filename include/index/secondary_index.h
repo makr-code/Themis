@@ -106,6 +106,21 @@ public:
         bool reversed = false
     ) const;
 
+    // Range-Scan mit Cursor-Anker (value, pk) für effiziente Pagination über ORDER BY
+    // Wenn anchor gesetzt ist, startet der Scan strikt nach (ascending) bzw. strikt vor (descending)
+    // dem angegebenen (value, pk) innerhalb der gegebenen Bounds.
+    std::pair<Status, std::vector<std::string>> scanKeysRangeAnchored(
+        std::string_view table,
+        std::string_view column,
+        const std::optional<std::string>& lowerValue,
+        const std::optional<std::string>& upperValue,
+        bool includeLowerValue,
+        bool includeUpperValue,
+        size_t limit,
+        bool reversed,
+        const std::optional<std::pair<std::string, std::string>>& anchor
+    ) const;
+
     // Datenpflege (atomar, inkl. Indizes)
     Status put(std::string_view table, const BaseEntity& entity);
     Status erase(std::string_view table, std::string_view pk);
@@ -206,12 +221,21 @@ public:
         std::atomic<uint64_t> rebuild_entities_processed{0}; // Anzahl verarbeiteter Entities
     };
     
+    // Query-Metriken (Prometheus): Zählwerte für Cursor/Range-Scans
+    struct QueryMetrics {
+        std::atomic<uint64_t> cursor_anchor_hits_total{0};   // Anzahl Cursor-Anker-Verwendungen (ORDER BY Pagination)
+        std::atomic<uint64_t> range_scan_steps_total{0};     // Anzahl besuchter Indexeinträge bei Range-Scans
+    };
+    
     RebuildMetrics& getRebuildMetrics() { return rebuild_metrics_; }
     const RebuildMetrics& getRebuildMetrics() const { return rebuild_metrics_; }
+    QueryMetrics& getQueryMetrics() { return query_metrics_; }
+    const QueryMetrics& getQueryMetrics() const { return query_metrics_; }
 
 private:
     RocksDBWrapper& db_;
     RebuildMetrics rebuild_metrics_;
+    mutable QueryMetrics query_metrics_;
 
     // Meta-Key für vorhandene Indizes: idxmeta:<table>:<column>
     // Composite: idxmeta:<table>:col1+col2+col3

@@ -272,6 +272,38 @@ struct ReturnNode {
 };
 
 // ============================================================================
+// Collect/GROUP BY Nodes (MVP)
+// ============================================================================
+
+struct CollectNode {
+    // Group-by variables: varName = expression (MVP: typically a single field access like doc.city)
+    std::vector<std::pair<std::string, std::shared_ptr<Expression>>> groups;
+
+    struct Aggregation {
+        std::string varName;                               // output variable name, e.g., "cnt"
+        std::string funcName;                              // COUNT, SUM, AVG, MIN, MAX (case-insensitive)
+        std::shared_ptr<Expression> argument;              // may be null (COUNT())
+    };
+    std::vector<Aggregation> aggregations;                 // optional
+
+    nlohmann::json toJSON() const {
+        nlohmann::json j;
+        j["type"] = "collect";
+        nlohmann::json g = nlohmann::json::array();
+        for (const auto& [v, e] : groups) {
+            g.push_back({{"var", v}, {"expr", e ? e->toJSON() : nlohmann::json()}});
+        }
+        j["groups"] = g;
+        nlohmann::json a = nlohmann::json::array();
+        for (const auto& ag : aggregations) {
+            a.push_back({{"var", ag.varName}, {"func", ag.funcName}, {"arg", ag.argument ? ag.argument->toJSON() : nlohmann::json()}});
+        }
+        j["aggregations"] = a;
+        return j;
+    }
+};
+
+// ============================================================================
 // Query AST (Root)
 // ============================================================================
 
@@ -281,6 +313,7 @@ struct Query {
     std::shared_ptr<SortNode> sort;
     std::shared_ptr<LimitNode> limit;
     std::shared_ptr<ReturnNode> return_node;
+    std::shared_ptr<CollectNode> collect; // optional GROUP BY/AGGREGATE
     // Optional: Graph Traversal-Klausel (FOR v[,e[,p]] IN min..max OUTBOUND|INBOUND|ANY start GRAPH name)
     // Wenn gesetzt, beschreibt sie eine Traversal-Query statt einer Collection-Iteration.
     struct TraversalNode {
@@ -335,6 +368,9 @@ struct Query {
         
         if (return_node) {
             j["return"] = return_node->toJSON();
+        }
+        if (collect) {
+            j["collect"] = collect->toJSON();
         }
         if (traversal) {
             j["traversal"] = traversal->toJSON();

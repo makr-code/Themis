@@ -138,6 +138,110 @@ QueryEngine::intersectSortedLists_(std::vector<std::vector<std::string>> lists) 
 	return result;
 }
 
+std::vector<std::string>
+QueryEngine::unionSortedLists_(std::vector<std::vector<std::string>> lists) {
+	if (lists.empty()) return {};
+	if (lists.size() == 1) return lists.front();
+	
+	// Merge all lists using set_union (removes duplicates)
+	std::vector<std::string> result = lists.front();
+	
+	for (size_t i = 1; i < lists.size(); ++i) {
+		const auto& next = lists[i];
+		std::vector<std::string> tmp;
+		tmp.reserve(result.size() + next.size()); // Reserve max possible size
+		std::set_union(result.begin(), result.end(), next.begin(), next.end(), std::back_inserter(tmp));
+		result.swap(tmp);
+	}
+	return result;
+}
+
+std::pair<QueryEngine::Status, std::vector<std::string>>
+QueryEngine::executeOrKeys(const DisjunctiveQuery& q) const {
+	if (q.table.empty()) return {Status::Error("executeOrKeys: table darf nicht leer sein"), {}};
+	if (q.disjuncts.empty()) return {Status::Error("executeOrKeys: keine Disjunkte"), {}};
+
+	// Execute each disjunct (AND-block) and collect results
+	std::vector<std::vector<std::string>> all_lists(q.disjuncts.size());
+	std::vector<std::string> errors;
+	tbb::task_group tg;
+
+	for (size_t i = 0; i < q.disjuncts.size(); ++i) {
+		const auto& disjunct = q.disjuncts[i];
+		tg.run([this, &disjunct, &all_lists, i, &errors]() {
+			auto [st, keys] = executeAndKeys(disjunct);
+			if (!st.ok) {
+				THEMIS_ERROR("Parallel OR disjunct error: {}", st.message);
+				errors.push_back(st.message);
+				return;
+			}
+			// Sort for later union
+			std::sort(keys.begin(), keys.end());
+			all_lists[i] = std::move(keys);
+		});
+	}
+	tg.wait();
+
+	if (!errors.empty()) {
+		return {Status::Error("executeOrKeys: " + errors.front()), {}};
+	}
+
+	// Union all result sets
+	auto keys = unionSortedLists_(std::move(all_lists));
+	return {Status::OK(), std::move(keys)};
+}
+
+std::pair<QueryEngine::Status, std::vector<BaseEntity>>
+QueryEngine::executeOrEntities(const DisjunctiveQuery& q) const {
+	auto [st, keys] = executeOrKeys(q);
+	if (!st.ok) return {st, {}};
+
+	// Parallel entity loading (same logic as executeAndEntities)
+	constexpr size_t PARALLEL_THRESHOLD = 100;
+	constexpr size_t BATCH_SIZE = 50;
+
+	std::vector<BaseEntity> out;
+	out.reserve(keys.size());
+
+	if (keys.size() < PARALLEL_THRESHOLD) {
+		for (const auto& pk : keys) {
+			auto blob = db_.get(q.table + ":" + pk);
+			if (!blob) continue;
+			try { out.emplace_back(BaseEntity::deserialize(pk, *blob)); }
+			catch (...) { THEMIS_WARN("executeOrEntities: Deserialisierung fehlgeschlagen für PK={}", pk); }
+		}
+	} else {
+		std::vector<std::vector<BaseEntity>> batches((keys.size() + BATCH_SIZE - 1) / BATCH_SIZE);
+		tbb::task_group tg;
+
+		for (size_t batch_idx = 0; batch_idx < batches.size(); ++batch_idx) {
+			tg.run([this, &q, &keys, &batches, batch_idx, BATCH_SIZE]() {
+				size_t start = batch_idx * BATCH_SIZE;
+				size_t end = std::min(start + BATCH_SIZE, keys.size());
+				std::vector<BaseEntity> local_entities;
+				local_entities.reserve(end - start);
+
+				for (size_t i = start; i < end; ++i) {
+					const auto& pk = keys[i];
+					auto blob = db_.get(q.table + ":" + pk);
+					if (!blob) continue;
+					try { local_entities.emplace_back(BaseEntity::deserialize(pk, *blob)); }
+					catch (...) { THEMIS_WARN("executeOrEntities: Deserialisierung fehlgeschlagen für PK={}", pk); }
+				}
+
+				batches[batch_idx] = std::move(local_entities);
+			});
+		}
+		tg.wait();
+
+		for (auto& batch : batches) {
+			out.insert(out.end(), std::make_move_iterator(batch.begin()), std::make_move_iterator(batch.end()));
+		}
+	}
+
+	return {Status::OK(), std::move(out)};
+}
+
 std::pair<QueryEngine::Status, std::vector<std::string>>
 QueryEngine::executeAndKeysSequential(const std::string& table,
 									  const std::vector<PredicateEq>& orderedPredicates) const {
@@ -414,7 +518,12 @@ QueryEngine::executeAndKeysRangeAware_(const ConjunctiveQuery& q) const {
 
 		std::vector<std::string> ordered;
 		ordered.reserve(ob.limit);
-		auto [st, scan] = secIdx_.scanKeysRange(q.table, ob.column, lb, ub, il, iu, bigLimit(), ob.desc);
+		// Cursor-unterstützte Range-Scans: starte nach (value, pk), falls vorhanden
+		std::optional<std::pair<std::string,std::string>> anchor;
+		if (ob.cursor_value.has_value() && ob.cursor_pk.has_value()) {
+			anchor = std::make_pair(ob.cursor_value.value(), ob.cursor_pk.value());
+		}
+		auto [st, scan] = secIdx_.scanKeysRangeAnchored(q.table, ob.column, lb, ub, il, iu, bigLimit(), ob.desc, anchor);
 		if (!st.ok) return {Status::Error(st.message), {}};
 		for (const auto& k : scan) {
 			if (!candSet.empty() && candSet.find(k) == candSet.end()) continue; // filter

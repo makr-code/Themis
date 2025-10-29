@@ -16,7 +16,8 @@
     { "name": "boost-asio" },
     { "name": "boost-beast" },
     { "name": "spdlog" },
-    { "name": "nlohmann-json" }
+    { "name": "nlohmann-json" },
+    { "name": "opentelemetry-cpp", "features": ["otlp-http"] }
   ],
   "features": {
     "gpu": {

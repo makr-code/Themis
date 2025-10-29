@@ -122,3 +122,43 @@ TEST_F(MetricsApiTest, RocksDBMetrics_ExposePendingCompaction) {
     auto body = res.body();
     EXPECT_NE(body.find("rocksdb_pending_compaction_bytes"), std::string::npos);
 }
+
+TEST_F(MetricsApiTest, HistogramBuckets_AreCumulative) {
+    // Generate a few requests to populate histogram buckets
+    for (int i = 0; i < 10; ++i) {
+        auto h = server_->get("/health");
+        ASSERT_EQ(h.result(), http::status::ok);
+    }
+    auto res = server_->get("/metrics");
+    ASSERT_EQ(res.result(), http::status::ok);
+    auto body = res.body();
+
+    // Parse bucket counts from Prometheus text format
+    // vccdb_latency_bucket_microseconds{le="100"} X
+    // vccdb_latency_bucket_microseconds{le="500"} Y
+    // ...
+    auto extractBucketCount = [&](const std::string& le) -> uint64_t {
+        std::string pattern = "vccdb_latency_bucket_microseconds{le=\"" + le + "\"} ";
+        auto pos = body.find(pattern);
+        if (pos == std::string::npos) return 0;
+        auto start = pos + pattern.length();
+        auto end = body.find('\n', start);
+        if (end == std::string::npos) return 0;
+        return std::stoull(body.substr(start, end - start));
+    };
+
+    uint64_t b100 = extractBucketCount("100");
+    uint64_t b500 = extractBucketCount("500");
+    uint64_t b1000 = extractBucketCount("1000");
+    uint64_t b5000 = extractBucketCount("5000");
+    uint64_t binf = extractBucketCount("+Inf");
+
+    // Cumulative property: each bucket must be >= previous bucket
+    EXPECT_GE(b500, b100) << "Bucket 500us must be >= 100us (cumulative)";
+    EXPECT_GE(b1000, b500) << "Bucket 1ms must be >= 500us (cumulative)";
+    EXPECT_GE(b5000, b1000) << "Bucket 5ms must be >= 1ms (cumulative)";
+    EXPECT_GE(binf, b5000) << "Bucket +Inf must be >= 5ms (cumulative)";
+
+    // The +Inf bucket should equal the total number of observations
+    EXPECT_GT(binf, 0) << "+Inf bucket should contain all observations";
+}

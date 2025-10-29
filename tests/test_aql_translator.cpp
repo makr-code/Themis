@@ -192,6 +192,26 @@ TEST(AQLTranslatorTest, SortWithLimit) {
     EXPECT_EQ(translateResult.query.orderBy->limit, 10); // from LIMIT clause
 }
 
+TEST(AQLTranslatorTest, SortWithLimitOffset) {
+    AQLParser parser;
+    auto parseResult = parser.parse(
+        "FOR user IN users "
+        "SORT user.created_at ASC "
+        "LIMIT 5, 10 "
+        "RETURN user"
+    );
+    ASSERT_TRUE(parseResult.success);
+    
+    auto translateResult = AQLTranslator::translate(parseResult.query);
+    ASSERT_TRUE(translateResult.success) << translateResult.error_message;
+    
+    ASSERT_TRUE(translateResult.query.orderBy.has_value());
+    EXPECT_EQ(translateResult.query.orderBy->column, "created_at");
+    EXPECT_FALSE(translateResult.query.orderBy->desc);
+    // Expect limit to be offset+count to allow post-slicing
+    EXPECT_EQ(translateResult.query.orderBy->limit, 15);
+}
+
 // ============================================================================
 // Complete Query Tests
 // ============================================================================

@@ -1,6 +1,6 @@
 {
   "storage": {
-  "rocksdb_path": "C:\\VCC\\VCCDB\\data\\themis_server",
+  "rocksdb_path": "C:\\VCC\\themis\\data\\themis_server",
     "memtable_size_mb": 256,
     "block_cache_size_mb": 1024,
     "enable_blobdb": true,
@@ -15,9 +15,22 @@
     "worker_threads": 8
   },
   "vector_index": {
+    "object_name": "documents",
+    "dimension": 10,
+    "metric": "COSINE",
     "engine": "hnsw",
     "hnsw_m": 16,
     "hnsw_ef_construction": 200,
-    "use_gpu": false
+    "ef_search": 64,
+    "use_gpu": false,
+    "auto_save": true,
+    "save_path": "C:\\VCC\\themis\\data\\vector_indexes",
+    "save_on_shutdown": true,
+    "load_on_startup": true
+  },
+  "tracing": {
+    "enabled": true,
+    "service_name": "themis-server",
+    "otlp_endpoint": "http://localhost:4318"
   }
 }

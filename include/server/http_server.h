@@ -151,6 +151,10 @@ private:
     http::response<http::string_body> handleIndexRebuild(const http::request<http::string_body>& req);
     http::response<http::string_body> handleIndexReindex(const http::request<http::string_body>& req);
 
+    // Admin: Backup & Restore
+    http::response<http::string_body> handleAdminBackup(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleAdminRestore(const http::request<http::string_body>& req);
+
     // Content API endpoints
     http::response<http::string_body> handleContentImport(const http::request<http::string_body>& req);
     http::response<http::string_body> handleGetContent(const http::request<http::string_body>& req);
@@ -230,6 +234,23 @@ private:
     
     // Helper to record latency
     void recordLatency(std::chrono::microseconds duration);
+
+    // Page Fetch (Cursor) Histogram in Millisekunden: 1,5,10,25,50,100,250,500,1000,5000,+Inf
+    std::atomic<uint64_t> page_bucket_1ms_{0};
+    std::atomic<uint64_t> page_bucket_5ms_{0};
+    std::atomic<uint64_t> page_bucket_10ms_{0};
+    std::atomic<uint64_t> page_bucket_25ms_{0};
+    std::atomic<uint64_t> page_bucket_50ms_{0};
+    std::atomic<uint64_t> page_bucket_100ms_{0};
+    std::atomic<uint64_t> page_bucket_250ms_{0};
+    std::atomic<uint64_t> page_bucket_500ms_{0};
+    std::atomic<uint64_t> page_bucket_1000ms_{0};
+    std::atomic<uint64_t> page_bucket_5000ms_{0};
+    std::atomic<uint64_t> page_bucket_inf_{0};
+    std::atomic<uint64_t> page_sum_ms_{0};
+    std::atomic<uint64_t> page_count_{0};
+    
+    void recordPageFetch(std::chrono::milliseconds duration_ms);
 };
 
 } // namespace server

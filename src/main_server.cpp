@@ -1,4 +1,5 @@
 ﻿#include "utils/logger.h"
+#include "utils/tracing.h"
 #include "storage/rocksdb_wrapper.h"
 #include "index/secondary_index.h"
 #include "index/graph_index.h"
@@ -143,6 +144,41 @@ int main(int argc, char* argv[]) {
         auto secondary_index = std::make_shared<SecondaryIndexManager>(*db);
         auto graph_index = std::make_shared<GraphIndexManager>(*db);
         auto vector_index = std::make_shared<VectorIndexManager>(*db);
+
+        // Parse vector_index config and initialize (optional auto-load)
+        std::string vector_save_path;
+        if (cfg && cfg->contains("vector_index")) {
+            const auto& vi = (*cfg)["vector_index"];
+            std::string object_name = vi.value("object_name", std::string());
+            int dimension = vi.value("dimension", 0);
+            std::string metric_str = vi.value("metric", std::string("COSINE"));
+            int hnsw_m = vi.value("hnsw_m", 16);
+            int hnsw_ef_construction = vi.value("hnsw_ef_construction", 200);
+            int ef_search = vi.value("ef_search", 64);
+            bool load_on_startup = vi.value("load_on_startup", true);
+            bool save_on_shutdown = vi.value("save_on_shutdown", true);
+            if (vi.contains("save_path")) {
+                vector_save_path = vi["save_path"].get<std::string>();
+                vector_index->setAutoSavePath(vector_save_path, save_on_shutdown);
+                THEMIS_INFO("Vector index auto-save path: {} (save_on_shutdown={})", vector_save_path, save_on_shutdown);
+            }
+
+            // Initialize index if object_name & dimension provided
+            if (!object_name.empty() && dimension > 0) {
+                VectorIndexManager::Metric metric = (metric_str == "L2")
+                    ? VectorIndexManager::Metric::L2
+                    : VectorIndexManager::Metric::COSINE;
+                THEMIS_INFO("Initializing vector index: object='{}', dim={}, metric={}, M={}, efC={}, efS={}",
+                    object_name, dimension, metric_str, hnsw_m, hnsw_ef_construction, ef_search);
+                auto st = vector_index->init(object_name, dimension, metric, hnsw_m, hnsw_ef_construction, ef_search,
+                    load_on_startup ? vector_save_path : std::string());
+                if (!st.ok) {
+                    THEMIS_WARN("Vector index init failed: {}", st.message);
+                }
+            } else {
+                THEMIS_INFO("Vector index not initialized (object_name/dimension missing). You can init via API or config.");
+            }
+        }
         
         // Create transaction manager
         auto tx_manager = std::make_shared<TransactionManager>(
@@ -150,6 +186,22 @@ int main(int argc, char* argv[]) {
         );
         
         THEMIS_INFO("All managers initialized");
+        
+        // Initialize tracing if enabled
+        if (cfg && cfg->contains("tracing")) {
+            const auto& tracing_cfg = (*cfg)["tracing"];
+            bool tracing_enabled = tracing_cfg.value("enabled", false);
+            if (tracing_enabled) {
+                std::string service_name = tracing_cfg.value("service_name", std::string("themis-server"));
+                std::string otlp_endpoint = tracing_cfg.value("otlp_endpoint", std::string("http://localhost:4318"));
+                
+                if (Tracer::initialize(service_name, otlp_endpoint)) {
+                    THEMIS_INFO("Distributed tracing enabled: service='{}', endpoint='{}'", service_name, otlp_endpoint);
+                } else {
+                    THEMIS_WARN("Failed to initialize distributed tracing");
+                }
+            }
+        }
         
         // Create and start HTTP server
         server::HttpServer::Config server_config(host, port, num_threads);
@@ -192,6 +244,15 @@ int main(int argc, char* argv[]) {
         g_server->wait();
         
         THEMIS_INFO("Server stopped gracefully");
+        
+        // Shutdown tracing
+        Tracer::shutdown();
+        
+            // Save vector index before closing DB
+            if (vector_index && !vector_save_path.empty()) {
+                THEMIS_INFO("Shutting down vector index...");
+                vector_index->shutdown();
+            }
         
         // Cleanup
         db->close();

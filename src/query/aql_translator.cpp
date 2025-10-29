@@ -70,9 +70,10 @@ bool AQLTranslator::extractPredicates(
                    extractPredicates(binOp->right, eqPredicates, rangePredicates, error);
         }
         
-        // Handle OR: Not supported in ConjunctiveQuery
-        if (binOp->op == BinaryOperator::Or) {
-            error = "OR operator not supported in conjunctive queries (use multiple queries instead)";
+        // Handle OR: Not yet fully supported, but accept simple cases (will be handled at execution layer)
+        // For MVP: reject OR, suggest splitting into multiple queries
+        if (binOp->op == BinaryOperator::Or || binOp->op == BinaryOperator::Xor) {
+            error = "OR/XOR operators not yet supported - use multiple queries and merge results client-side";
             return false;
         }
         
@@ -212,8 +213,10 @@ std::optional<OrderBy> AQLTranslator::extractOrderBy(
     
     // Apply limit if present
     if (limit) {
-        orderBy.limit = limit->count;
-        // Note: offset not supported in OrderBy (would need post-processing)
+        // For offset support, request offset+count from index scan and slice later in handler
+        auto off = static_cast<size_t>(std::max<int64_t>(0, limit->offset));
+        auto cnt = static_cast<size_t>(std::max<int64_t>(0, limit->count));
+        orderBy.limit = off + cnt;
     } else {
         orderBy.limit = 1000; // default limit
     }

@@ -302,3 +302,94 @@ TEST_F(HttpVectorApiTest, VectorIndexLoad_RequiresDirectory) {
     ASSERT_TRUE(response.contains("message"));
     EXPECT_NE(response["message"].get<std::string>().find("Missing required field: directory"), std::string::npos);
 }
+
+TEST_F(HttpVectorApiTest, VectorSearch_FindsNearestNeighbors) {
+    // Search for vectors near [1, 0, 0] - should find doc1 first
+    json request = {
+        {"vector", {1.0f, 0.0f, 0.0f}},
+        {"k", 2}
+    };
+    auto response = httpPost("/vector/search", request);
+
+    ASSERT_TRUE(response.contains("results")) << "Response: " << response.dump();
+    ASSERT_TRUE(response.contains("count"));
+    ASSERT_TRUE(response.contains("k"));
+    EXPECT_EQ(response["k"], 2);
+    
+    auto results = response["results"];
+    ASSERT_TRUE(results.is_array());
+    EXPECT_GE(results.size(), 1); // At least one result
+    EXPECT_LE(results.size(), 2); // At most k results
+    
+    // First result should be doc1 with smallest distance
+    EXPECT_EQ(results[0]["pk"], "doc1");
+    EXPECT_LT(results[0]["distance"].get<float>(), 0.1f); // Very close (cosine distance)
+}
+
+TEST_F(HttpVectorApiTest, VectorSearch_RespectsKParameter) {
+    // Search with k=1
+    json request = {
+        {"vector", {0.5f, 0.5f, 0.0f}},
+        {"k", 1}
+    };
+    auto response = httpPost("/vector/search", request);
+
+    ASSERT_TRUE(response.contains("results"));
+    EXPECT_EQ(response["count"], 1);
+    
+    auto results = response["results"];
+    ASSERT_EQ(results.size(), 1);
+}
+
+TEST_F(HttpVectorApiTest, VectorSearch_DefaultsK) {
+    // Search without k (should default to 10)
+    json request = {
+        {"vector", {0.0f, 0.0f, 1.0f}}
+    };
+    auto response = httpPost("/vector/search", request);
+
+    ASSERT_TRUE(response.contains("k"));
+    EXPECT_EQ(response["k"], 10); // Default value
+    
+    // Should return all 3 vectors since we only have 3 in total
+    EXPECT_EQ(response["count"], 3);
+}
+
+TEST_F(HttpVectorApiTest, VectorSearch_ValidatesDimension) {
+    // Wrong dimension (2D instead of 3D)
+    json request = {
+        {"vector", {1.0f, 0.0f}},
+        {"k", 1}
+    };
+    auto response = httpPost("/vector/search", request);
+
+    ASSERT_TRUE(response.contains("error"));
+    EXPECT_EQ(response["error"], true);
+    ASSERT_TRUE(response.contains("message"));
+    EXPECT_NE(response["message"].get<std::string>().find("dimension mismatch"), std::string::npos);
+}
+
+TEST_F(HttpVectorApiTest, VectorSearch_RequiresVectorField) {
+    json request = {
+        {"k", 5}
+    };
+    auto response = httpPost("/vector/search", request);
+
+    ASSERT_TRUE(response.contains("error"));
+    EXPECT_EQ(response["error"], true);
+    ASSERT_TRUE(response.contains("message"));
+    EXPECT_NE(response["message"].get<std::string>().find("Missing required field: vector"), std::string::npos);
+}
+
+TEST_F(HttpVectorApiTest, VectorSearch_RejectsInvalidK) {
+    json request = {
+        {"vector", {1.0f, 0.0f, 0.0f}},
+        {"k", 0}
+    };
+    auto response = httpPost("/vector/search", request);
+
+    ASSERT_TRUE(response.contains("error"));
+    EXPECT_EQ(response["error"], true);
+    ASSERT_TRUE(response.contains("message"));
+    EXPECT_NE(response["message"].get<std::string>().find("k' must be greater than 0"), std::string::npos);
+}

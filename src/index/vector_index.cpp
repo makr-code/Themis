@@ -21,6 +21,42 @@ namespace themis {
 
 VectorIndexManager::VectorIndexManager(RocksDBWrapper& db) : db_(db) {}
 
+VectorIndexManager::~VectorIndexManager() {
+	shutdown();
+}
+
+VectorIndexManager::Status VectorIndexManager::shutdown() {
+	if (autoSave_ && !savePath_.empty() && !objectName_.empty() && useHnsw_) {
+		THEMIS_INFO("VectorIndexManager::shutdown - Auto-saving index for '{}' to '{}'", objectName_, savePath_);
+		auto status = saveIndex(savePath_);
+		if (!status.ok) {
+			THEMIS_WARN("VectorIndexManager::shutdown - Failed to save index: {}", status.message);
+			return status;
+		}
+		THEMIS_INFO("VectorIndexManager::shutdown - Index saved successfully");
+	}
+	return Status::OK();
+}
+
+void VectorIndexManager::setAutoSavePath(const std::string& savePath, bool autoSave) {
+	savePath_ = savePath;
+	autoSave_ = autoSave;
+	
+	// Versuche existierenden Index zu laden, wenn Pfad gesetzt wird
+	if (!savePath_.empty() && !objectName_.empty()) {
+		namespace fs = std::filesystem;
+		if (fs::exists(fs::path(savePath_) / "meta.txt")) {
+			THEMIS_INFO("VectorIndexManager::setAutoSavePath - Found existing index at '{}', loading...", savePath_);
+			auto loadStatus = loadIndex(savePath_);
+			if (loadStatus.ok) {
+				THEMIS_INFO("VectorIndexManager::setAutoSavePath - Index loaded successfully ({} vectors)", getVectorCount());
+			} else {
+				THEMIS_WARN("VectorIndexManager::setAutoSavePath - Failed to load index: {}", loadStatus.message);
+			}
+		}
+	}
+}
+
 float VectorIndexManager::l2(const std::vector<float>& a, const std::vector<float>& b) {
 	float s = 0.0f;
 	for (size_t i = 0; i < a.size(); ++i) {
@@ -60,7 +96,8 @@ std::string VectorIndexManager::makeObjectKey(std::string_view pk) const {
 }
 
 VectorIndexManager::Status VectorIndexManager::init(std::string_view objectName, int dim, Metric metric,
-													int M, int efConstruction, int efSearch) {
+													int M, int efConstruction, int efSearch,
+													const std::string& savePath) {
 	if (objectName.empty()) return Status::Error("init: objectName darf nicht leer sein");
 	if (dim <= 0) return Status::Error("init: dim muss > 0 sein");
 	objectName_ = std::string(objectName);
@@ -69,6 +106,26 @@ VectorIndexManager::Status VectorIndexManager::init(std::string_view objectName,
 	efSearch_ = efSearch;
     m_ = M;
     efConstruction_ = efConstruction;
+	// Apply save path only if provided; otherwise keep previously configured path
+	if (!savePath.empty()) {
+		savePath_ = savePath;
+		autoSave_ = true;
+	}
+
+	// Versuche Index zu laden, falls vorhanden (savePath kann aus Param oder vorheriger Konfiguration stammen)
+	if (!savePath_.empty()) {
+		namespace fs = std::filesystem;
+		if (fs::exists(fs::path(savePath_) / "meta.txt")) {
+			THEMIS_INFO("VectorIndexManager::init - Found existing index at '{}', loading...", savePath_);
+			auto loadStatus = loadIndex(savePath_);
+			if (loadStatus.ok) {
+				THEMIS_INFO("VectorIndexManager::init - Index loaded successfully ({} vectors)", getVectorCount());
+				return Status::OK();
+			} else {
+				THEMIS_WARN("VectorIndexManager::init - Failed to load index: {}, creating new index", loadStatus.message);
+			}
+		}
+	}
 
 #ifdef THEMIS_HNSW_ENABLED
 	try {

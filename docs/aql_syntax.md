@@ -218,6 +218,27 @@ FOR doc IN orders
 
 ---
 
+## HTTP-spezifische Parameter für Pagination
+
+Bei Nutzung des HTTP-Endpunkts `POST /query/aql` können optionale Felder zur Pagination mitgegeben werden:
+
+```json
+{
+  "query": "FOR u IN users SORT u.age ASC LIMIT 10 RETURN u",
+  "use_cursor": true,
+  "cursor": "<token-aus-previous-response>",
+  "allow_full_scan": false
+}
+```
+
+- `use_cursor` (bool): Aktiviert Cursor-basierte Pagination. Antwortformat enthält `{items, has_more, next_cursor, batch_size}`.
+- `cursor` (string): Token aus `next_cursor` der vorherigen Seite. Gültig nur in Kombination mit `use_cursor: true`.
+- `allow_full_scan` (bool): Optionaler Fallback für kleine Datenmengen/Tests; für große Daten wird Index-basierte Sortierung empfohlen.
+
+Weitere Details siehe `docs/cursor_pagination.md`.
+
+---
+
 ## Spezial-Queries
 
 ### Graph-Traversierung

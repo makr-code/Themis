@@ -19,6 +19,7 @@ endif()
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
 option(THEMIS_BUILD_BENCHMARKS "Build performance benchmarks" ON)
 option(THEMIS_ENABLE_GPU "Enable GPU acceleration for vector search" OFF)
+option(THEMIS_ENABLE_TRACING "Enable OpenTelemetry distributed tracing" ON)
 option(THEMIS_ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
 option(THEMIS_STRICT_BUILD "Treat warnings as errors" OFF)
 
@@ -66,6 +67,11 @@ if(THEMIS_ENABLE_GPU)
     find_package(faiss CONFIG REQUIRED)
 endif()
 
+# Optional: OpenTelemetry for distributed tracing
+if(THEMIS_ENABLE_TRACING)
+    find_package(opentelemetry-cpp CONFIG REQUIRED)
+endif()
+
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -99,6 +105,8 @@ set(THEMIS_CORE_SOURCES
     
     src/utils/serialization.cpp
     src/utils/logger.cpp
+    src/utils/cursor.cpp
+    src/utils/tracing.cpp
 )
 
 # Main library
@@ -122,6 +130,14 @@ if(THEMIS_ENABLE_GPU)
 elseif(hnswlib_FOUND)
     target_link_libraries(themis_core PUBLIC hnswlib::hnswlib)
     target_compile_definitions(themis_core PUBLIC THEMIS_HNSW_ENABLED)
+endif()
+
+if(THEMIS_ENABLE_TRACING)
+    target_link_libraries(themis_core PUBLIC
+        opentelemetry-cpp::trace
+        opentelemetry-cpp::otlp_http_exporter
+    )
+    target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_TRACING)
 endif()
 
 # Main executable (demo)
@@ -157,10 +173,11 @@ if(THEMIS_BUILD_TESTS)
         tests/test_range_index.cpp
         tests/test_sparse_geo_index.cpp
         tests/test_ttl_fulltext_index.cpp
-    tests/test_index_stats.cpp
+        tests/test_index_stats.cpp
         tests/test_graph_index.cpp
         tests/test_vector_index.cpp
         tests/test_query_engine.cpp
+        tests/test_query_or.cpp
         tests/test_stats_api.cpp
         tests/test_http_range_index.cpp
         tests/test_query_engine_range.cpp
@@ -168,12 +185,15 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_query_range.cpp
         tests/test_http_aql.cpp
         tests/test_http_aql_graph.cpp
+        tests/test_http_aql_collect.cpp
         tests/test_http_vector.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_translator.cpp
         tests/test_text_processor.cpp
+        tests/test_backup_restore.cpp
+        tests/test_cursor.cpp
     )
     
     target_link_libraries(themis_tests
