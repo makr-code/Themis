@@ -29,6 +29,12 @@ tags:
     description: Vector similarity search (KNN, embeddings)
   - name: Transaction
     description: Multi-operation atomic transactions
+  - name: Cache
+    description: Semantic Cache (RAG)
+  - name: LLM
+    description: LLM Interaction Store (CoT)
+  - name: CDC
+    description: Change Data Capture feed
 
 paths:
   /:
@@ -631,6 +637,145 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransactionStatsResponse'
 
+  /cache/query:
+    post:
+      tags: [Cache]
+      summary: Semantic Cache Lookup
+      operationId: cacheQuery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CacheQueryRequest'
+      responses:
+        '200':
+          description: Cache query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheQueryResponse'
+
+  /cache/put:
+    post:
+      tags: [Cache]
+      summary: Semantic Cache Put
+      operationId: cachePut
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CachePutRequest'
+      responses:
+        '200':
+          description: Put result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CachePutResponse'
+
+  /cache/stats:
+    get:
+      tags: [Cache]
+      summary: Semantic Cache Stats
+      operationId: cacheStats
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheStatsResponse'
+
+  /llm/interaction:
+    post:
+      tags: [LLM]
+      summary: Create LLM interaction
+      operationId: createLlmInteraction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LlmInteractionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmInteractionResponse'
+    get:
+      tags: [LLM]
+      summary: List LLM interactions
+      operationId: listLlmInteractions
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
+        - in: query
+          name: after
+          schema: { type: string }
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/LlmInteraction' }
+                  next:
+                    type: string
+                    nullable: true
+                required: [items]
+
+  /llm/interaction/{id}:
+    get:
+      tags: [LLM]
+      summary: Get LLM interaction
+      operationId: getLlmInteraction
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LlmInteraction' }
+        '404':
+          description: Not found
+
+  /changefeed:
+    get:
+      tags: [CDC]
+      summary: Changefeed
+      operationId: getChangefeed
+      parameters:
+        - in: query
+          name: from_seq
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+        - in: query
+          name: long_poll_ms
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Changes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangefeedResponse'
+
 components:
   schemas:
     Entity:
@@ -905,6 +1050,121 @@ components:
           format: double
           description: Ratio of committed to total begun transactions (0.0 - 1.0)
           example: 0.92
+
+    CacheQueryRequest:
+      type: object
+      properties:
+        key: { type: string }
+        prompt: { type: string }
+        embedding:
+          type: array
+          items: { type: number }
+        top_k: { type: integer, default: 1 }
+        allow_insert_on_miss: { type: boolean, default: false }
+        ttl_sec: { type: integer, minimum: 0 }
+        metadata: { type: object }
+    CacheHit:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: object }
+        score: { type: number }
+        metadata: { type: object }
+    CacheQueryResponse:
+      type: object
+      properties:
+        hit: { type: boolean }
+        hits:
+          type: array
+          items: { $ref: '#/components/schemas/CacheHit' }
+    CachePutRequest:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: object }
+        embedding:
+          type: array
+          items: { type: number }
+        ttl_sec: { type: integer }
+        metadata: { type: object }
+      required: [key, value]
+    CachePutResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        key: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }
+    CacheStatsResponse:
+      type: object
+      properties:
+        entries: { type: integer, format: int64 }
+        hit_ratio_1m: { type: number }
+        hit_ratio_1h: { type: number }
+        evictions_total: { type: integer, format: int64 }
+        bytes: { type: integer, format: int64 }
+
+    LlmMessage:
+      type: object
+      properties:
+        role: { type: string, enum: [user, system, assistant, tool] }
+        content: { type: string }
+    ReasoningStep:
+      type: object
+      properties:
+        type: { type: string }
+        content:
+          type: array
+          items: { type: string }
+    LlmInteractionRequest:
+      type: object
+      properties:
+        model: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/LlmMessage' }
+        reasoning_steps:
+          type: array
+          items: { $ref: '#/components/schemas/ReasoningStep' }
+        metadata: { type: object }
+      required: [model, messages]
+    LlmInteraction:
+      type: object
+      properties:
+        id: { type: string }
+        created_at: { type: string, format: date-time }
+        model: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/LlmMessage' }
+        reasoning_steps:
+          type: array
+          items: { $ref: '#/components/schemas/ReasoningStep' }
+        metadata: { type: object }
+    LlmInteractionResponse:
+      type: object
+      properties:
+        id: { type: string }
+        success: { type: boolean }
+
+    ChangeEntry:
+      type: object
+      properties:
+        seq: { type: integer, format: int64 }
+        ts: { type: string, format: date-time }
+        op: { type: string, enum: [put, delete] }
+        key: { type: string }
+        table: { type: string }
+        value: { type: object, nullable: true }
+        prev: { type: object, nullable: true }
+        txn_id: { type: string, nullable: true }
+    ChangefeedResponse:
+      type: object
+      properties:
+        from_seq: { type: integer, format: int64 }
+        next_seq: { type: integer, format: int64 }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/ChangeEntry' }
 
     # ========== Legacy Transaction Schema ==========
     

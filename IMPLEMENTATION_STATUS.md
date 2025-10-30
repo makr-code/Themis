@@ -1,5 +1,5 @@
 # Themis Implementation Status Audit
-**Stand:** 29. Oktober 2025  
+**Stand:** 29. Oktober 2025, 22:15  
 **Zweck:** Klarer Abgleich zwischen todo.md-Planung und tatsächlich vorhandenem Code
 
 ---
@@ -13,18 +13,26 @@
 | **Phase 2 - Graph** | BFS/Dijkstra/A*, Pruning, Pfad-Constraints | ⚠️ Teilweise | ~60% |
 | **Phase 3 - Vector** | HNSW, L2/Cosine, Persistenz, Batch-Ops | ⚠️ Teilweise | ~55% |
 | **Phase 4 - Filesystem** | Documents, Chunks, Extraction, Hybrid-Queries | ❌ Architektur only | ~5% |
-| **Phase 5 - Observability** | Metrics, Backup, Tracing, Logs | ⚠️ Teilweise | ~65% |
+| **Phase 5 - Observability** | Metrics, Backup, Tracing, Logs | ⚠️ Teilweise | ~70% |
 | **Phase 6 - Analytics (Arrow)** | RecordBatches, OLAP, SIMD | ❌ Nicht gestartet | 0% |
 | **Phase 7 - Security/Governance** | RBAC, Audit, DSGVO, PKI | ❌ Nicht gestartet | 0% |
 
-**Gesamtfortschritt (gewichtet):** ~50%
+**Gesamtfortschritt (gewichtet):** ~52%
 
-**Neueste Implementierungen (29. Oktober 2025):**
+**Neueste Implementierungen (29. Oktober 2025, 22:15):**
 - ✅ HNSW-Persistenz mit automatischem Save/Load
 - ✅ COLLECT/GROUP BY MVP (In-Memory Aggregation)
 - ✅ Prometheus-Histogramme mit kumulativen Buckets
 - ✅ Vector Search HTTP Endpoint (/vector/search)
 - ✅ OR Query Index-Merge (DisjunctiveQuery + Union)
+- ✅ **OpenTelemetry Tracing - Infrastruktur implementiert**
+  - Tracer-Wrapper mit RAII Span-Management (`utils/tracing.h`/`.cpp`)
+  - OTLP HTTP Exporter für Jaeger/OTEL Collector
+  - CMake-Option: THEMIS_ENABLE_TRACING (default ON)
+  - Config.json: tracing.enabled, service_name, otlp_endpoint
+  - Kompatibilität: opentelemetry-cpp v1.23.0 (nostd::shared_ptr)
+  - Build erfolgreich, 303/303 Tests bestanden
+  - **TODO:** HTTP-Handler + Query-Engine instrumentieren
 
 ---
 

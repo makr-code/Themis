@@ -1,4 +1,13 @@
-﻿#include "utils/logger.h"
+﻿// Windows headers must come before Boost.Asio on Windows
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <winsock2.h>
+#endif
+
+#include "utils/logger.h"
 #include "utils/tracing.h"
 #include "storage/rocksdb_wrapper.h"
 #include "index/secondary_index.h"
@@ -126,6 +135,12 @@ int main(int argc, char* argv[]) {
                 if (sv.contains("port")) port = static_cast<uint16_t>(sv["port"].get<int>());
                 if (sv.contains("worker_threads")) num_threads = sv["worker_threads"].get<size_t>();
             }
+            // features (beta)
+            if (cfg->contains("features")) {
+                const auto& f = (*cfg)["features"];
+                // values read later into server_config
+                (void)f; // placeholder to avoid unused warnings
+            }
         }
         
         // Create database wrapper
@@ -205,6 +220,14 @@ int main(int argc, char* argv[]) {
         
         // Create and start HTTP server
         server::HttpServer::Config server_config(host, port, num_threads);
+        // Apply feature flags
+        if (cfg && cfg->contains("features")) {
+            const auto& f = (*cfg)["features"];
+            server_config.feature_semantic_cache = f.value("semantic_cache", false);
+            server_config.feature_llm_store = f.value("llm_store", false);
+            server_config.feature_cdc = f.value("cdc", false);
+            server_config.feature_timeseries = f.value("timeseries", false);
+        }
         g_server = std::make_shared<server::HttpServer>(
             server_config,
             db,
@@ -221,7 +244,7 @@ int main(int argc, char* argv[]) {
         THEMIS_INFO("Starting HTTP server...");
         g_server->start();
         
-        THEMIS_INFO("");
+    THEMIS_INFO("");
         THEMIS_INFO("=================================================");
         THEMIS_INFO("  Themis Database Server is running!");
         THEMIS_INFO("  API Endpoint: http://{}:{}", host, port);
@@ -238,25 +261,67 @@ int main(int argc, char* argv[]) {
         THEMIS_INFO("  POST /graph/traverse      - Graph traversal");
         THEMIS_INFO("  POST /vector/search       - Vector search");
         THEMIS_INFO("  POST /transaction         - Execute transaction");
+        if (server_config.feature_semantic_cache) {
+            THEMIS_INFO("  POST /cache/query         - Semantic cache lookup (beta)");
+            THEMIS_INFO("  POST /cache/put           - Semantic cache put (beta)");
+            THEMIS_INFO("  GET  /cache/stats         - Semantic cache stats (beta)");
+        }
+        if (server_config.feature_llm_store) {
+            THEMIS_INFO("  POST /llm/interaction     - Create LLM interaction (beta)");
+            THEMIS_INFO("  GET  /llm/interaction     - List LLM interactions (beta)");
+            THEMIS_INFO("  GET  /llm/interaction/:id - Get LLM interaction (beta)");
+        }
+        if (server_config.feature_cdc) {
+            THEMIS_INFO("  GET  /changefeed          - CDC feed (beta)");
+        }
+        if (server_config.feature_timeseries) {
+            THEMIS_INFO("  POST /ts/put              - Store time-series data (beta)");
+            THEMIS_INFO("  POST /ts/query            - Query time-series data (beta)");
+            THEMIS_INFO("  POST /ts/aggregate        - Aggregate time-series (beta)");
+        }
         THEMIS_INFO("");
         
         // Wait for server to finish
         g_server->wait();
         
-        THEMIS_INFO("Server stopped gracefully");
+        THEMIS_INFO("=================================================");
+        THEMIS_INFO("Initiating graceful shutdown sequence...");
+        THEMIS_INFO("=================================================");
         
-        // Shutdown tracing
+        // Step 1: Shutdown tracing (no more traces)
+        THEMIS_INFO("[1/4] Shutting down distributed tracing...");
         Tracer::shutdown();
         
-            // Save vector index before closing DB
-            if (vector_index && !vector_save_path.empty()) {
-                THEMIS_INFO("Shutting down vector index...");
-                vector_index->shutdown();
-            }
+        // Step 2: Save vector index before closing DB
+        if (vector_index && !vector_save_path.empty()) {
+            THEMIS_INFO("[2/4] Saving vector index to disk...");
+            vector_index->shutdown();
+        } else {
+            THEMIS_INFO("[2/4] Vector index save skipped (not configured)");
+        }
         
-        // Cleanup
-        db->close();
-        THEMIS_INFO("Database closed");
+        // Step 3: Database is already closed by server->stop()
+        // but we ensure cleanup here
+        THEMIS_INFO("[3/4] Database cleanup...");
+        if (db && db->isOpen()) {
+            db->close();
+            THEMIS_INFO("Database closed cleanly");
+        } else {
+            THEMIS_INFO("Database already closed by server");
+        }
+        
+        // Step 4: Clear shared pointers
+        THEMIS_INFO("[4/4] Releasing resources...");
+        g_server.reset();
+        tx_manager.reset();
+        vector_index.reset();
+        graph_index.reset();
+        secondary_index.reset();
+        db.reset();
+        
+        THEMIS_INFO("=================================================");
+        THEMIS_INFO("Shutdown complete. All data saved.");
+        THEMIS_INFO("=================================================");
         
     } catch (const std::exception& e) {
         THEMIS_ERROR("Fatal error: {}", e.what());

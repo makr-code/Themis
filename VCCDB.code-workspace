@@ -8,7 +8,8 @@
 		"files.associations": {
 			"memory": "cpp",
 			"optional": "cpp",
-			"vector": "cpp"
+			"vector": "cpp",
+			"utility": "cpp"
 		}
 	}
 }

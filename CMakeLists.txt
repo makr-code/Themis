@@ -15,6 +15,9 @@ if(DEFINED ENV{VCPKG_ROOT})
         CACHE STRING "Vcpkg toolchain file")
 endif()
 
+# Dependencies
+find_package(OpenSSL REQUIRED)
+
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
 option(THEMIS_BUILD_BENCHMARKS "Build performance benchmarks" ON)
@@ -103,6 +106,11 @@ set(THEMIS_CORE_SOURCES
     src/content/content_manager.cpp
     src/content/text_processor.cpp
     
+    src/cache/semantic_cache.cpp
+    src/llm/llm_interaction_store.cpp
+    src/cdc/changefeed.cpp
+    src/timeseries/timeseries_store.cpp
+    
     src/utils/serialization.cpp
     src/utils/logger.cpp
     src/utils/cursor.cpp
@@ -122,6 +130,8 @@ target_link_libraries(themis_core
         spdlog::spdlog
         Boost::system
         nlohmann_json::nlohmann_json
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 if(THEMIS_ENABLE_GPU)
@@ -194,6 +204,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_text_processor.cpp
         tests/test_backup_restore.cpp
         tests/test_cursor.cpp
+        tests/test_temporal_graph.cpp
+        tests/test_timeseries_store.cpp
     )
     
     target_link_libraries(themis_tests

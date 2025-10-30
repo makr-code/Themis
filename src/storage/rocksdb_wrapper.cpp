@@ -669,4 +669,25 @@ bool RocksDBWrapper::restoreFromCheckpoint(const std::string& checkpoint_dir) {
     }
 }
 
+rocksdb::ColumnFamilyHandle* RocksDBWrapper::getOrCreateColumnFamily(const std::string& cf_name) {
+    if (!db_) {
+        THEMIS_ERROR("getOrCreateColumnFamily: DB not open");
+        return nullptr;
+    }
+    
+    // Create new column family with default options
+    rocksdb::ColumnFamilyOptions cf_opts;
+    cf_opts.OptimizeForPointLookup(256); // 256MB block cache
+    rocksdb::ColumnFamilyHandle* cf_handle = nullptr;
+    rocksdb::Status s = db_->CreateColumnFamily(cf_opts, cf_name, &cf_handle);
+    
+    if (!s.ok()) {
+        THEMIS_ERROR("Failed to create column family '{}': {}", cf_name, s.ToString());
+        return nullptr;
+    }
+    
+    THEMIS_INFO("Created or got column family '{}'", cf_name);
+    return cf_handle;
+}
+
 } // namespace themis

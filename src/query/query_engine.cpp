@@ -7,6 +7,7 @@
 #include "storage/base_entity.h"
 #include "storage/key_schema.h"
 #include "utils/logger.h"
+#include "utils/tracing.h"
 
 #include <tbb/parallel_invoke.h>
 #include <tbb/task_group.h>
@@ -19,6 +20,11 @@ QueryEngine::QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx)
 
 std::pair<QueryEngine::Status, std::vector<std::string>>
 QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndKeys");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.eq_count", static_cast<int64_t>(q.predicates.size()));
+	span.setAttribute("query.range_count", static_cast<int64_t>(q.rangePredicates.size()));
+	span.setAttribute("query.order_by", q.orderBy.has_value());
 	if (q.table.empty()) return {Status::Error("executeAndKeys: table darf nicht leer sein"), {}};
 	// Erlaube ORDER BY ohne weitere Prädikate (liefert die ersten N gemäß Range-Index)
 	if (q.predicates.empty() && q.rangePredicates.empty() && !q.orderBy.has_value()) {
@@ -38,15 +44,21 @@ QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
 	for (size_t i = 0; i < q.predicates.size(); ++i) {
 		const auto& p = q.predicates[i];
 		tg.run([this, &q, &p, &all_lists, i, &errors]() {
+			auto child = Tracer::startSpan("index.scanEqual");
+			child.setAttribute("index.table", q.table);
+			child.setAttribute("index.column", p.column);
 			auto [st, keys] = secIdx_.scanKeysEqual(q.table, p.column, p.value);
 			if (!st.ok) {
 				THEMIS_ERROR("Parallel scan error ({}={}): {}", p.column, p.value, st.message);
 				errors.push_back(st.message);
+				child.setStatus(false, st.message);
 				return;
 			}
 			// Sortieren zur späteren Schnittmenge
 			std::sort(keys.begin(), keys.end());
 			all_lists[i] = std::move(keys);
+			child.setAttribute("index.result_count", static_cast<int64_t>(all_lists[i].size()));
+			child.setStatus(true);
 		});
 	}
 	tg.wait();
@@ -62,11 +74,15 @@ QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
 
 	// Schnittmenge bilden
 	auto keys = intersectSortedLists_(std::move(all_lists));
+	span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(keys)};
 }
 
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
 QueryEngine::executeAndEntities(const ConjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndEntities");
+	span.setAttribute("query.table", q.table);
 	auto [st, keys] = executeAndKeys(q);
 	if (!st.ok) return {st, {}};
 
@@ -115,7 +131,8 @@ QueryEngine::executeAndEntities(const ConjunctiveQuery& q) const {
 			out.insert(out.end(), std::make_move_iterator(batch.begin()), std::make_move_iterator(batch.end()));
 		}
 	}
-
+	span.setAttribute("query.entities_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(out)};
 }
 
@@ -158,6 +175,9 @@ QueryEngine::unionSortedLists_(std::vector<std::vector<std::string>> lists) {
 
 std::pair<QueryEngine::Status, std::vector<std::string>>
 QueryEngine::executeOrKeys(const DisjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeOrKeys");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.disjuncts", static_cast<int64_t>(q.disjuncts.size()));
 	if (q.table.empty()) return {Status::Error("executeOrKeys: table darf nicht leer sein"), {}};
 	if (q.disjuncts.empty()) return {Status::Error("executeOrKeys: keine Disjunkte"), {}};
 
@@ -169,15 +189,21 @@ QueryEngine::executeOrKeys(const DisjunctiveQuery& q) const {
 	for (size_t i = 0; i < q.disjuncts.size(); ++i) {
 		const auto& disjunct = q.disjuncts[i];
 		tg.run([this, &disjunct, &all_lists, i, &errors]() {
+			auto child = Tracer::startSpan("or.disjunct.execute");
+			child.setAttribute("disjunct.eq_count", static_cast<int64_t>(disjunct.predicates.size()));
+			child.setAttribute("disjunct.range_count", static_cast<int64_t>(disjunct.rangePredicates.size()));
 			auto [st, keys] = executeAndKeys(disjunct);
 			if (!st.ok) {
 				THEMIS_ERROR("Parallel OR disjunct error: {}", st.message);
 				errors.push_back(st.message);
+				child.setStatus(false, st.message);
 				return;
 			}
 			// Sort for later union
 			std::sort(keys.begin(), keys.end());
 			all_lists[i] = std::move(keys);
+			child.setAttribute("disjunct.result_count", static_cast<int64_t>(all_lists[i].size()));
+			child.setStatus(true);
 		});
 	}
 	tg.wait();
@@ -188,11 +214,15 @@ QueryEngine::executeOrKeys(const DisjunctiveQuery& q) const {
 
 	// Union all result sets
 	auto keys = unionSortedLists_(std::move(all_lists));
+	span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(keys)};
 }
 
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
 QueryEngine::executeOrEntities(const DisjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeOrEntities");
+	span.setAttribute("query.table", q.table);
 	auto [st, keys] = executeOrKeys(q);
 	if (!st.ok) return {st, {}};
 
@@ -239,40 +269,62 @@ QueryEngine::executeOrEntities(const DisjunctiveQuery& q) const {
 		}
 	}
 
+	span.setAttribute("query.entities_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(out)};
 }
 
 std::pair<QueryEngine::Status, std::vector<std::string>>
 QueryEngine::executeAndKeysSequential(const std::string& table,
 									  const std::vector<PredicateEq>& orderedPredicates) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndKeysSequential");
+	span.setAttribute("query.table", table);
+	span.setAttribute("query.eq_count", static_cast<int64_t>(orderedPredicates.size()));
 	if (table.empty()) return {Status::Error("executeAndKeysSequential: table leer"), {}};
 	if (orderedPredicates.empty()) return {Status::Error("executeAndKeysSequential: keine Prädikate"), {}};
 
 	// Starte mit erster Liste
-	auto [st0, base] = secIdx_.scanKeysEqual(table, orderedPredicates[0].column, orderedPredicates[0].value);
-	if (!st0.ok) return {Status::Error("sequential: " + st0.message), {}};
-	if (base.empty()) return {Status::OK(), {}};
-	std::sort(base.begin(), base.end());
-
-	std::vector<std::string> current = std::move(base);
-	for (size_t i = 1; i < orderedPredicates.size(); ++i) {
-		const auto& p = orderedPredicates[i];
-		auto [st, keys] = secIdx_.scanKeysEqual(table, p.column, p.value);
-		if (!st.ok) return {Status::Error("sequential: " + st.message), {}};
-		if (keys.empty()) return {Status::OK(), {}};
-		std::sort(keys.begin(), keys.end());
-		std::vector<std::string> tmp;
-		tmp.reserve(std::min(current.size(), keys.size()));
-		std::set_intersection(current.begin(), current.end(), keys.begin(), keys.end(), std::back_inserter(tmp));
-		current.swap(tmp);
-		if (current.empty()) break;
+	{
+		auto child = Tracer::startSpan("index.scanEqual");
+		child.setAttribute("index.table", table);
+		child.setAttribute("index.column", orderedPredicates[0].column);
+		auto [st0, baseTmp] = secIdx_.scanKeysEqual(table, orderedPredicates[0].column, orderedPredicates[0].value);
+		if (!st0.ok) { child.setStatus(false, st0.message); return {Status::Error("sequential: " + st0.message), {}}; }
+		std::vector<std::string> base = std::move(baseTmp);
+		std::sort(base.begin(), base.end());
+		child.setAttribute("index.result_count", static_cast<int64_t>(base.size()));
+		child.setStatus(true);
+		if (base.empty()) { span.setStatus(true); return {Status::OK(), {}}; }
+        
+		std::vector<std::string> current = std::move(base);
+		for (size_t i = 1; i < orderedPredicates.size(); ++i) {
+			const auto& p = orderedPredicates[i];
+			auto child2 = Tracer::startSpan("index.scanEqual");
+			child2.setAttribute("index.table", table);
+			child2.setAttribute("index.column", p.column);
+			auto [st, keys] = secIdx_.scanKeysEqual(table, p.column, p.value);
+			if (!st.ok) { child2.setStatus(false, st.message); return {Status::Error("sequential: " + st.message), {}}; }
+			if (keys.empty()) { child2.setStatus(true); span.setStatus(true); return {Status::OK(), {}}; }
+			std::sort(keys.begin(), keys.end());
+			std::vector<std::string> tmp;
+			tmp.reserve(std::min(current.size(), keys.size()));
+			std::set_intersection(current.begin(), current.end(), keys.begin(), keys.end(), std::back_inserter(tmp));
+			current.swap(tmp);
+			child2.setAttribute("index.result_count", static_cast<int64_t>(current.size()));
+			child2.setStatus(true);
+			if (current.empty()) break;
+		}
+		span.setAttribute("query.result_count", static_cast<int64_t>(current.size()));
+		span.setStatus(true);
+		return {Status::OK(), std::move(current)};
 	}
-	return {Status::OK(), std::move(current)};
 }
 
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
 QueryEngine::executeAndEntitiesSequential(const std::string& table,
 										  const std::vector<PredicateEq>& orderedPredicates) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndEntitiesSequential");
+	span.setAttribute("query.table", table);
 	auto [st, keys] = executeAndKeysSequential(table, orderedPredicates);
 	if (!st.ok) return {st, {}};
 
@@ -322,6 +374,8 @@ QueryEngine::executeAndEntitiesSequential(const std::string& table,
 		}
 	}
 
+	span.setAttribute("query.entities_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(out)};
 }
 
@@ -330,9 +384,14 @@ QueryEngine::executeAndEntitiesSequential(const std::string& table,
 namespace themis {
 
 std::vector<std::string> QueryEngine::fullScanAndFilter_(const ConjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.fullScan");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.eq_count", static_cast<int64_t>(q.predicates.size()));
+	span.setAttribute("query.range_count", static_cast<int64_t>(q.rangePredicates.size()));
 	std::vector<std::string> out;
 	if (q.table.empty()) return out;
 	const std::string prefix = q.table + ":";
+	int64_t scanned = 0;
 	
 	// Helper for numeric comparison: try to parse as numbers, fall back to string comparison
 	auto compareValues = [](const std::string& a, const std::string& b) -> int {
@@ -373,6 +432,7 @@ std::vector<std::string> QueryEngine::fullScanAndFilter_(const ConjunctiveQuery&
 		std::vector<uint8_t> blob(value.begin(), value.end());
 		try {
 			BaseEntity e = BaseEntity::deserialize(pk, blob);
+			++scanned;
 			bool match = true;
 			for (const auto& p : q.predicates) {
 				auto v = e.extractField(p.column);
@@ -399,14 +459,24 @@ std::vector<std::string> QueryEngine::fullScanAndFilter_(const ConjunctiveQuery&
 		}
 		return true;
 	});
+	span.setAttribute("fullscan.scanned", scanned);
+	span.setAttribute("query.result_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
 	return out;
 }
 
 std::pair<QueryEngine::Status, std::vector<std::string>>
 QueryEngine::executeAndKeysWithFallback(const ConjunctiveQuery& q, bool optimize) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndKeysWithFallback");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.eq_count", static_cast<int64_t>(q.predicates.size()));
+	span.setAttribute("query.range_count", static_cast<int64_t>(q.rangePredicates.size()));
 	// If no predicates at all, must do full scan
 	if (q.predicates.empty() && q.rangePredicates.empty() && !q.orderBy.has_value()) {
 		auto keys = fullScanAndFilter_(q);
+		span.setAttribute("query.exec_mode", "full_scan");
+		span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+		span.setStatus(true);
 		return {Status::OK(), std::move(keys)};
 	}
 	
@@ -434,23 +504,43 @@ QueryEngine::executeAndKeysWithFallback(const ConjunctiveQuery& q, bool optimize
 
 	if (!missingIndex) {
 		if (!q.rangePredicates.empty() || q.orderBy.has_value()) {
-			return executeAndKeysRangeAware_(q);
+			auto [st, keys] = executeAndKeysRangeAware_(q);
+			if (!st.ok) { span.setStatus(false, st.message); return {st, {}}; }
+			span.setAttribute("query.exec_mode", "range_aware");
+			span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+			span.setStatus(true);
+			return {Status::OK(), std::move(keys)};
 		}
 		if (optimize) {
 			QueryOptimizer opt(secIdx_);
 			auto plan = opt.chooseOrderForAndQuery(q);
-			return executeAndKeysSequential(q.table, plan.orderedPredicates);
+			auto [st, keys] = executeAndKeysSequential(q.table, plan.orderedPredicates);
+			if (!st.ok) { span.setStatus(false, st.message); return {st, {}}; }
+			span.setAttribute("query.exec_mode", "index_optimized");
+			span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+			span.setStatus(true);
+			return {Status::OK(), std::move(keys)};
 		}
-		return executeAndKeys(q);
+		auto [st, keys] = executeAndKeys(q);
+		if (!st.ok) { span.setStatus(false, st.message); return {st, {}}; }
+		span.setAttribute("query.exec_mode", "index_parallel");
+		span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+		span.setStatus(true);
+		return {Status::OK(), std::move(keys)};
 	}
 
 	// Fallback: full scan (inkl. Range-Prädikate)
 	auto keys = fullScanAndFilter_(q);
+	span.setAttribute("query.exec_mode", "full_scan_fallback");
+	span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(keys)};
 }
 
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
 QueryEngine::executeAndEntitiesWithFallback(const ConjunctiveQuery& q, bool optimize) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndEntitiesWithFallback");
+	span.setAttribute("query.table", q.table);
 	auto [st, keys] = executeAndKeysWithFallback(q, optimize);
 	if (!st.ok) return {st, {}};
 	std::vector<BaseEntity> out; out.reserve(keys.size());
@@ -460,6 +550,8 @@ QueryEngine::executeAndEntitiesWithFallback(const ConjunctiveQuery& q, bool opti
 		try { out.emplace_back(BaseEntity::deserialize(pk, *blob)); }
 		catch (...) { THEMIS_WARN("executeAndEntitiesWithFallback: Deserialisierung fehlgeschlagen für PK={}", pk); }
 	}
+	span.setAttribute("query.entities_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(out)};
 }
 
@@ -470,15 +562,23 @@ static inline size_t bigLimit() { return static_cast<size_t>(1000000000ULL); }
 
 std::pair<QueryEngine::Status, std::vector<std::string>>
 QueryEngine::executeAndKeysRangeAware_(const ConjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndKeysRangeAware");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.range_count", static_cast<int64_t>(q.rangePredicates.size()));
 	// 1) Hole Listen für alle Gleichheitsprädikate
 	std::vector<std::vector<std::string>> lists;
 	lists.reserve(q.predicates.size() + q.rangePredicates.size());
 
 	for (const auto& p : q.predicates) {
+		auto child = Tracer::startSpan("index.scanEqual");
+		child.setAttribute("index.table", q.table);
+		child.setAttribute("index.column", p.column);
 		auto [st, keys] = secIdx_.scanKeysEqual(q.table, p.column, p.value);
 		if (!st.ok) return {Status::Error(st.message), {}};
 		std::sort(keys.begin(), keys.end());
 		lists.push_back(std::move(keys));
+		child.setAttribute("index.result_count", static_cast<int64_t>(lists.back().size()));
+		child.setStatus(true);
 	}
 
 	// 2) Range-Prädikate
@@ -486,10 +586,19 @@ QueryEngine::executeAndKeysRangeAware_(const ConjunctiveQuery& q) const {
 		if (!secIdx_.hasRangeIndex(q.table, r.column)) {
 			return {Status::Error("Missing range index for column: " + r.column), {}};
 		}
+		auto child = Tracer::startSpan("index.scanRange");
+		child.setAttribute("index.table", q.table);
+		child.setAttribute("index.column", r.column);
+		child.setAttribute("range.has_lower", r.lower.has_value());
+		child.setAttribute("range.has_upper", r.upper.has_value());
+		child.setAttribute("range.includeLower", r.includeLower);
+		child.setAttribute("range.includeUpper", r.includeUpper);
 		auto [st, keys] = secIdx_.scanKeysRange(q.table, r.column, r.lower, r.upper, r.includeLower, r.includeUpper, bigLimit(), false);
 		if (!st.ok) return {Status::Error(st.message), {}};
 		std::sort(keys.begin(), keys.end());
 		lists.push_back(std::move(keys));
+		child.setAttribute("index.result_count", static_cast<int64_t>(lists.back().size()));
+		child.setStatus(true);
 	}
 
 	// Wenn keine Prädikate aber nur ORDER BY: initial candidates leer => special case
@@ -530,14 +639,19 @@ QueryEngine::executeAndKeysRangeAware_(const ConjunctiveQuery& q) const {
 			ordered.push_back(k);
 			if (ordered.size() >= ob.limit) break;
 		}
+		span.setAttribute("query.ordered_count", static_cast<int64_t>(ordered.size()));
+		span.setStatus(true);
 		return {Status::OK(), std::move(ordered)};
 	}
-
+	span.setAttribute("query.result_count", static_cast<int64_t>(candidates.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(candidates)};
 }
 
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
 QueryEngine::executeAndEntitiesRangeAware_(const ConjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndEntitiesRangeAware");
+	span.setAttribute("query.table", q.table);
 	auto [st, keys] = executeAndKeysRangeAware_(q);
 	if (!st.ok) return {st, {}};
 	std::vector<BaseEntity> out; out.reserve(keys.size());
@@ -547,6 +661,8 @@ QueryEngine::executeAndEntitiesRangeAware_(const ConjunctiveQuery& q) const {
 		try { out.emplace_back(BaseEntity::deserialize(pk, *blob)); }
 		catch (...) { THEMIS_WARN("executeAndEntitiesRangeAware_: Deserialisierung fehlgeschlagen für PK={}", pk); }
 	}
+	span.setAttribute("query.entities_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
 	return {Status::OK(), std::move(out)};
 }
 

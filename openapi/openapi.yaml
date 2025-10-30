@@ -53,6 +53,183 @@ paths:
                   # TYPE vccdb_requests_total counter
                   vccdb_requests_total 1
                   ...
+  /cache/query:
+    post:
+      summary: Semantic Cache Lookup
+      operationId: cacheQuery
+      tags: [cache]
+      description: |
+        Führt eine semantische Cache-Abfrage aus. Optional mit Embedding zur Ähnlichkeitssuche.
+        Falls kein Treffer vorliegt und `allow_insert_on_miss=true` gesetzt ist, kann der Eintrag direkt (mit optionalem TTL) hinterlegt werden.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CacheQueryRequest'
+            examples:
+              simple_query:
+                value:
+                  key: "rag:question:hash123"
+                  top_k: 1
+              semantic_query:
+                value:
+                  prompt: "Wie skaliere ich HNSW efSearch?"
+                  embedding: [0.01, 0.12, 0.0]
+                  top_k: 3
+      responses:
+        '200':
+          description: Ergebnis der Cache-Abfrage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheQueryResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /cache/put:
+    post:
+      summary: Semantic Cache Put
+      operationId: cachePut
+      tags: [cache]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CachePutRequest'
+            examples:
+              put_example:
+                value:
+                  key: "rag:question:hash123"
+                  value: { answer: "Nutze ef_search 64–128 für Latenz/Qualität." }
+                  embedding: [0.01, 0.12, 0.0]
+                  ttl_sec: 3600
+                  metadata: { model: "gpt-4o", topic: "vecsearch" }
+      responses:
+        '200':
+          description: Eintrag erstellt/aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CachePutResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /cache/stats:
+    get:
+      summary: Semantic Cache Statistiken
+      operationId: cacheStats
+      tags: [cache]
+      responses:
+        '200':
+          description: Statistiken zum Semantic Cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheStatsResponse'
+        '500': { $ref: '#/components/responses/InternalError' }
+  /llm/interaction:
+    post:
+      summary: LLM-Interaktion speichern
+      operationId: createLlmInteraction
+      tags: [llm]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LlmInteractionRequest'
+            examples:
+              basic:
+                value:
+                  model: "gpt-4o"
+                  messages:
+                    - role: user
+                      content: "Erkläre MVCC kurz"
+                  reasoning_steps:
+                    - type: chain_of_thought
+                      content: ["MVCC erlaubt paralleles Lesen/Schreiben", "Versionen pro Tx"]
+                  metadata: { session_id: "abc" }
+      responses:
+        '201':
+          description: Interaktion angelegt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmInteractionResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      summary: LLM-Interaktionen auflisten
+      operationId: listLlmInteractions
+      tags: [llm]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, default: 50 }
+        - in: query
+          name: after
+          schema: { type: string, description: Cursor/ID für Pagination }
+      responses:
+        '200':
+          description: Liste von Interaktionen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/LlmInteraction' }
+                  next:
+                    type: string
+                    nullable: true
+                required: [items]
+  /llm/interaction/{id}:
+    get:
+      summary: LLM-Interaktion lesen
+      operationId: getLlmInteraction
+      tags: [llm]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Interaktion gefunden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LlmInteraction' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /changefeed:
+    get:
+      summary: Change Data Capture (CDC) Feed
+      operationId: getChangefeed
+      tags: [cdc]
+      description: |
+        Liefert Änderungen ab einer Sequenznummer. Unterstützt optionales Long‑Polling.
+      parameters:
+        - in: query
+          name: from_seq
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, default: 100 }
+        - in: query
+          name: long_poll_ms
+          schema: { type: integer, minimum: 0, maximum: 60000, default: 0 }
+      responses:
+        '200':
+          description: Änderungen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangefeedResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /entities:
     post:
       summary: Entity anlegen/ersetzen (Upsert)
@@ -702,3 +879,126 @@ components:
         message: { type: string }
         status_code: { type: integer }
       required: [error, message, status_code]
+    CacheQueryRequest:
+      type: object
+      properties:
+        key: { type: string, description: Eindeutiger Schlüssel }
+        prompt: { type: string, description: Freitext für semantische Suche }
+        embedding:
+          type: array
+          items: { type: number }
+          description: Vektor für Semantik-Abgleich
+        top_k: { type: integer, minimum: 1, default: 1 }
+        allow_insert_on_miss: { type: boolean, default: false }
+        ttl_sec: { type: integer, minimum: 0 }
+        metadata: { type: object, additionalProperties: true }
+      anyOf:
+        - required: [key]
+        - required: [prompt]
+        - required: [embedding]
+    CacheHit:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: object, additionalProperties: true }
+        score: { type: number }
+        metadata: { type: object, additionalProperties: true }
+    CacheQueryResponse:
+      type: object
+      properties:
+        hit: { type: boolean }
+        hits:
+          type: array
+          items: { $ref: '#/components/schemas/CacheHit' }
+          description: Top‑K Ergebnisse bei semantischer Suche
+      required: [hit]
+    CachePutRequest:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: object, additionalProperties: true }
+        embedding:
+          type: array
+          items: { type: number }
+        ttl_sec: { type: integer, minimum: 0 }
+        metadata: { type: object, additionalProperties: true }
+      required: [key, value]
+    CachePutResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        key: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }
+      required: [success, key]
+    CacheStatsResponse:
+      type: object
+      properties:
+        entries: { type: integer, format: int64 }
+        hit_ratio_1m: { type: number }
+        hit_ratio_1h: { type: number }
+        evictions_total: { type: integer, format: int64 }
+        bytes: { type: integer, format: int64 }
+      required: [entries]
+    LlmMessage:
+      type: object
+      properties:
+        role: { type: string, enum: [user, system, assistant, tool] }
+        content: { type: string }
+    ReasoningStep:
+      type: object
+      properties:
+        type: { type: string, description: chain_of_thought | tool_plan | scratchpad }
+        content:
+          type: array
+          items: { type: string }
+    LlmInteractionRequest:
+      type: object
+      properties:
+        model: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/LlmMessage' }
+        reasoning_steps:
+          type: array
+          items: { $ref: '#/components/schemas/ReasoningStep' }
+        metadata: { type: object, additionalProperties: true }
+      required: [model, messages]
+    LlmInteraction:
+      type: object
+      properties:
+        id: { type: string }
+        created_at: { type: string, format: date-time }
+        model: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/LlmMessage' }
+        reasoning_steps:
+          type: array
+          items: { $ref: '#/components/schemas/ReasoningStep' }
+        metadata: { type: object, additionalProperties: true }
+    LlmInteractionResponse:
+      type: object
+      properties:
+        id: { type: string }
+        success: { type: boolean }
+      required: [id, success]
+    ChangeEntry:
+      type: object
+      properties:
+        seq: { type: integer, format: int64 }
+        ts: { type: string, format: date-time }
+        op: { type: string, enum: [put, delete] }
+        key: { type: string }
+        table: { type: string }
+        value: { type: object, additionalProperties: true, nullable: true }
+        prev: { type: object, additionalProperties: true, nullable: true }
+        txn_id: { type: string, nullable: true }
+    ChangefeedResponse:
+      type: object
+      properties:
+        from_seq: { type: integer, format: int64 }
+        next_seq: { type: integer, format: int64 }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/ChangeEntry' }
+      required: [from_seq, next_seq, entries]

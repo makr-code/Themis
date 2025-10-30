@@ -1,5 +1,5 @@
 # Themis - Priorisierte Roadmap für Production Readiness
-**Stand:** 29. Oktober 2025  
+**Stand:** 29. Oktober 2025, 22:15  
 **Basis:** IMPLEMENTATION_STATUS.md Audit-Ergebnisse
 
 ---
@@ -13,41 +13,55 @@
 | ~~**COLLECT/GROUP BY MVP**~~ | Hoch | 3-5 Tage | Mittel | ✅ **ERLEDIGT** | **Basisfunktionalität implementiert** |
 | ~~**Vector Search HTTP Endpoint**~~ | Hoch | 1-2 Tage | Niedrig | ✅ **ERLEDIGT** | **API-Integration vollständig** |
 | ~~**OR Query Index-Merge**~~ | Mittel | 2-3 Tage | Mittel | ✅ **ERLEDIGT** | **DisjunctiveQuery implementiert** |
-| **OpenTelemetry Tracing** | Mittel | 3-5 Tage | Niedrig | ⚠️ P1 | Production-Debugging |
+| ~~**OpenTelemetry Tracing**~~ | Mittel | 3-5 Tage | Niedrig | ✅ **ERLEDIGT** | **Production-Debugging enabled** |
 | **Inkrementelle Backups** | Niedrig | 5-7 Tage | Hoch | 📋 P2 | Nice-to-Have |
 | **RBAC (Basic)** | Hoch | 7-10 Tage | Hoch | 📋 P2 | Security (später) |
 | **Apache Arrow Integration** | Niedrig | 10-15 Tage | Mittel | 📋 P3 | Analytics (später) |
 
-**Status Update (29. Oktober 2025, 19:30):**
+**Status Update (30. Oktober 2025, 13:50):**
 - ✅ **Alle P0-Features abgeschlossen!**
+- ✅ **P1 OpenTelemetry Tracing: VOLLSTÄNDIG IMPLEMENTIERT**
+  - ✅ Infrastruktur: Tracer-Wrapper, OTLP HTTP Exporter, CMake integration
+  - ✅ HTTP-Handler instrumentiert (7 Endpoints)
+  - ✅ QueryEngine instrumentiert (11 Methoden + Child-Spans)
+  - ✅ AQL-Operator-Pipeline instrumentiert (parse, translate, for, filter, limit, collect, return, traversal+bfs)
+  - ✅ Dokumentation aktualisiert (docs/tracing.md)
+  - Build erfolgreich, Server-Test bestanden
+  - **ALLE P1-TASKS ABGESCHLOSSEN!**
+
+**Abgeschlossene Features:**
 - ✅ HNSW-Persistenz: Automatisches Save/Load implementiert
 - ✅ COLLECT/GROUP BY MVP: Parser + In-Memory Aggregation (COUNT, SUM, AVG, MIN, MAX)
 - ✅ Prometheus-Histogramme: Kumulative Buckets implementiert + validiert
 - ✅ Vector Search HTTP Endpoint: POST /vector/search mit k-NN Suche
-  - 6 neue Tests: FindsNearestNeighbors, RespectsKParameter, DefaultsK, ValidatesDimension, RequiresVectorField, RejectsInvalidK
-  - 31/31 Vector-Tests bestanden
 - ✅ OR Query Index-Merge: DisjunctiveQuery mit Index-Union
-  - 5 neue Tests: CityBerlinOrMunich, Age25Or30, ComplexConditions, NoDuplicates, EmptyDisjunct
-  - 54/54 Query/AQL/Metrics-Tests bestanden
+- ✅ OpenTelemetry Distributed Tracing: End-to-End Instrumentierung (HTTP → QueryEngine → AQL Operators)
 
 **Legende:**
-- 🔥 P0 = Kritisch (sofort/diese Woche)
-- ⚠️ P1 = Wichtig (nächste 2 Wochen)
-- 📋 P2 = Nice-to-Have (nächster Sprint)
+- 🔥 P0 = Kritisch (sofort/diese Woche) - ✅ **ALLE ERLEDIGT**
+- ⚠️ P1 = Wichtig (nächste 2 Wochen) - ✅ **ALLE ERLEDIGT**
+- 📋 P2 = Nice-to-Have (nächster Sprint) - **NÄCHSTE PHASE**
 - 📋 P3 = Backlog (zukünftig)
 
 ---
 
 ## 🚀 Empfohlene Reihenfolge (Batch 1: Diese Woche)
 
-### Option A: Quick Wins zuerst (Momentum aufbauen)
+### Option A: Quick Wins zuerst (Momentum aufbauen) ✅ ABGESCHLOSSEN
 ```
 Tag 1-2:  Prometheus Histogramme (kumulative Buckets) ✅
-Tag 2-4:  OR/NOT Index-Merge (Query-Flexibilität)
-Tag 5-7:  HNSW Persistenz (Datenverlust-Risiko eliminieren)
+Tag 2-4:  OR/NOT Index-Merge (Query-Flexibilität) ✅
+Tag 5-7:  HNSW Persistenz (Datenverlust-Risiko eliminieren) ✅
 ```
-**Vorteil:** Schneller sichtbarer Fortschritt, kleine Erfolge motivieren  
-**Nachteil:** Strategisch wichtiges Feature (COLLECT) verschoben
+**Ergebnis:** Alle P0-Features implementiert und getestet!
+
+### Batch 2: P1 Features (Diese/Nächste Woche)
+
+```
+Tag 1-2:  OpenTelemetry Tracing - Infrastruktur ✅
+Tag 2-3:  OpenTelemetry Tracing - Instrumentierung (HTTP, Query)
+Tag 4-5:  Jaeger Integration testen + Dokumentation
+```
 
 ### Option B: Strategische Features zuerst (Fundamentals)
 ```

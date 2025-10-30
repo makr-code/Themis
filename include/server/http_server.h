@@ -20,6 +20,7 @@
 
 #include "content/content_manager.h"
 #include "content/content_processor.h"
+#include "cache/semantic_cache.h"
 
 namespace themis {
 // Forward declarations
@@ -28,6 +29,9 @@ class SecondaryIndexManager;
 class GraphIndexManager;
 class VectorIndexManager;
 class TransactionManager;
+class LLMInteractionStore;
+class Changefeed;
+class TimeSeriesStore;
 
 namespace server {
 
@@ -60,6 +64,11 @@ public:
         size_t num_threads = std::thread::hardware_concurrency();
         size_t max_request_size_mb = 10;
         uint32_t request_timeout_ms = 30000; // 30 seconds default
+        // Feature flags
+        bool feature_semantic_cache = false;
+        bool feature_llm_store = false;
+        bool feature_cdc = false;
+        bool feature_timeseries = false;
         
         Config() = default;
         Config(std::string h, uint16_t p, size_t threads = 0) 
@@ -165,6 +174,20 @@ private:
     http::response<http::string_body> handleContentFilterSchemaPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigPut(const http::request<http::string_body>& req);
+
+    // Sprint A beta endpoints (feature-flagged)
+    http::response<http::string_body> handleCacheQuery(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleCachePut(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleCacheStats(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleLlmInteractionPost(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleLlmInteractionList(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleLlmInteractionGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleChangefeedGet(const http::request<http::string_body>& req);
+    
+    // Sprint B: Time-Series endpoints
+    http::response<http::string_body> handleTimeSeriesPut(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesQuery(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesAggregate(const http::request<http::string_body>& req);
     
     // Transaction endpoints
     http::response<http::string_body> handleTransactionBegin(const http::request<http::string_body>& req);
@@ -204,6 +227,22 @@ private:
     std::unique_ptr<themis::content::ContentManager> content_manager_;
     // Built-in processors
     std::unique_ptr<themis::content::TextProcessor> text_processor_;
+    
+    // Semantic Cache (Sprint A)
+    std::unique_ptr<SemanticCache> semantic_cache_;
+    rocksdb::ColumnFamilyHandle* cache_cf_handle_ = nullptr;
+    
+    // LLM Interaction Store (Sprint A)
+    std::unique_ptr<LLMInteractionStore> llm_store_;
+    rocksdb::ColumnFamilyHandle* llm_cf_handle_ = nullptr;
+    
+    // Changefeed (Sprint A CDC)
+    std::unique_ptr<Changefeed> changefeed_;
+    rocksdb::ColumnFamilyHandle* cdc_cf_handle_ = nullptr;
+    
+    // Time-Series Store (Sprint B)
+    std::unique_ptr<TimeSeriesStore> timeseries_;
+    rocksdb::ColumnFamilyHandle* ts_cf_handle_ = nullptr;
 
     // Networking
     net::io_context ioc_;

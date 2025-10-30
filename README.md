@@ -85,7 +85,7 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmak
 cmake --build . --config Release
 
 # Run tests
-ctest -C Release
+# 4. Test health endpoint
 ```
 
 ### Linux/macOS (Shell)
@@ -93,12 +93,8 @@ ctest -C Release
 ```bash
 # 1. Setup (nur einmal)
 ./setup.sh
-
-# 2. Build
 ./build.sh
 
-# 3. Tests (werden in build.sh automatisch versucht)
-```
 
 ### Build Options
 

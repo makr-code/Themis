@@ -32,5 +32,11 @@
     "enabled": true,
     "service_name": "themis-server",
     "otlp_endpoint": "http://localhost:4318"
+  },
+  "features": {
+    "semantic_cache": true,
+    "llm_store": true,
+    "cdc": true,
+    "timeseries": true
   }
 }

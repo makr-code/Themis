@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "storage/rocksdb_wrapper.h"
+#include "index/temporal_graph.h"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -62,18 +63,32 @@ public:
     std::pair<Status, std::vector<AdjacencyInfo>> outAdjacency(std::string_view fromPk) const;
     std::pair<Status, std::vector<AdjacencyInfo>> inAdjacency(std::string_view toPk) const;
 
-    // Traversierungen
-    std::pair<Status, std::vector<std::string>> bfs(
-        std::string_view startPk,
-        int maxDepth = 3
-    ) const;
-
     // Shortest-Path-Algorithmen (gewichtete Graphen)
     // Weight wird aus Edge-Entity-Feld "_weight" gelesen (default: 1.0)
     struct PathResult {
         std::vector<std::string> path;  // Knoten vom Start zum Ziel
         double totalCost = 0.0;
     };
+
+    // Sprint B: Temporal Graph Extensions
+    // Traversal with temporal filtering (edges must be valid at specified timestamp)
+    std::pair<Status, std::vector<std::string>> bfsAtTime(
+        std::string_view startPk,
+        int64_t timestamp_ms,
+        int maxDepth = 3
+    ) const;
+    
+    std::pair<Status, PathResult> dijkstraAtTime(
+        std::string_view startPk,
+        std::string_view targetPk,
+        int64_t timestamp_ms
+    ) const;
+
+    // Traversierungen
+    std::pair<Status, std::vector<std::string>> bfs(
+        std::string_view startPk,
+        int maxDepth = 3
+    ) const;
 
     // Dijkstra: Kürzester Pfad von start zu target
     std::pair<Status, PathResult> dijkstra(

@@ -11,14 +11,14 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 
 ---
 
-## � Nach Produktivstellung der Kerndatenbank
+## 🚀 Nach Produktivstellung der Kerndatenbank
 
 - [ ] Datenablage- und Ingestion-Strategie (Post-Go-Live Kerndatenbank)
   - Ziel: Einheitliches, abfragefreundliches Speicherschema für Text- und Geo-Daten in relationalen Tabellen inkl. passender Indizes und Brücken zu Graph/Vector.
   - Anforderungen:
     - Geo: Punkt/Linie/Polygon getrennt oder per Geometrie-Typ; Normalisierung auf EPSG:4326 (lon/lat), Bounding Box je Feature; räumliche Indizes (z. B. R-Tree) für Fast-Queries.
-    - Begriffs-Indizierung: Relationale Felder/Indizes für inhaltliche Begriffe und Klassifikationen (z. B. „LSG“, „Fließgewässer“) inkl. Synonym-/Alias-Liste; optional FTS/Trigram.
-    - Abfragebeispiele: Kombinierte Suchanfragen nach Begriffen und Koordinate (z. B. „LSG“ oder „Fließgewässer“ bei lon 45, lat 16) → räumlicher Filter + Begriffsmatch.
+    - Begriffs-Indizierung: Relationale Felder/Indizes für inhaltliche Begriffe und Klassifikationen (z. B. „LSG", „Fließgewässer") inkl. Synonym-/Alias-Liste; optional FTS/Trigram.
+    - Abfragebeispiele: Kombinierte Suchanfragen nach Begriffen und Koordinate (z. B. „LSG" oder „Fließgewässer" bei lon 45, lat 16) → räumlicher Filter + Begriffsmatch.
   - JSON-Ingestion-Spezifikation:
     - JSON-Schema je Quelle zur Beschreibung der Verarbeitung: `{ source_id, content_type, mappings, transforms, geo: { type, coordsPath, crs }, text: { language, tokenization }, tags, provenance }`.
     - Pipeline-Schritte: detect → extract → normalize → map → validate(schema) → write(relational + blobs) → index (spatial/text/vector) → lineage/audit.
@@ -27,14 +27,241 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
     - `docs/ingestion/json_ingestion_spec.md` (Spezifikation) und `docs/storage/geo_relational_schema.md` (Schema & Indizes für Punkt/Linie/Polygon).
     - POC-Migration mit Beispieldaten (LSG/Fließgewässer) zur Verifikation.
   - DoD:
-    - Abfragen liefern erwartete Treffer für „LSG“/„Fließgewässer“ und Koordinaten; EXPLAIN zeigt Index-Nutzung; Dokumentation vollständig.
+    - Abfragen liefern erwartete Treffer für „LSG"/„Fließgewässer" und Koordinaten; EXPLAIN zeigt Index-Nutzung; Dokumentation vollständig.
 
-## �📋 Priorisierte Roadmap - Nächste Schritte
+## 🔴 Hyperscaler Feature Parity - Kritische Lücken (NEU - 29.10.2025)
+
+### Überblick: Capability Gaps zu Cloud-Anbietern
+
+Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Vergleich zu AWS/Azure/GCP:
+
+### 5.1 Multi-Hop Reasoning & Advanced Graph (vs. Neptune/Cosmos DB)
+**Gap:** Keine rekursiven Pfadabfragen, Graph Neural Networks, temporale Graphen
+- [ ] Recursive CTEs für variable Pfadtiefe ohne Limit
+- [ ] Graph Neural Network Embeddings (DGL/PyG Integration)
+- [ ] Temporal Graph Support (zeitabhängige Kanten mit valid_from/valid_to)
+- [ ] Property Graph Model vollständig (Node-Labels, Relationship-Types)
+- [ ] Multi-Graph Federation (Cross-Graph Joins)
+- **Design-Beispiel:**
+  ```cypher
+  MATCH p=(n:Document)-[:REFERENCES*1..5 {valid_from <= $timestamp <= valid_to}]->(m:Concept)
+  WHERE n.created >= datetime('2024-01-01')
+  RETURN n, m, avg(relationships(p).confidence) as path_confidence
+  ```
+- **Ressourcen:** 
+  - [Amazon Neptune ML](https://docs.aws.amazon.com/neptune/latest/userguide/machine-learning.html)
+  - [Neo4j Graph Data Science](https://neo4j.com/docs/graph-data-science/)
+
+### 5.2 LLM-Native Storage & Retrieval (vs. AlloyDB AI/Azure AI Search)
+**Gap:** Keine Multi-Modal Embeddings, Semantic Caching, Prompt Management
+- [ ] Semantic Response Cache mit TTL und Ähnlichkeitsschwelle
+- [ ] Prompt Template Versioning mit A/B-Testing Support
+- [ ] Chain-of-Thought Storage (strukturierte Reasoning Steps)
+- [ ] Multi-Modal Embeddings (CLIP-Style: Text+Image+Audio)
+- [ ] LLM Interaction Tracking (Token-Count, Latency, Feedback)
+- **Design-Beispiel:**
+  ```sql
+  CREATE TABLE llm_interactions (
+    id UUID PRIMARY KEY,
+    prompt_template_id UUID,
+    input_embeddings vector(1536),
+    reasoning_chain JSONB[], -- Array of thought steps
+    output_embeddings vector(1536),
+    model_version TEXT,
+    latency_ms INT,
+    token_count INT
+  );
+  ```
+- **Ressourcen:**
+  - [Google AlloyDB AI](https://cloud.google.com/alloydb/docs/ai)
+  - [LangChain Memory](https://python.langchain.com/docs/modules/memory/)
+
+### 5.3 Polyglot Persistence Patterns (vs. DynamoDB/DocumentDB/Timestream)
+**Gap:** Kein Time-Series Storage, Event Sourcing, Wide-Column Support
+- [ ] Time-Series Engine mit Gorilla Compression
+- [ ] Event Store mit CQRS und Projektionen
+- [ ] Wide-Column Support (Column Families wie Cassandra)
+- [ ] Cross-Model Distributed Transactions
+- [ ] Continuous Aggregates und Retention Policies
+- **Design-Beispiel:**
+  ```yaml
+  time_series_layer:
+    engine: "TimeScaleDB-like"
+    features:
+      - automatic_partitioning: "1 day"
+      - compression: "gorilla"
+      - continuous_aggregates: true
+      - retention_policies: "30d raw, 1y hourly"
+  ```
+- **Ressourcen:**
+  - [AWS Timestream](https://docs.aws.amazon.com/timestream/)
+  - [Martin Kleppmann - Designing Data-Intensive Applications](https://dataintensive.net/)
+
+### 5.4 Serverless & Auto-Scaling (vs. DynamoDB On-Demand/Cosmos DB)
+**Gap:** Keine Request-basierte Skalierung, kein Pay-per-Request
+- [ ] Request-Based Auto-Scaling (0 bis 40k RCU)
+- [ ] Cold-Start Optimierung (<100ms Wake-up)
+- [ ] Adaptive Index Management (auto-create/drop basierend auf Patterns)
+- [ ] Global Secondary Indexes mit Eventual Consistency
+- [ ] Auto-Pause bei Inaktivität
+- **Ressourcen:**
+  - [DynamoDB Adaptive Capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-design.html)
+
+### 5.5 Stream Processing & CDC (vs. Cosmos DB Change Feed/DynamoDB Streams)
+**Gap:** Kein Change Data Capture, keine Materialized Views
+- [ ] Change Data Capture mit Kafka-Connect-Style API
+- [ ] Materialized View Engine mit automatischer Aktualisierung
+- [ ] Trigger System (Before/After Insert/Update/Delete)
+- [ ] Stream-Table Duality (Log als Source of Truth)
+- [ ] Event Subscriptions (persistent/ephemeral)
+- **Ressourcen:**
+  - [Debezium CDC](https://debezium.io/documentation/)
+
+### 5.6 ML/AI Features (vs. MongoDB Atlas Vector/Redis Vector)
+**Gap:** Keine Approximate Aggregations, Online Learning, Feature Store
+- [ ] Approximate Aggregations (HyperLogLog, Count-Min Sketch, T-Digest)
+- [ ] Online Learning Support (Incremental Index Updates)
+- [ ] Feature Store API mit Versioning
+- [ ] AutoML für Embedding-Modell-Auswahl
+- [ ] Probabilistic Data Structures
+- **Design-Beispiel:**
+  ```python
+  class FeatureStore:
+      def compute_features(self, entity_id):
+          return {
+              "text_features": self.get_tfidf_features(entity_id),
+              "graph_features": self.get_pagerank_score(entity_id),
+              "temporal_features": self.get_time_series_stats(entity_id),
+              "embedding": self.get_multimodal_embedding(entity_id)
+          }
+  ```
+- **Ressourcen:**
+  - [Feast Feature Store](https://feast.dev/)
+
+### 5.7 Enterprise Security & Compliance (vs. AWS Macie/Azure Purview)
+**Gap:** Keine automatische PII-Erkennung, Column-Level Encryption, Dynamic Masking
+- [ ] Data Discovery & Classification (automatische PII/PHI-Erkennung)
+- [ ] Column-Level Encryption mit Key Rotation
+- [ ] Dynamic Data Masking (rollenbasiert)
+- [ ] ML-basierte Audit-Anomalieerkennung
+- [ ] Zero-Trust Architecture Support
+- [ ] Compliance Reports (SOC2, ISO 27001, DSGVO-automatisiert)
+- **Ressourcen:**
+  - [HashiCorp Vault](https://www.vaultproject.io/)
+  - [Azure Purview](https://azure.microsoft.com/en-us/services/purview/)
+
+## 🎯 Priorisierte Hyperscaler-Roadmap
+
+### Sofort (für LLM/RAG Use-Cases) - Sprint 1-2
+1. **Semantic Cache (5.2)** - Reduziert LLM-Kosten um 40-60%
+2. **Chain-of-Thought Storage (5.2)** - Kritisch für Debugging/Compliance
+3. **Change Streams/CDC (5.5)** - Für Real-Time RAG Updates
+
+### Kurzfristig (Competitive Parity) - Sprint 3-4
+4. **Time-Series Support (5.3)** - Für Monitoring/Observability
+5. **Temporal Graphs (5.1)** - Für Knowledge Evolution Tracking
+6. **Adaptive Indexing (5.4)** - Reduziert Operations-Overhead
+
+### Mittelfristig (Differenzierung) - Sprint 5-6
+7. **Multi-Modal Embeddings (5.2)** - Für Image/Audio RAG
+8. **Graph Neural Networks (5.1)** - Für Advanced Reasoning
+9. **Feature Store (5.6)** - Für ML-Pipelines
+10. **Column-Level Encryption (5.7)** - Für Enterprise Compliance
+
+## 📋 Priorisierte Roadmap - Nächste Schritte
+
+### ✅ ABGESCHLOSSEN: Observability & Instrumentation (30.10.2025)
+- [x] OpenTelemetry Integration (OTLP HTTP Export)
+- [x] Tracing Infrastruktur (Tracer Wrapper, RAII Spans, Attribute, Error Handling)
+- [x] HTTP Handler Instrumentation (GET/PUT/DELETE /entities, POST /query, /query/aql, /graph/traverse, /vector/search)
+- [x] QueryEngine Instrumentation (executeAndKeys/Entities, Or/Sequential/Fallback/RangeAware, fullScan)
+- [x] AQL Operator Pipeline Instrumentation (parse, translate, for, filter, limit, collect, return, traversal+bfs)
+- [x] Index Scan Child-Spans (index.scanEqual, index.scanRange, or.disjunct.execute)
+- [x] Jaeger E2E-Validation (Windows Binary, Ports 4318/16686)
+- [x] Feature Flags Infrastructure (semantic_cache, llm_store, cdc)
+- [x] Beta Endpoint Skeletons (404 wenn disabled, 501 wenn enabled)
+- [x] Start Scripts (PowerShell/BAT für Jaeger + Server im Hintergrund)
+- [x] Graceful Tracing Fallback (OTLP Probe, keine Spam bei fehlendem Collector)
+- [x] Build-Fix (Windows WinSock/Asio Include-Order)
+- [x] Smoke Tests (alle 303 Tests grün, keine Regressions)
+- [x] Dokumentation (docs/tracing.md mit vollständigem Attribut-Inventar)
+
+**Ergebnis:** Production-ready Observability Stack mit End-to-End Distributed Tracing von HTTP → QueryEngine → AQL Operators; vollständige Span-Hierarchie für Performance-Debugging.
+
+---
+
+### Hyperscaler-Parität → Umsetzungsplan Q4/2025 (Einsortierung)
+
+Ziel: Die oben identifizierten Gaps (5.1–5.7) in einen machbaren, inkrementellen Plan überführen, der unsere bestehenden Phasen respektiert und schnelle Nutzerwirkung liefert.
+
+Annäherung: MVP-first, vertikale Slices, geringe Risiken, klare DoD je Inkrement.
+
+Sprint A (2 Wochen) – LLM/RAG Enablement (aus 5.2, 5.5) **← AKTUELL**
+- [ ] Semantic Cache v1 (Read-Through) **← NÄCHSTER SCHRITT**
+  - Scope: Key = Hash(prompt+params), Value = answer + metadata, TTL, Ähnlichkeitsschwelle (cosine) optional
+  - API: POST /cache/query, POST /cache/put, GET /cache/stats (Skeletons vorhanden)
+  - Storage: RocksDB CF "semantic_cache", optional Embedding-Index in HNSW für approximate hits
+  - Implementation:
+    1. SemanticCache Klasse mit put/query/stats
+    2. Hash-basierter Exact-Match als MVP
+    3. TTL via RocksDB Compaction-Filter
+    4. Metriken: hit_rate, avg_latency, cache_size
+  - DoD: >40% Cache-Hitrate bei synthetischem Workload; Metriken in /metrics; Doku
+- [ ] Chain-of-Thought Storage v1
+  - Scope: optionale Speicherung strukturierter reasoning_steps je Anfrage (kompakt, PII-safe)
+  - API: POST /llm/interaction, GET /llm/interaction (list), GET /llm/interaction/:id (Skeletons vorhanden)
+  - Storage: RocksDB CF "llm_interactions", Schema: {id, prompt, reasoning_chain[], response, metadata}
+  - DoD: Abfragen mit/ohne CoT speicherbar, exportierbar; Doku + Privacy-Hinweise
+- [ ] Change Data Capture (CDC) Minimal
+  - Scope: Append-only ChangeLog (insert/update/delete) mit monotoner Sequence-ID
+  - API: GET /changefeed?from_seq=...&limit=... (long-poll), Server-Sent Events optional (Skeleton vorhanden)
+  - Implementation:
+    1. RocksDB WriteBatch Callback für change tracking
+    2. CF "changefeed" mit sequence-id als key
+    3. JSON payload: {seq, op_type, object, key, timestamp}
+  - DoD: E2E-Demo (Insert→Feed), Checkpointing per Client, Backpressure-Handling, Doku
+
+Sprint B (2 Wochen) – Temporale Graphen & Zeitreihen (aus 5.1, 5.3)
+- [ ] Temporale Kanten v1
+  - Schema: Kante.valid_from/valid_to; Traversal-Filter t∈[from,to]
+  - Query: AQL-Erweiterung: FILTER e.valid_from <= t && e.valid_to >= t
+  - DoD: Traversal mit Zeitpunkt-Filter; Tests und Beispiele
+- [ ] Time-Series MVP
+  - Schema: CF "ts", Key = {metric}:{entity}:{timestamp}; Value = double/JSON
+  - API: POST /ts/put, GET /ts/query (range scan); Aggregationen: min/max/avg
+  - Kompression: Gorilla optional (Follow-up), zuerst Raw + Bucketing
+  - DoD: Range-Queries performant, einfache Aggregationen, Metriken/Doku
+
+Sprint C (2–3 Wochen) – Adaptive Indexing & Security-Basis (aus 5.4, 5.7)
+- [ ] Adaptive Indexing (Suggest → Auto)
+  - Phase 1: Suggestions basierend auf Abfrage-Statistiken (häufige Filter, Selectivity)
+  - API: GET /index/suggestions, POST /index/apply_suggestion
+  - DoD: Reproduzierbare Verbesserung (p95 Latenz ↓) bei ausgewählten Workloads
+- [ ] Column-Level Encryption – Design/PoC
+  - Scope: Key-Management-Schnittstelle, Verschlüsselung sensibler Felder at-rest
+  - DoD: PoC für 1–2 Felder, Durchstich mit Key-Provider-Interface, Doku
+
+Backlog (mittelfristig – 5.6, 5.2 Advanced)
+- [ ] Multi-Modal Embeddings (Text+Bild) – ingest + storage contracts
+- [ ] Graph Neural Networks (Embeddings Import/Serving)
+- [ ] Feature Store Skeleton (Versions, Online/Offline contract)
+- [ ] Prompt Templates v1 (Versioning, A/B-Fahne, Telemetrie)
+
+Risiken & Abhängigkeiten
+- CDC hängt an stabilen Write-Pfaden (Phase 0–2) – erfüllt
+- Temporale Graphen bauen auf Graph Index (Phase 2) – vorhanden
+- TS-MVP nutzt RocksDB Range-Scans – machbar ohne neue Engine
+- Adaptive Indexing benötigt Query-Stats – Telemetrie vorhanden; Sampling ergänzen
+
+Messbare DoD (quer)
+- Alle neuen APIs dokumentiert (OpenAPI), Tests grün, Metriken in /metrics, Traces vorhanden
+- Rollback-Pfade vorhanden (Feature-Flags per Config)
+
 
 ### 29.10.2025 – Fokuspakete
 
-- [ ] Relational & AQL Ausbau: Equality-Joins via doppeltem `FOR + FILTER`, `LET`/Subqueries, `COLLECT`/Aggregationen samt Pagination und boolescher Vollständigkeit abschließen; bildet die Grundlage für hybride Queries.
-- [ ] Graph Traversal Vertiefung: Pfad-Constraints (`PATH.ALL/NONE/ANY`) umsetzen, Pfad-/Kanten-Prädikate in den Expand-Schritten prüfen und `shortestPath()` freischalten, damit Chunk-Graph und Security-Szenarien unterstützt werden.
+- [ ] Relational & AQL Ausbau: Equality-Joins via doppeltem `FOR + FILTER`, `LET`/Subqueries, `COLLECT`/Aggregationen samt Pagination und boolescher Vollständigkeit abschließen; bildet die Grundlage[...]
+- [ ] Graph Traversal Vertiefung: Pfad-Constraints (`PATH.ALL/NONE/ANY`) umsetzen, Pfad-/Kanten-Prädikate in den Expand-Schritten prüfen und `shortestPath()` freischalten, damit Chunk-Graph und Secu[...]
 - [ ] Vector Index Operationen: Batch-Inserts, Reindex/Compaction sowie Score-basierte Pagination implementieren, um große Ingestion-Jobs und Reranking stabil zu fahren.
 - [ ] Phase 4 Content/Filesystem Start: Document-/Chunk-Schema festlegen, Upload- und Extraktionspipeline (Text → Chunks → Graph → Vector) prototypen und Hybrid-Query-Beispiele dokumentieren.
 - [x] Ops & Recovery Absicherung: Backup/Restore via RocksDB-Checkpoints implementiert; Telemetrie (Histogramme/Compaction) und strukturierte Logs noch offen.
@@ -1659,4 +1886,15 @@ Produktionsreife Transaktionsunterstützung mit vollständiger Dokumentation und
 - Windows-Build: `_WIN32_WINNT` global definieren
 - Metrik-Overhead: per-Thread-Aggregation
 
-**Letzte Aktualisierung:** 28. Oktober 2025
+### Später: Tracing E2E Testplan (P1)
+- [ ] Jaeger starten (all-in-one, Ports: 4318 OTLP HTTP, 16686 UI)
+- [ ] config/config.json prüfen: `tracing.enabled=true`, `service_name`, `otlp_endpoint=http://localhost:4318`
+- [ ] Server starten (`themis_server.exe`)
+- [ ] Endpunkte aufrufen: `POST /query/aql`, `POST /vector/search`, `POST /graph/traverse`
+- [ ] Jaeger UI öffnen (http://localhost:16686), Service auswählen, Traces prüfen
+  - Prüfen: `http.method`, `http.target`, `http.status_code`, `aql.*`, `vector.*`, `graph.*`
+- [ ] Ergebnis notieren (Overhead, Vollständigkeit), ggf. Sampling aktivieren
+- [ ] Optional: BatchSpanProcessor statt SimpleSpanProcessor für Prod
+
+**Letzte Aktualisierung:** 30. Oktober 2025 - OTEL HTTP-Instrumentierung + Tracing Testplan hinzugefügt ✅
+

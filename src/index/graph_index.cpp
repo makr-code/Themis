@@ -9,6 +9,7 @@
 #include <queue>
 #include <unordered_set>
 #include <algorithm>
+#include <chrono>
 
 namespace themis {
 
@@ -671,6 +672,144 @@ GraphIndexManager::Status GraphIndexManager::deleteEdge(std::string_view edgeId,
 	}
 	
 	return Status::Error("deleteEdge(mvcc): _from/_to fehlen (inkonsistent)");
+}
+
+// ===== Sprint B: Temporal Graph Traversal =====
+
+std::pair<GraphIndexManager::Status, std::vector<std::string>>
+GraphIndexManager::bfsAtTime(std::string_view startPk, int64_t timestamp_ms, int maxDepth) const {
+	if (!db_.isOpen()) return {Status::Error("bfsAtTime: Datenbank ist nicht geöffnet"), {}};
+	if (startPk.empty()) return {Status::Error("bfsAtTime: startPk darf nicht leer sein"), {}};
+	if (maxDepth < 0) return {Status::Error("bfsAtTime: maxDepth muss >= 0 sein"), {}};
+
+	TemporalFilter filter = TemporalFilter::at(timestamp_ms);
+	
+	std::vector<std::string> order;
+	std::unordered_set<std::string> visited;
+	std::queue<std::pair<std::string,int>> q;
+
+	q.emplace(std::string(startPk), 0);
+	visited.insert(std::string(startPk));
+
+	while (!q.empty()) {
+		auto [node, depth] = q.front();
+		q.pop();
+		order.push_back(node);
+
+		if (depth >= maxDepth) continue;
+
+		// Get outgoing edges with adjacency info
+		auto [st, adj] = outAdjacency(node);
+		if (!st.ok) continue;
+
+		for (const auto& info : adj) {
+			// Load edge to check temporal validity
+			std::string edgeKey = KeySchema::makeGraphEdgeKey(info.edgeId);
+			auto blob = db_.get(edgeKey);
+			if (!blob) continue;
+
+			BaseEntity edge = BaseEntity::deserialize(info.edgeId, *blob);
+			
+			// Check temporal validity
+			std::optional<int64_t> valid_from = edge.getFieldAsInt("valid_from");
+			std::optional<int64_t> valid_to = edge.getFieldAsInt("valid_to");
+			
+			if (!filter.isValid(valid_from, valid_to)) {
+				continue; // Skip edge - not valid at query time
+			}
+
+			// Include neighbor if valid
+			if (visited.find(info.targetPk) == visited.end()) {
+				visited.insert(info.targetPk);
+				q.emplace(info.targetPk, depth + 1);
+			}
+		}
+	}
+
+	return {Status::OK(), std::move(order)};
+}
+
+std::pair<GraphIndexManager::Status, GraphIndexManager::PathResult>
+GraphIndexManager::dijkstraAtTime(std::string_view startPk, std::string_view targetPk, int64_t timestamp_ms) const {
+	if (!db_.isOpen()) return {Status::Error("dijkstraAtTime: Datenbank ist nicht geöffnet"), {}};
+	if (startPk.empty() || targetPk.empty()) {
+		return {Status::Error("dijkstraAtTime: start/target dürfen nicht leer sein"), {}};
+	}
+
+	TemporalFilter filter = TemporalFilter::at(timestamp_ms);
+	
+	std::unordered_map<std::string, double> dist;
+	std::unordered_map<std::string, std::string> prev;
+	
+	using PQElem = std::pair<double, std::string>;
+	std::priority_queue<PQElem, std::vector<PQElem>, std::greater<>> pq;
+
+	std::string start(startPk);
+	std::string target(targetPk);
+
+	dist[start] = 0.0;
+	pq.emplace(0.0, start);
+
+	while (!pq.empty()) {
+		auto [d, u] = pq.top();
+		pq.pop();
+
+		if (u == target) break;
+		if (dist.count(u) && d > dist[u]) continue;
+
+		auto [st, adj] = outAdjacency(u);
+		if (!st.ok) continue;
+
+		for (const auto& info : adj) {
+			// Load edge to check temporal validity and weight
+			std::string edgeKey = KeySchema::makeGraphEdgeKey(info.edgeId);
+			auto blob = db_.get(edgeKey);
+			if (!blob) continue;
+
+			BaseEntity edge = BaseEntity::deserialize(info.edgeId, *blob);
+			
+			// Check temporal validity
+			std::optional<int64_t> valid_from = edge.getFieldAsInt("valid_from");
+			std::optional<int64_t> valid_to = edge.getFieldAsInt("valid_to");
+			
+			if (!filter.isValid(valid_from, valid_to)) {
+				continue; // Skip edge - not valid at query time
+			}
+
+			// Get edge weight
+			double weight = 1.0;
+			if (auto w = edge.getFieldAsDouble("_weight")) {
+				weight = *w;
+			}
+
+			const std::string& v = info.targetPk;
+			double alt = d + weight;
+
+			if (!dist.count(v) || alt < dist[v]) {
+				dist[v] = alt;
+				prev[v] = u;
+				pq.emplace(alt, v);
+			}
+		}
+	}
+
+	// Reconstruct path
+	PathResult result;
+	if (!dist.count(target)) {
+		return {Status::Error("dijkstraAtTime: Kein Pfad gefunden"), result};
+	}
+
+	result.totalCost = dist[target];
+	std::string curr = target;
+	while (curr != start) {
+		result.path.push_back(curr);
+		if (!prev.count(curr)) break;
+		curr = prev[curr];
+	}
+	result.path.push_back(start);
+	std::reverse(result.path.begin(), result.path.end());
+
+	return {Status::OK(), result};
 }
 
 } // namespace themis

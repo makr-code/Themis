@@ -1,13 +1,27 @@
 #include "utils/tracing.h"
 #include "utils/logger.h"
 
+#include <regex>
+#include <string>
+#include <utility>
+
+// Ensure correct WinSock include order on Windows before including Boost.Asio
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <windows.h>
+#endif
+
+#include <boost/asio.hpp>
+
 #ifdef THEMIS_ENABLE_TRACING
 #include <opentelemetry/exporters/otlp/otlp_http_exporter_factory.h>
 #include <opentelemetry/exporters/otlp/otlp_http_exporter_options.h>
 #include <opentelemetry/sdk/trace/simple_processor_factory.h>
 #include <opentelemetry/sdk/trace/tracer_provider_factory.h>
 #include <opentelemetry/sdk/resource/resource.h>
-#include <opentelemetry/sdk/resource/semantic_conventions.h>
 #include <opentelemetry/trace/provider.h>
 
 namespace otel_sdk = opentelemetry::sdk;
@@ -31,6 +45,47 @@ bool Tracer::initialize(const std::string& serviceName, const std::string& endpo
     }
     
     try {
+        // Probe collector reachability first to avoid noisy exporter errors
+        auto parse_host_port = [](const std::string& url) -> std::pair<std::string, uint16_t> {
+            std::regex re(R"((?:http|https)://([^/:]+)(?::(\d+))?)", std::regex::icase);
+            std::smatch m;
+            if (std::regex_search(url, m, re)) {
+                std::string host = m[1].str();
+                uint16_t port = 4318; // default OTLP HTTP
+                if (m.size() > 2 && m[2].matched) {
+                    port = static_cast<uint16_t>(std::stoi(m[2].str()));
+                }
+                return {host, port};
+            }
+            return {url, static_cast<uint16_t>(4318)};
+        };
+
+        auto [host, port] = parse_host_port(endpoint);
+        try {
+            namespace net = boost::asio;
+            using tcp = net::ip::tcp;
+            net::io_context io;
+            tcp::resolver resolver(io);
+            boost::system::error_code ec;
+            auto results = resolver.resolve(host, std::to_string(port), ec);
+            if (ec) {
+                THEMIS_WARN("Tracing collector resolve failed ({}:{}): {}. Tracing disabled.", host, port, ec.message());
+                initialized_ = true; // mark to avoid repeat warnings
+                return false;
+            }
+            tcp::socket socket(io);
+            socket.connect(*results.begin(), ec);
+            if (ec) {
+                THEMIS_WARN("Tracing collector unreachable ({}:{}): {}. Tracing disabled.", host, port, ec.message());
+                initialized_ = true;
+                return false;
+            }
+        } catch (const std::exception& e) {
+            THEMIS_WARN("Tracing probe failed: {}. Tracing disabled.", e.what());
+            initialized_ = true;
+            return false;
+        }
+
         // Create OTLP HTTP exporter
         otel_exporter::OtlpHttpExporterOptions opts;
         opts.url = endpoint + "/v1/traces"; // OTLP HTTP traces endpoint
@@ -42,16 +97,18 @@ bool Tracer::initialize(const std::string& serviceName, const std::string& endpo
         
         // Create resource with service name
         auto resource_attributes = otel_resource::ResourceAttributes{
-            {otel_resource::SemanticConventions::kServiceName, serviceName},
-            {otel_resource::SemanticConventions::kServiceVersion, "0.1.0"}
+            {"service.name", serviceName},
+            {"service.version", "0.1.0"}
         };
         auto resource = otel_resource::Resource::Create(resource_attributes);
         
         // Create tracer provider
-        auto provider = otel_sdk::trace::TracerProviderFactory::Create(std::move(processor), resource);
+        std::shared_ptr<otel_sdk::trace::TracerProvider> provider = 
+            otel_sdk::trace::TracerProviderFactory::Create(std::move(processor), resource);
         
-        // Set as global provider
-        otel::trace::Provider::SetTracerProvider(provider);
+        // Set as global provider (convert to nostd::shared_ptr)
+        otel::trace::Provider::SetTracerProvider(
+            otel::nostd::shared_ptr<otel::trace::TracerProvider>(provider));
         
         // Get tracer instance
         tracer_ = provider->GetTracer(serviceName, "0.1.0");
@@ -89,16 +146,18 @@ void Tracer::shutdown() {
     }
     
     initialized_ = false;
-    tracer_.reset();
+    // Note: nostd::shared_ptr doesn't have reset(), just assign nullptr
+    tracer_ = nullptr;
     THEMIS_INFO("OpenTelemetry tracer shut down");
 #endif
 }
 
 #ifdef THEMIS_ENABLE_TRACING
 otel::nostd::shared_ptr<otel::trace::Tracer> Tracer::getTracer() {
-    if (!initialized_ || !tracer_) {
+    if (!initialized_ || tracer_ == nullptr) {
         THEMIS_WARN("Tracer not initialized, call Tracer::initialize() first");
-        return nullptr;
+        // Return empty shared_ptr (OTEL doesn't accept nullptr in return)
+        return otel::nostd::shared_ptr<otel::trace::Tracer>();
     }
     return tracer_;
 }
