@@ -26,6 +26,8 @@ jobs:
             triplet: arm64-linux
     steps:
       - uses: actions/checkout@v4
+      - name: Set short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::12}" >> $GITHUB_ENV
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -44,6 +46,5 @@ jobs:
           build-args: |
             VCPKG_TRIPLET=${{ matrix.triplet }}
           tags: |
-            ${{ env.DOCKERHUB_REPO }}:latest
             ${{ env.DOCKERHUB_REPO }}:latest-${{ matrix.triplet }}
-            ${{ env.DOCKERHUB_REPO }}:${{ github.sha }}-${{ matrix.triplet }}
+            ${{ env.DOCKERHUB_REPO }}:g${{ env.SHORT_SHA }}-${{ matrix.triplet }}
