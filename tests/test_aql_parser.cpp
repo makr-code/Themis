@@ -316,6 +316,72 @@ TEST(AQLParserTest, KeywordsCaseInsensitive) {
     EXPECT_TRUE(result3.success) << result3.error.toString();
 }
 
+// ============================================================================
+// LET & Projection Tests (MVP)
+// ============================================================================
+
+TEST(AQLParserTest, LetSimpleBindingVariable) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users LET c = u.city RETURN c");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query, nullptr);
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    EXPECT_EQ(result.query->let_nodes[0].variable, "c");
+    ASSERT_NE(result.query->return_node, nullptr);
+    EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::Variable);
+}
+
+TEST(AQLParserTest, ReturnObjectConstructWithLets) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users LET c = u.city RETURN {name: u.name, city: c}");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query, nullptr);
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    ASSERT_NE(result.query->return_node, nullptr);
+    EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::ObjectConstruct);
+}
+
+TEST(AQLParserTest, ReturnArrayLiteral) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users RETURN [u.name, u.age]");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query->return_node, nullptr);
+    EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::ArrayLiteral);
+}
+
+TEST(AQLParserTest, MultipleLetsOrder) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users LET a = u.name LET b = a RETURN b");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->let_nodes.size(), 2);
+    EXPECT_EQ(result.query->let_nodes[0].variable, "a");
+    EXPECT_EQ(result.query->let_nodes[1].variable, "b");
+    ASSERT_NE(result.query->return_node, nullptr);
+    EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::Variable);
+}
+
+TEST(AQLParserTest, LetUsedInFilter) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users LET c = u.city FILTER c == \"Berlin\" RETURN u");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    ASSERT_EQ(result.query->filters.size(), 1);
+}
+
+TEST(AQLParserTest, DoubleForEqualityJoinParsing) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users FOR o IN orders FILTER u._key == o.user_id RETURN u");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_FALSE(result.query->for_nodes.empty());
+    ASSERT_EQ(result.query->for_nodes.size(), 2);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

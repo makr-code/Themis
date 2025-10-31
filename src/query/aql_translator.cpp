@@ -8,6 +8,7 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
     if (!ast) {
         return TranslationResult::Error("Null AST provided");
     }
+    
     // Graph-Traversal Unterstützung: Wenn Traversal-Klausel vorhanden ist,
     // übersetzen wir in eine TraversalQuery und umgehen die relationale Pfadlogik.
     if (ast->traversal) {
@@ -25,7 +26,21 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
         tq.graphName = ast->traversal->graphName;
         return TranslationResult::SuccessTraversal(std::move(tq));
     }
+    
+    // Multi-FOR Join: Wenn mehr als eine FOR-Klausel vorhanden ist, als Join behandeln
+    if (ast->for_nodes.size() > 1 || !ast->let_nodes.empty() || ast->collect) {
+        TranslationResult::JoinQuery jq;
+        jq.for_nodes = ast->for_nodes;
+        jq.filters = ast->filters;
+        jq.let_nodes = ast->let_nodes;
+        jq.return_node = ast->return_node;
+        jq.sort = ast->sort;
+        jq.limit = ast->limit;
+        jq.collect = ast->collect;
+        return TranslationResult::SuccessJoin(std::move(jq));
+    }
 
+    // Single-FOR Query: Standard ConjunctiveQuery für einfache Queries
     ConjunctiveQuery query;
     query.table = ast->for_node.collection;
     

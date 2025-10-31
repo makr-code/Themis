@@ -17,6 +17,7 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
@@ -29,12 +30,16 @@ option(THEMIS_STRICT_BUILD "Treat warnings as errors" OFF)
 # Compiler warnings and optimizations
 if(MSVC)
     add_compile_options(/W4 /utf-8 /wd4701)
+    # Suppress unreachable code warnings from external headers (e.g., nlohmann/json)
+    add_compile_options(/wd4702)
     if(THEMIS_STRICT_BUILD)
         add_compile_options(/WX)
     endif()
-    add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS _WIN32_WINNT=0x0A00)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_compile_options(/O2 /GL)
+        # Ensure Link-Time Code Generation to avoid link restart messages
+        add_link_options(/LTCG)
     endif()
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -89,7 +94,16 @@ set(THEMIS_CORE_SOURCES
     
     src/index/secondary_index.cpp
     src/index/graph_index.cpp
+    src/index/property_graph.cpp
+    src/index/gnn_embeddings.cpp
     src/index/vector_index.cpp
+    src/index/adaptive_index.cpp
+    
+    src/security/mock_key_provider.cpp
+    src/security/vault_key_provider.cpp
+    src/security/key_cache.cpp
+    src/security/field_encryption.cpp
+    src/security/encrypted_field.cpp
     
     src/transaction/transaction_manager.cpp
     src/transaction/saga.cpp
@@ -99,8 +113,10 @@ set(THEMIS_CORE_SOURCES
     src/query/query_parser.cpp
     src/query/aql_parser.cpp
     src/query/aql_translator.cpp
+    src/query/semantic_cache.cpp
     
     src/server/http_server.cpp
+    src/server/sse_connection_manager.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp
@@ -109,7 +125,11 @@ set(THEMIS_CORE_SOURCES
     src/cache/semantic_cache.cpp
     src/llm/llm_interaction_store.cpp
     src/cdc/changefeed.cpp
-    src/timeseries/timeseries_store.cpp
+    src/timeseries/timeseries.cpp
+    src/timeseries/tsstore.cpp
+    src/timeseries/gorilla.cpp
+    src/timeseries/retention.cpp
+    src/timeseries/continuous_agg.cpp
     
     src/utils/serialization.cpp
     src/utils/logger.cpp
@@ -130,6 +150,7 @@ target_link_libraries(themis_core
         spdlog::spdlog
         Boost::system
         nlohmann_json::nlohmann_json
+        CURL::libcurl
     OpenSSL::SSL
     OpenSSL::Crypto
 )
@@ -156,6 +177,16 @@ add_executable(themis_demo
 )
 
 target_link_libraries(themis_demo
+    PRIVATE
+        themis_core
+)
+
+# Encryption demo executable
+add_executable(themis_demo_encryption
+    src/demo_encryption.cpp
+)
+
+target_link_libraries(themis_demo_encryption
     PRIVATE
         themis_core
 )
@@ -194,9 +225,17 @@ if(THEMIS_BUILD_TESTS)
         tests/test_metrics_api.cpp
         tests/test_http_query_range.cpp
         tests/test_http_aql.cpp
+    tests/test_http_aql_join.cpp
+    tests/test_http_aql_let.cpp
+        tests/test_http_aql_collect.cpp
+        tests/test_http_config.cpp
         tests/test_http_aql_graph.cpp
         tests/test_http_aql_collect.cpp
         tests/test_http_vector.cpp
+        tests/test_http_vector_largescale.cpp
+        tests/test_http_content.cpp
+        tests/test_http_changefeed.cpp
+        tests/test_http_changefeed_sse.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
@@ -205,7 +244,20 @@ if(THEMIS_BUILD_TESTS)
         tests/test_backup_restore.cpp
         tests/test_cursor.cpp
         tests/test_temporal_graph.cpp
-        tests/test_timeseries_store.cpp
+        tests/test_recursive_path_query.cpp
+        tests/test_timerange_query.cpp
+        tests/test_property_graph.cpp
+        tests/test_gnn_embeddings.cpp
+        tests/test_semantic_cache.cpp
+        tests/test_tsstore.cpp
+        tests/test_gorilla.cpp
+    tests/test_gorilla_probe.cpp
+        tests/test_timeseries_retention.cpp
+        tests/test_continuous_agg.cpp
+        tests/test_adaptive_index.cpp
+        tests/test_http_adaptive_index.cpp
+        tests/test_encryption.cpp
+        tests/test_vault_key_provider.cpp
     )
     
     target_link_libraries(themis_tests
@@ -263,6 +315,18 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_mvcc
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Encryption performance benchmark (standalone)
+    add_executable(bench_encryption
+        benchmarks/bench_encryption.cpp
+    )
+    
+    target_link_libraries(bench_encryption
         PRIVATE
             themis_core
             benchmark::benchmark

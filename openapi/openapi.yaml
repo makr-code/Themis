@@ -53,6 +53,87 @@ paths:
                   # TYPE vccdb_requests_total counter
                   vccdb_requests_total 1
                   ...
+  /content/import:
+    post:
+      summary: Content importieren (v0 Bulk)
+      operationId: contentImport
+      tags: [content]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentImportRequest'
+      responses:
+        '200':
+          description: Import erfolgreich
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentImportResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /content/{id}:
+    get:
+      summary: Content-Metadaten lesen
+      operationId: getContent
+      tags: [content]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Content-Metadaten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentMeta'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /content/{id}/chunks:
+    get:
+      summary: Chunks eines Contents auflisten
+      operationId: getContentChunks
+      tags: [content]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liste der Chunks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  chunks:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChunkMeta' }
+                required: [count, chunks]
+        '404': { $ref: '#/components/responses/NotFound' }
+  /content/{id}/blob:
+    get:
+      summary: Original-Blob eines Contents abrufen
+      operationId: getContentBlob
+      tags: [content]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Raw Blob (Content-Type aus Metadaten)
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404': { $ref: '#/components/responses/NotFound' }
   /cache/query:
     post:
       summary: Semantic Cache Lookup
@@ -205,11 +286,12 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
   /changefeed:
     get:
-      summary: Change Data Capture (CDC) Feed
+      summary: Change Data Capture (CDC) Feed (Long‑Polling)
       operationId: getChangefeed
       tags: [cdc]
       description: |
         Liefert Änderungen ab einer Sequenznummer. Unterstützt optionales Long‑Polling.
+        Für Streaming siehe `/changefeed/stream` (SSE).
       parameters:
         - in: query
           name: from_seq
@@ -228,6 +310,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChangefeedResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /changefeed/stream:
+    get:
+      summary: Change Data Capture (CDC) Stream (SSE)
+      operationId: getChangefeedStream
+      tags: [cdc]
+      description: |
+        Streamt Änderungen in Server‑Sent Events (SSE) Format. Jedes Event hat `data:` Zeile mit JSON.
+        Unterstützt Keep‑Alive Streaming mit optionalen Heartbeats.
+      parameters:
+        - in: query
+          name: from_seq
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - in: query
+          name: key_prefix
+          schema: { type: string }
+          description: Filtert Events nach Key‑Präfix (z.B. `user:`)
+        - in: query
+          name: keep_alive
+          schema: { type: boolean, default: true }
+          description: Verbindung offen halten und neue Events fortlaufend senden
+        - in: query
+          name: max_seconds
+          schema: { type: integer, minimum: 1, maximum: 60, default: 30 }
+          description: Maximale Stream‑Dauer (Test/CI hilfreich)
+        - in: query
+          name: heartbeat_ms
+          schema: { type: integer, minimum: 100, maximum: 60000 }
+          description: Optionaler Heartbeat‑Override in Millisekunden (nur Test/Dev)
+      responses:
+        '200':
+          description: SSE Stream mit Change Events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE Format: `data: {json}\n\n` pro Event, Heartbeat als Kommentar `: heartbeat\n\n`.
+                  JSON Struktur: `{operation, key, sequence, ...}`.
+                example: |
+                  data: {"operation":"PUT","key":"doc:1","sequence":42,"old_val":null,"new_val":"{\"x\":1}"}
+
+                  data: {"operation":"DELETE","key":"doc:2","sequence":43,"old_val":"{\"y\":2}","new_val":null}
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/InternalError' }
   /entities:
@@ -466,12 +592,13 @@ paths:
           description: Nicht implementiert (z. B. Graph/Vector Platzhalter)
   /query/aql:
     post:
-      summary: AQL Query (FOR/FILTER/SORT/LIMIT/RETURN)
+      summary: AQL Query (FOR/FILTER/SORT/LIMIT/RETURN, LET, einfacher JOIN)
       operationId: postAqlQuery
       tags: [query]
       description: |
-        Führt eine AQL-Query aus. Unterstützt relationale Abfragen (FOR/FILTER/SORT/LIMIT/RETURN)
-        sowie Cursor-basierte Pagination über `use_cursor`/`cursor`.
+        Führt eine AQL-Query aus. Unterstützt relationale Abfragen (FOR/FILTER/SORT/LIMIT/RETURN),
+        LET‑Bindings für Projektionen und einfache Equality‑Joins über zwei FOR‑Klauseln.
+        Cursor‑basierte Pagination ist über `use_cursor`/`cursor` verfügbar.
       requestBody:
         required: true
         content:
@@ -493,6 +620,23 @@ paths:
                 value:
                   query: 'FOR user IN users SORT user.name ASC LIMIT 10 RETURN user'
                   use_cursor: true
+              join_equality:
+                summary: Einfacher Equality-Join über zwei FORs
+                value:
+                  query: |
+                    FOR u IN users
+                      FOR o IN orders
+                      FILTER u._key == o.user_id
+                      RETURN u
+                  allow_full_scan: true
+              let_projection:
+                summary: LET-Binding und Objekt-Projektion
+                value:
+                  query: |
+                    FOR u IN users
+                      LET c = u.city
+                      RETURN { name: u.name, city: c }
+                  allow_full_scan: true
       responses:
         '200':
           description: Abfrage erfolgreich
@@ -534,8 +678,229 @@ paths:
                 $ref: '#/components/schemas/GraphTraverseResponse'
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /vector/search:
+    post:
+      summary: Vektor-KNN Suche
+      operationId: vectorSearch
+      tags: [vector]
+      description: |
+        Führt eine k-NN Suche im Vektorindex aus. Optional Cursor‑Pagination mit `use_cursor` und `cursor`.
+        Ohne Cursor werden die Ergebnisse im Legacy-Format zurückgegeben.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VectorSearchRequest'
+      responses:
+        '200':
+          description: Suchergebnisse
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/VectorSearchResponseLegacy'
+                  - $ref: '#/components/schemas/VectorSearchPaginatedResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /vector/batch_insert:
+    post:
+      summary: Vektoren im Batch einfügen
+      operationId: vectorBatchInsert
+      tags: [vector]
+      description: |
+        Fügt mehrere Vektor-Entities in den aktuellen Vektorindex ein. Das Feld mit dem Vektor
+        kann über `vector_field` angegeben werden (Default `embedding`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VectorBatchInsertRequest'
+      responses:
+        '200':
+          description: Batch-Ergebnis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorBatchInsertResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /vector/by-filter:
+    delete:
+      summary: Vektoren per Filter löschen (PKs oder Prefix)
+      operationId: vectorDeleteByFilter
+      tags: [vector]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VectorDeleteByFilterRequest'
+      responses:
+        '200':
+          description: Anzahl gelöschter Einträge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorDeleteByFilterResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /vector/index/save:
+    post:
+      summary: Vektorindex speichern
+      operationId: vectorIndexSave
+      tags: [vector]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VectorIndexDirRequest' }
+      responses:
+        '200':
+          description: Index gespeichert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VectorIndexOpResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /vector/index/load:
+    post:
+      summary: Vektorindex laden
+      operationId: vectorIndexLoad
+      tags: [vector]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VectorIndexDirRequest' }
+      responses:
+        '200':
+          description: Index geladen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VectorIndexOpResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /vector/index/config:
+    get:
+      summary: Vektorindex Konfiguration lesen
+      operationId: vectorIndexConfigGet
+      tags: [vector]
+      responses:
+        '200':
+          description: Aktuelle Konfiguration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VectorIndexConfig' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      summary: Vektorindex Konfiguration ändern
+      operationId: vectorIndexConfigPut
+      tags: [vector]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                efSearch:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+      responses:
+        '200':
+          description: Konfiguration aktualisiert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  updated_fields: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /vector/index/stats:
+    get:
+      summary: Vektorindex Statistiken
+      operationId: vectorIndexStats
+      tags: [vector]
+      responses:
+        '200':
+          description: Status und Kennzahlen des Vektorindex
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/VectorIndexConfig'
+                  - type: object
+                    properties:
+                      vectorCount: { type: integer }
+        '500': { $ref: '#/components/responses/InternalError' }
 components:
   schemas:
+    ContentMeta:
+      type: object
+      properties:
+        id: { type: string }
+        mime_type: { type: string }
+        category: { type: integer, description: "Enum: TEXT=0, IMAGE=1, AUDIO=2, VIDEO=3, GEO=4, CAD=5, ARCHIVE=6, STRUCTURED=7, BINARY=8, UNKNOWN=9" }
+        original_filename: { type: string }
+        size_bytes: { type: integer, format: int64 }
+        created_at: { type: integer, format: int64 }
+        modified_at: { type: integer, format: int64 }
+        hash_sha256: { type: string }
+        text_extracted: { type: boolean }
+        chunked: { type: boolean }
+        indexed: { type: boolean }
+        chunk_count: { type: integer }
+        embedding_dim: { type: integer }
+        extracted_metadata: { type: object, additionalProperties: true }
+        user_metadata: { type: object, additionalProperties: true }
+        tags:
+          type: array
+          items: { type: string }
+        parent_id: { type: string }
+        child_ids:
+          type: array
+          items: { type: string }
+    ChunkMeta:
+      type: object
+      properties:
+        id: { type: string }
+        content_id: { type: string }
+        seq_num: { type: integer }
+        chunk_type: { type: string }
+        text: { type: string }
+        data: { type: object, additionalProperties: true }
+        blob_ref: { type: string }
+        start_offset: { type: integer }
+        end_offset: { type: integer }
+        embedding:
+          type: array
+          items: { type: number }
+        embedding_indexed: { type: boolean }
+        created_at: { type: integer, format: int64 }
+    ContentImportRequest:
+      type: object
+      properties:
+        content: { $ref: '#/components/schemas/ContentMeta' }
+        chunks:
+          type: array
+          items: { $ref: '#/components/schemas/ChunkMeta' }
+        edges:
+          type: array
+          items: { type: object, additionalProperties: true }
+        blob: { type: string, description: "Roh-Blob als String" }
+        blob_base64: { type: string, description: "Base64-kodierter Blob (im MVP nicht automatisch dekodiert)" }
+      required: [content]
+    ContentImportResponse:
+      type: object
+      properties:
+        status: { type: string }
+        content_id: { type: string }
+      required: [status, content_id]
     HealthResponse:
       type: object
       properties:
@@ -778,7 +1143,7 @@ components:
       properties:
         mode:
           type: string
-          description: index_parallel | index_optimized | index_rangeaware | full_scan_fallback
+          description: index_parallel | index_optimized | range_aware | full_scan_fallback
         order:
           type: array
           items:
@@ -795,6 +1160,9 @@ components:
               value: { type: string }
               estimatedCount: { type: integer }
               capped: { type: boolean }
+        let_pre_extracted:
+          type: boolean
+          description: true, wenn LET-in-FILTER vor der Übersetzung extrahiert wurde
     AqlStandardResponse:
       type: object
       properties:
@@ -852,6 +1220,119 @@ components:
           items: { type: string }
           description: Liste der besuchten Knoten in BFS-Reihenfolge
       required: [start_vertex, max_depth, visited_count, visited]
+    VectorSearchRequest:
+      type: object
+      properties:
+        vector:
+          type: array
+          items: { type: number }
+          description: Query-Vektor
+        k:
+          type: integer
+          minimum: 1
+          default: 10
+        use_cursor:
+          type: boolean
+          default: false
+          description: Aktiviert Cursor-Pagination (ändert das Response-Format)
+        cursor:
+          type: string
+          nullable: true
+          description: Cursor-Token (Offset) der vorherigen Seite
+      required: [vector]
+    VectorSearchHit:
+      type: object
+      properties:
+        pk: { type: string }
+        distance: { type: number }
+    VectorSearchResponseLegacy:
+      type: object
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/VectorSearchHit' }
+        k: { type: integer }
+        count: { type: integer }
+      required: [results, k, count]
+    VectorSearchPaginatedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/VectorSearchHit' }
+        batch_size: { type: integer }
+        has_more: { type: boolean }
+        next_cursor: { type: string }
+      required: [items, batch_size, has_more]
+    VectorBatchInsertItem:
+      type: object
+      properties:
+        pk: { type: string }
+        vector:
+          type: array
+          items: { type: number }
+        fields:
+          type: object
+          additionalProperties: true
+      required: [pk, vector]
+    VectorBatchInsertRequest:
+      type: object
+      properties:
+        vector_field:
+          type: string
+          default: embedding
+          description: Feldname des Vektors in der Entity
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/VectorBatchInsertItem' }
+      required: [items]
+    VectorBatchInsertResponse:
+      type: object
+      properties:
+        inserted: { type: integer }
+        errors: { type: integer }
+        objectName: { type: string }
+        dimension: { type: integer }
+      required: [inserted, errors]
+    VectorDeleteByFilterRequest:
+      type: object
+      properties:
+        pks:
+          type: array
+          items: { type: string }
+        prefix:
+          type: string
+      oneOf:
+        - required: [pks]
+        - required: [prefix]
+    VectorDeleteByFilterResponse:
+      type: object
+      properties:
+        deleted: { type: integer }
+        method: { type: string, enum: [pks, prefix] }
+        prefix: { type: string }
+      required: [deleted, method]
+    VectorIndexDirRequest:
+      type: object
+      properties:
+        directory: { type: string }
+      required: [directory]
+    VectorIndexOpResponse:
+      type: object
+      properties:
+        message: { type: string }
+        directory: { type: string }
+      required: [message, directory]
+    VectorIndexConfig:
+      type: object
+      properties:
+        objectName: { type: string }
+        dimension: { type: integer }
+        metric: { type: string, enum: [L2, COSINE] }
+        efSearch: { type: integer }
+        M: { type: integer }
+        efConstruction: { type: integer }
+        hnswEnabled: { type: boolean }
   responses:
     BadRequest:
       description: Ungültige Anforderung

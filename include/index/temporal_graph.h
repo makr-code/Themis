@@ -88,6 +88,95 @@ struct TemporalFilter {
     }
 };
 
+/**
+ * @brief Time-Range Filter for querying edges valid during a time window
+ * 
+ * Checks if edge has ANY overlap with the query time range [range_start, range_end].
+ * Edge is included if: edge.valid_from <= range_end AND edge.valid_to >= range_start
+ */
+struct TimeRangeFilter {
+    std::optional<int64_t> range_start_ms;  // Query window start (null = unbounded past)
+    std::optional<int64_t> range_end_ms;    // Query window end (null = unbounded future)
+    
+    /**
+     * @brief Check if edge overlaps with query time range
+     * @param valid_from Edge validity start
+     * @param valid_to Edge validity end
+     * @return true if edge has any temporal overlap with query range
+     */
+    bool hasOverlap(std::optional<int64_t> valid_from, std::optional<int64_t> valid_to) const {
+        // No range filter = include all edges
+        if (!range_start_ms.has_value() && !range_end_ms.has_value()) {
+            return true;
+        }
+        
+        // Edge starts after range ends: no overlap
+        if (range_end_ms.has_value() && valid_from.has_value() && *valid_from > *range_end_ms) {
+            return false;
+        }
+        
+        // Edge ends before range starts: no overlap
+        if (range_start_ms.has_value() && valid_to.has_value() && *valid_to < *range_start_ms) {
+            return false;
+        }
+        
+        // Otherwise: overlap exists
+        return true;
+    }
+    
+    /**
+     * @brief Check if edge is fully contained within query time range
+     * @param valid_from Edge validity start
+     * @param valid_to Edge validity end
+     * @return true if edge is completely within query range
+     */
+    bool fullyContains(std::optional<int64_t> valid_from, std::optional<int64_t> valid_to) const {
+        // Check lower bound: edge starts after or at range start
+        if (range_start_ms.has_value()) {
+            if (!valid_from.has_value() || *valid_from < *range_start_ms) {
+                return false;
+            }
+        }
+        
+        // Check upper bound: edge ends before or at range end
+        if (range_end_ms.has_value()) {
+            if (!valid_to.has_value() || *valid_to > *range_end_ms) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * @brief Create filter for time range
+     */
+    static TimeRangeFilter between(int64_t start_ms, int64_t end_ms) {
+        return TimeRangeFilter{start_ms, end_ms};
+    }
+    
+    /**
+     * @brief Create filter for time range from start to unbounded future
+     */
+    static TimeRangeFilter since(int64_t start_ms) {
+        return TimeRangeFilter{start_ms, std::nullopt};
+    }
+    
+    /**
+     * @brief Create filter for time range from unbounded past to end
+     */
+    static TimeRangeFilter until(int64_t end_ms) {
+        return TimeRangeFilter{std::nullopt, end_ms};
+    }
+    
+    /**
+     * @brief Create filter that includes all edges (no filtering)
+     */
+    static TimeRangeFilter all() {
+        return TimeRangeFilter{std::nullopt, std::nullopt};
+    }
+};
+
 } // namespace themis
 
 #endif // THEMIS_TEMPORAL_GRAPH_H

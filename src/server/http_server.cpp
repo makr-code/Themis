@@ -35,6 +35,9 @@
 // Sprint B features
 #include "timeseries/timeseries.h"
 
+// Sprint C features
+#include "index/adaptive_index.h"
+
 // Now include http_server.h which has forward declarations
 #include "server/http_server.h"
 
@@ -116,11 +119,24 @@ HttpServer::HttpServer(
     // Initialize Changefeed (Sprint A CDC) if feature enabled
     if (config_.feature_cdc) {
         cdc_cf_handle_ = nullptr; // Use default CF
-        changefeed_ = std::make_unique<Changefeed>(
+        changefeed_ = std::make_shared<Changefeed>(
             storage_->getRawDB(),
             cdc_cf_handle_
         );
         THEMIS_INFO("Changefeed initialized using default CF");
+        
+        // Initialize SSE Connection Manager for streaming
+        SseConnectionManager::ConnectionConfig sse_config;
+        sse_config.heartbeat_interval_ms = 15000;
+        sse_config.max_buffered_events = 1000;
+        sse_config.event_poll_interval_ms = 500;
+        
+        sse_manager_ = std::make_unique<SseConnectionManager>(
+            changefeed_,
+            ioc_,
+            sse_config
+        );
+        THEMIS_INFO("SSE Connection Manager initialized");
     }
     
     // Initialize Time-Series Store (Sprint B) if feature enabled
@@ -132,6 +148,10 @@ HttpServer::HttpServer(
         );
         THEMIS_INFO("Time-Series Store initialized using default CF");
     }
+    
+    // Initialize Adaptive Index Manager (Sprint C) - always enabled
+    adaptive_index_ = std::make_unique<AdaptiveIndexManager>(storage_->getRawDB());
+    THEMIS_INFO("Adaptive Index Manager initialized");
 }
 
 HttpServer::~HttpServer() {
@@ -288,6 +308,8 @@ namespace {
         IndexReindexPost,
         GraphTraversePost,
         VectorSearchPost,
+    VectorBatchInsertPost,
+    VectorDeleteByFilterDelete,
         // Beta endpoints
         CacheQueryPost,
         CachePutPost,
@@ -296,10 +318,18 @@ namespace {
         LlmInteractionGetList,
         LlmInteractionGetById,
         ChangefeedGet,
+        ChangefeedStreamSse,
+    ChangefeedStatsGet,
+    ChangefeedRetentionPost,
         // Sprint B
         TimeSeriesPut,
         TimeSeriesQuery,
         TimeSeriesAggregate,
+        // Sprint C
+        IndexSuggestionsGet,
+        IndexPatternsGet,
+        IndexRecordPatternPost,
+        IndexClearPatternsDelete,
         VectorIndexSavePost,
         VectorIndexLoadPost,
         VectorIndexConfigGet,
@@ -325,11 +355,15 @@ namespace {
     Route classifyRoute(const http::request<http::string_body>& req) {
         const auto method = req.method();
         const std::string target = std::string(req.target());
+        // Normalize path by stripping query string to allow matching endpoints with params
+        std::string path_only = target;
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
 
         if (target == "/" || target == "/health") return Route::Health;
         if (target == "/stats" && method == http::verb::get) return Route::Stats;
         if (target == "/metrics" && method == http::verb::get) return Route::Metrics;
-    if (target == "/config" && method == http::verb::get) return Route::Config;
+    if (target == "/config" && (method == http::verb::get || method == http::verb::post)) return Route::Config;
     if (target == "/admin/backup" && method == http::verb::post) return Route::AdminBackupPost;
     if (target == "/admin/restore" && method == http::verb::post) return Route::AdminRestorePost;
 
@@ -351,18 +385,29 @@ namespace {
         if (target == "/index/reindex" && method == http::verb::post) return Route::IndexReindexPost;
         if (target == "/graph/traverse" && method == http::verb::post) return Route::GraphTraversePost;
         if (target == "/vector/search" && method == http::verb::post) return Route::VectorSearchPost;
+    if (target == "/vector/batch_insert" && method == http::verb::post) return Route::VectorBatchInsertPost;
+    if (target == "/vector/by-filter" && method == http::verb::delete_) return Route::VectorDeleteByFilterDelete;
         // Sprint A beta endpoints
         if (target == "/cache/query" && method == http::verb::post) return Route::CacheQueryPost;
         if (target == "/cache/put" && method == http::verb::post) return Route::CachePutPost;
         if (target == "/cache/stats" && method == http::verb::get) return Route::CacheStatsGet;
         if (target == "/llm/interaction" && method == http::verb::post) return Route::LlmInteractionPost;
-        if (target == "/llm/interaction" && method == http::verb::get) return Route::LlmInteractionGetList;
-        if (target.rfind("/llm/interaction/", 0) == 0 && method == http::verb::get) return Route::LlmInteractionGetById;
-        if (target == "/changefeed" && method == http::verb::get) return Route::ChangefeedGet;
+    if (target == "/llm/interaction" && method == http::verb::get) return Route::LlmInteractionGetList;
+    if (target.rfind("/llm/interaction/", 0) == 0 && method == http::verb::get) return Route::LlmInteractionGetById;
+    // Changefeed endpoint should match even with query parameters
+    if (path_only == "/changefeed" && method == http::verb::get) return Route::ChangefeedGet;
+    if (path_only == "/changefeed/stream" && method == http::verb::get) return Route::ChangefeedStreamSse;
+    if (path_only == "/changefeed/stats" && method == http::verb::get) return Route::ChangefeedStatsGet;
+    if (path_only == "/changefeed/retention" && method == http::verb::post) return Route::ChangefeedRetentionPost;
         // Sprint B endpoints
         if (target == "/ts/put" && method == http::verb::post) return Route::TimeSeriesPut;
         if (target == "/ts/query" && method == http::verb::post) return Route::TimeSeriesQuery;
         if (target == "/ts/aggregate" && method == http::verb::post) return Route::TimeSeriesAggregate;
+        // Sprint C endpoints
+        if (target.find("/index/suggestions") == 0 && method == http::verb::get) return Route::IndexSuggestionsGet;
+        if (target.find("/index/patterns") == 0 && method == http::verb::get) return Route::IndexPatternsGet;
+        if (target == "/index/record-pattern" && method == http::verb::post) return Route::IndexRecordPatternPost;
+        if (target == "/index/patterns" && method == http::verb::delete_) return Route::IndexClearPatternsDelete;
         if (target == "/vector/index/save" && method == http::verb::post) return Route::VectorIndexSavePost;
         if (target == "/vector/index/load" && method == http::verb::post) return Route::VectorIndexLoadPost;
         if (target == "/vector/index/config" && method == http::verb::get) return Route::VectorIndexConfigGet;
@@ -473,6 +518,12 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::VectorSearchPost:
             response = handleVectorSearch(req);
             break;
+        case Route::VectorBatchInsertPost:
+            response = handleVectorBatchInsert(req);
+            break;
+        case Route::VectorDeleteByFilterDelete:
+            response = handleVectorDeleteByFilter(req);
+            break;
         case Route::CacheQueryPost:
             response = handleCacheQuery(req);
             break;
@@ -494,6 +545,15 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::ChangefeedGet:
             response = handleChangefeedGet(req);
             break;
+        case Route::ChangefeedStreamSse:
+            response = handleChangefeedStreamSse(req);
+            break;
+        case Route::ChangefeedStatsGet:
+            response = handleChangefeedStats(req);
+            break;
+        case Route::ChangefeedRetentionPost:
+            response = handleChangefeedRetention(req);
+            break;
         case Route::TimeSeriesPut:
             response = handleTimeSeriesPut(req);
             break;
@@ -502,6 +562,18 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::TimeSeriesAggregate:
             response = handleTimeSeriesAggregate(req);
+            break;
+        case Route::IndexSuggestionsGet:
+            response = handleIndexSuggestions(req);
+            break;
+        case Route::IndexPatternsGet:
+            response = handleIndexPatterns(req);
+            break;
+        case Route::IndexRecordPatternPost:
+            response = handleIndexRecordPattern(req);
+            break;
+        case Route::IndexClearPatternsDelete:
+            response = handleIndexClearPatterns(req);
             break;
         case Route::VectorIndexSavePost:
             response = handleVectorIndexSave(req);
@@ -644,12 +716,106 @@ http::response<http::string_body> HttpServer::handleConfig(
     const http::request<http::string_body>& req
 ) {
     try {
+        // Allow POST to update runtime config (Hot-Reload)
+        if (req.method() == http::verb::post) {
+            json body;
+            try {
+                body = json::parse(req.body());
+            } catch (...) {
+                return makeErrorResponse(http::status::bad_request, "Invalid JSON body", req);
+            }
+            
+            // 1) Logging config (level, format)
+            if (body.contains("logging") && body["logging"].is_object()) {
+                const auto& lg = body["logging"];
+                // level
+                if (lg.contains("level")) {
+                    auto lvl = lg["level"].get<std::string>();
+                    auto mapped = themis::utils::Logger::levelFromString(lvl);
+                    themis::utils::Logger::setLevel(mapped);
+                    THEMIS_INFO("Hot-reload: logging.level set to {}", lvl);
+                }
+                // format
+                if (lg.contains("format")) {
+                    auto fmt = lg["format"].get<std::string>();
+                    std::string pattern;
+                    if (fmt == "json") {
+                        // Minimal JSON line pattern
+                        pattern = "{\"ts\":\"%Y-%m-%dT%H:%M:%S.%e\",\"level\":\"%l\",\"thread\":%t,\"msg\":\"%v\"}";
+                    } else {
+                        // Default text pattern
+                        pattern = "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] [thread %t] %v";
+                    }
+                    themis::utils::Logger::setPattern(pattern);
+                    THEMIS_INFO("Hot-reload: logging.format set to {}", fmt);
+                }
+            }
+            
+            // 2) Request timeout
+            if (body.contains("request_timeout_ms")) {
+                auto timeout = body["request_timeout_ms"].get<uint32_t>();
+                if (timeout >= 1000 && timeout <= 300000) { // 1s - 5min range
+                    config_.request_timeout_ms = timeout;
+                    THEMIS_INFO("Hot-reload: request_timeout_ms set to {}", timeout);
+                } else {
+                    return makeErrorResponse(http::status::bad_request, "request_timeout_ms must be 1000-300000", req);
+                }
+            }
+            
+            // 3) Feature flags (runtime toggle for beta features)
+            if (body.contains("features") && body["features"].is_object()) {
+                const auto& features = body["features"];
+                if (features.contains("semantic_cache")) {
+                    bool enabled = features["semantic_cache"].get<bool>();
+                    config_.feature_semantic_cache = enabled;
+                    THEMIS_INFO("Hot-reload: feature_semantic_cache set to {}", enabled);
+                }
+                if (features.contains("llm_store")) {
+                    bool enabled = features["llm_store"].get<bool>();
+                    config_.feature_llm_store = enabled;
+                    THEMIS_INFO("Hot-reload: feature_llm_store set to {}", enabled);
+                }
+                if (features.contains("cdc")) {
+                    bool enabled = features["cdc"].get<bool>();
+                    config_.feature_cdc = enabled;
+                    THEMIS_INFO("Hot-reload: feature_cdc set to {}", enabled);
+                }
+                if (features.contains("timeseries")) {
+                    bool enabled = features["timeseries"].get<bool>();
+                    config_.feature_timeseries = enabled;
+                    THEMIS_INFO("Hot-reload: feature_timeseries set to {}", enabled);
+                }
+            }
+            
+            // 4) CDC Retention policy (auto-cleanup threshold)
+            if (body.contains("cdc_retention_hours")) {
+                if (!config_.feature_cdc || !changefeed_) {
+                    return makeErrorResponse(http::status::bad_request, "CDC not enabled", req);
+                }
+                auto hours = body["cdc_retention_hours"].get<uint32_t>();
+                if (hours < 1 || hours > 8760) { // 1 hour - 1 year
+                    return makeErrorResponse(http::status::bad_request, "cdc_retention_hours must be 1-8760", req);
+                }
+                // Store retention policy (Changefeed class would need to expose this)
+                // For MVP, we'll just log it - actual auto-cleanup requires background task
+                THEMIS_INFO("Hot-reload: cdc_retention_hours set to {} (requires manual /changefeed/retention call)", hours);
+            }
+            
+            // Respond with updated config
+        }
+
         // Build comprehensive config response
         json response = {
             {"server", {
                 {"port", config_.port},
                 {"threads", config_.num_threads},
                 {"request_timeout_ms", config_.request_timeout_ms}
+            }},
+            {"features", {
+                {"semantic_cache", config_.feature_semantic_cache},
+                {"llm_store", config_.feature_llm_store},
+                {"cdc", config_.feature_cdc},
+                {"timeseries", config_.feature_timeseries}
             }},
             {"rocksdb", {
                 {"db_path", storage_->getConfig().db_path},
@@ -850,6 +1016,35 @@ http::response<http::string_body> HttpServer::handleMetrics(
     out += "# HELP vccdb_page_fetch_time_ms_count Total number of cursor pages fetched\n";
     out += "# TYPE vccdb_page_fetch_time_ms_count counter\n";
     out += "vccdb_page_fetch_time_ms_count " + std::to_string(page_count_.load(std::memory_order_relaxed)) + "\n";
+
+        // Vector Index metrics
+        if (vector_index_) {
+            uint64_t vector_count = vector_index_->getVectorCount();
+            int dimension = vector_index_->getDimension();
+            bool hnsw_enabled = vector_index_->isHnswEnabled();
+            
+            out += "# HELP vccdb_vector_index_vectors_total Total number of vectors in the index\n";
+            out += "# TYPE vccdb_vector_index_vectors_total gauge\n";
+            out += "vccdb_vector_index_vectors_total " + std::to_string(vector_count) + "\n";
+            
+            out += "# HELP vccdb_vector_index_dimension Dimension of vectors in the index\n";
+            out += "# TYPE vccdb_vector_index_dimension gauge\n";
+            out += "vccdb_vector_index_dimension " + std::to_string(dimension) + "\n";
+            
+            out += "# HELP vccdb_vector_index_hnsw_enabled HNSW index enabled (1=yes, 0=no)\n";
+            out += "# TYPE vccdb_vector_index_hnsw_enabled gauge\n";
+            out += "vccdb_vector_index_hnsw_enabled " + std::to_string(hnsw_enabled ? 1 : 0) + "\n";
+            
+            if (hnsw_enabled) {
+                out += "# HELP vccdb_vector_index_ef_search Current efSearch parameter for HNSW\n";
+                out += "# TYPE vccdb_vector_index_ef_search gauge\n";
+                out += "vccdb_vector_index_ef_search " + std::to_string(vector_index_->getEfSearch()) + "\n";
+                
+                out += "# HELP vccdb_vector_index_m HNSW M parameter (neighbors per layer)\n";
+                out += "# TYPE vccdb_vector_index_m gauge\n";
+                out += "vccdb_vector_index_m " + std::to_string(vector_index_->getM()) + "\n";
+            }
+        }
 
         // Build plain text response with proper content-type
         http::response<http::string_body> res{http::status::ok, req.version()};
@@ -1266,6 +1461,266 @@ http::response<http::string_body> HttpServer::handleChangefeedGet(
         span.recordError(e.what());
         span.setStatus(false, "internal_error");
         return makeErrorResponse(http::status::internal_server_error, std::string("Error: ") + e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
+    const http::request<http::string_body>& req
+) {
+    if (!config_.feature_cdc) {
+        return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
+    }
+    
+    auto span = Tracer::startSpan("handleChangefeedStreamSse");
+    span.setAttribute("http.path", "/changefeed/stream");
+    
+    try {
+        // Parse query parameters
+        uint64_t from_seq = 0;
+        std::string key_prefix;
+    bool keep_alive = true; // New parameter for production streaming
+    int max_seconds = 30;   // New optional limit for testability
+    int heartbeat_ms_override = -1; // Optional per-request heartbeat interval
+        
+        std::string target = std::string(req.target());
+        size_t query_pos = target.find('?');
+        if (query_pos != std::string::npos) {
+            std::string query_str = target.substr(query_pos + 1);
+            
+            // Parse from_seq
+            size_t from_pos = query_str.find("from_seq=");
+            if (from_pos != std::string::npos) {
+                size_t from_end = query_str.find('&', from_pos);
+                std::string from_str = query_str.substr(from_pos + 9,
+                    from_end == std::string::npos ? std::string::npos : from_end - from_pos - 9);
+                from_seq = std::stoull(from_str);
+            }
+            
+            // Parse key_prefix
+            size_t key_pos = query_str.find("key_prefix=");
+            if (key_pos != std::string::npos) {
+                size_t key_end = query_str.find('&', key_pos);
+                key_prefix = query_str.substr(key_pos + 11,
+                    key_end == std::string::npos ? std::string::npos : key_end - key_pos - 11);
+            }
+            
+            // Parse keep_alive (default true for production)
+            size_t ka_pos = query_str.find("keep_alive=");
+            if (ka_pos != std::string::npos) {
+                size_t ka_end = query_str.find('&', ka_pos);
+                std::string ka_str = query_str.substr(ka_pos + 11,
+                    ka_end == std::string::npos ? std::string::npos : ka_end - ka_pos - 11);
+                keep_alive = (ka_str == "true" || ka_str == "1");
+            }
+
+            // Parse max_seconds (bounds 1..60)
+            size_t ms_pos = query_str.find("max_seconds=");
+            if (ms_pos != std::string::npos) {
+                size_t ms_end = query_str.find('&', ms_pos);
+                std::string ms_str = query_str.substr(ms_pos + 12,
+                    ms_end == std::string::npos ? std::string::npos : ms_end - ms_pos - 12);
+                try {
+                    int v = std::stoi(ms_str);
+                    if (v < 1) v = 1; if (v > 60) v = 60;
+                    max_seconds = v;
+                } catch (...) {
+                    // ignore parse error, keep default
+                }
+            }
+
+            // Parse heartbeat_ms (test override)
+            size_t hb_pos = query_str.find("heartbeat_ms=");
+            if (hb_pos != std::string::npos) {
+                size_t hb_end = query_str.find('&', hb_pos);
+                std::string hb_str = query_str.substr(hb_pos + 13,
+                    hb_end == std::string::npos ? std::string::npos : hb_end - hb_pos - 13);
+                try {
+                    int v = std::stoi(hb_str);
+                    if (v < 100) v = 100; // minimum 100ms
+                    if (v > 60000) v = 60000;
+                    heartbeat_ms_override = v;
+                } catch (...) {
+                    // ignore parse error
+                }
+            }
+        }
+        
+        // Build SSE response
+        http::response<http::string_body> res{http::status::ok, req.version()};
+        res.set(http::field::server, "THEMIS/0.1.0");
+        res.set(http::field::content_type, "text/event-stream");
+        res.set(http::field::cache_control, "no-cache");
+        res.set(http::field::connection, "keep-alive");
+        res.keep_alive(true);
+        
+        std::ostringstream body;
+        
+        if (keep_alive && sse_manager_) {
+            // Production mode: Register connection for streaming
+            // Note: Current Beast setup limits us to batch-based streaming
+            // Full keep-alive requires custom async write loop (see TODO in docs)
+            
+            uint64_t conn_id = sse_manager_->registerConnection(from_seq, key_prefix);
+            span.setAttribute("sse.connection_id", static_cast<int64_t>(conn_id));
+            
+            // Stream events for limited duration (configurable for tests)
+            auto start = std::chrono::steady_clock::now();
+            const auto max_duration = std::chrono::seconds(max_seconds);
+            size_t total_events = 0;
+            size_t heartbeats = 0;
+            
+            auto last_hb = start;
+            while (std::chrono::steady_clock::now() - start < max_duration) {
+                // Poll for new events
+                auto events = sse_manager_->pollEvents(conn_id, 100);
+                
+                if (!events.empty()) {
+                    for (const auto& event_line : events) {
+                        body << event_line;
+                        total_events++;
+                    }
+                } else {
+                    bool sent_hb = false;
+                    if (heartbeat_ms_override > 0) {
+                        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - last_hb
+                        ).count();
+                        if (elapsed >= heartbeat_ms_override) {
+                            body << ": heartbeat\n\n";
+                            sse_manager_->recordHeartbeat(conn_id);
+                            heartbeats++;
+                            last_hb = std::chrono::steady_clock::now();
+                            sent_hb = true;
+                        }
+                    }
+                    if (!sent_hb && sse_manager_->needsHeartbeat(conn_id)) {
+                        body << ": heartbeat\n\n";
+                        sse_manager_->recordHeartbeat(conn_id);
+                        heartbeats++;
+                    }
+                }
+                
+                // Sleep briefly to avoid busy-wait
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            
+            // Cleanup connection
+            sse_manager_->unregisterConnection(conn_id);
+            
+            span.setAttribute("sse.total_events", static_cast<int64_t>(total_events));
+            span.setAttribute("sse.heartbeats", static_cast<int64_t>(heartbeats));
+            span.setAttribute("sse.duration_s", static_cast<int64_t>(max_seconds));
+            
+            THEMIS_INFO("SSE stream completed: conn={}, events={}, heartbeats={}",
+                conn_id, total_events, heartbeats);
+            
+        } else {
+            // MVP mode: Send one batch and close (backward compatible)
+            Changefeed::ListOptions options;
+            options.from_sequence = from_seq;
+            options.limit = 1000;
+            
+            if (!key_prefix.empty()) {
+                options.key_prefix = key_prefix;
+            }
+            
+            auto events = changefeed_->listEvents(options);
+            
+            for (const auto& event : events) {
+                body << "data: " << event.toJson().dump() << "\n\n";
+            }
+            
+            if (events.empty()) {
+                body << ": heartbeat\n\n";
+            }
+            
+            span.setAttribute("sse.mode", "mvp_batch");
+            span.setAttribute("events.count", static_cast<int64_t>(events.size()));
+        }
+        
+        res.body() = body.str();
+        res.prepare_payload();
+        
+        span.setStatus(true);
+        return res;
+        
+    } catch (const std::exception& e) {
+        span.recordError(e.what());
+        span.setStatus(false, "internal_error");
+        return makeErrorResponse(http::status::internal_server_error, std::string("Error: ") + e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleChangefeedStats(
+    const http::request<http::string_body>& req
+) {
+    if (!config_.feature_cdc) {
+        return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
+    }
+
+    auto span = Tracer::startSpan("handleChangefeedStats");
+    span.setAttribute("http.path", "/changefeed/stats");
+
+    try {
+        auto stats = changefeed_->getStats();
+        nlohmann::json response = {
+            {"total_events", stats.total_events},
+            {"latest_sequence", stats.latest_sequence},
+            {"total_size_bytes", stats.total_size_bytes}
+        };
+        span.setAttribute("events.total", static_cast<int64_t>(stats.total_events));
+        span.setAttribute("events.latest_seq", static_cast<int64_t>(stats.latest_sequence));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+    } catch (const std::exception& e) {
+        span.recordError(e.what());
+        span.setStatus(false, "internal_error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleChangefeedRetention(
+    const http::request<http::string_body>& req
+) {
+    if (!config_.feature_cdc) {
+        return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
+    }
+
+    auto span = Tracer::startSpan("handleChangefeedRetention");
+    span.setAttribute("http.path", "/changefeed/retention");
+
+    try {
+        auto body = nlohmann::json::parse(req.body());
+        // Support either before_sequence (explicit) or max_age_ms (relative)
+        uint64_t before_seq = 0;
+        if (body.contains("before_sequence")) {
+            before_seq = body["before_sequence"].get<uint64_t>();
+        } else if (body.contains("max_age_ms")) {
+            // Compute a cut based on timestamp: scan stats.latest_sequence backwards is expensive;
+            // MVP: if max_age_ms is provided, require also current latest_sequence from client or ignore.
+            // For simplicity, we ignore timestamp-based deletion in MVP and return 400 if latest not provided.
+            return makeErrorResponse(http::status::bad_request, "Only 'before_sequence' is supported for retention in MVP", req);
+        } else {
+            return makeErrorResponse(http::status::bad_request, "Provide 'before_sequence' (uint64)", req);
+        }
+
+        span.setAttribute("retention.before_seq", static_cast<int64_t>(before_seq));
+        auto deleted = changefeed_->deleteOldEvents(before_seq);
+        nlohmann::json response = {
+            {"deleted", deleted},
+            {"before_sequence", before_seq}
+        };
+        span.setAttribute("retention.deleted", static_cast<int64_t>(deleted));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+    } catch (const nlohmann::json::exception& e) {
+        span.recordError(e.what());
+        span.setStatus(false, "json_parse_error");
+        return makeErrorResponse(http::status::bad_request, std::string("JSON error: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        span.recordError(e.what());
+        span.setStatus(false, "internal_error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
 }
 
@@ -1743,10 +2198,179 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return makeErrorResponse(http::status::bad_request, error_msg, req);
         }
         parseSpan.setStatus(true);
-        
-    // Translate AST to Query (relational or traversal)
+
+        // EARLY: Join-Erkennung vor Translation (Translator unterstützt keine Field==Field Prädikate)
+        if (parse_result.query && parse_result.query->traversal == nullptr && !parse_result.query->for_nodes.empty() && parse_result.query->for_nodes.size() >= 2) {
+            // Wiederverwendung der Join-Logik wie weiter unten
+            auto joinSpan = Tracer::startSpan("aql.join");
+            const auto& f1 = parse_result.query->for_nodes[0];
+            const auto& f2 = parse_result.query->for_nodes[1];
+            const std::string var1 = f1.variable;
+            const std::string var2 = f2.variable;
+            const std::string table1 = f1.collection;
+            const std::string table2 = f2.collection;
+            joinSpan.setAttribute("join.var_left", var1);
+            joinSpan.setAttribute("join.var_right", var2);
+            joinSpan.setAttribute("join.table_left", table1);
+            joinSpan.setAttribute("join.table_right", table2);
+
+            using namespace themis::query;
+            std::function<std::string(const std::shared_ptr<Expression>&, std::string&)> fieldFromFA = [&](const std::shared_ptr<Expression>& expr, std::string& rootVar)->std::string {
+                auto* fa = dynamic_cast<FieldAccessExpr*>(expr.get());
+                if (!fa) return std::string();
+                std::vector<std::string> parts; parts.push_back(fa->field);
+                auto* cur = fa->object.get();
+                while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) { parts.push_back(fa2->field); cur = fa2->object.get(); }
+                auto* root = dynamic_cast<VariableExpr*>(cur); if (!root) return std::string();
+                rootVar = root->name; std::string col; for (auto it = parts.rbegin(); it != parts.rend(); ++it) { if (!col.empty()) col += "."; col += *it; } return col;
+            };
+            auto literalToString = [&](const LiteralValue& value)->std::string{
+                return std::visit([](auto&& arg)->std::string{
+                    using T = std::decay_t<decltype(arg)>;
+                    if constexpr (std::is_same_v<T, std::nullptr_t>) return std::string("null");
+                    else if constexpr (std::is_same_v<T, bool>) return arg ? std::string("true") : std::string("false");
+                    else if constexpr (std::is_same_v<T, int64_t>) return std::to_string(arg);
+                    else if constexpr (std::is_same_v<T, double>) return std::to_string(arg);
+                    else if constexpr (std::is_same_v<T, std::string>) return arg;
+                    else return std::string();
+                }, value);
+            };
+            std::optional<std::pair<std::string,std::string>> joinCols; std::vector<PredicateEq> eq1, eq2; std::vector<PredicateRange> r1, r2;
+            std::function<void(const std::shared_ptr<Expression>&)> collectPreds;
+            collectPreds = [&](const std::shared_ptr<Expression>& e){
+                if (!e) return; if (e->getType() != ASTNodeType::BinaryOp) return; auto bin = std::static_pointer_cast<BinaryOpExpr>(e);
+                if (bin->op == BinaryOperator::And) { collectPreds(bin->left); collectPreds(bin->right); return; }
+                if (bin->op == BinaryOperator::Eq) {
+                    std::string rvL, rvR; std::string colL = fieldFromFA(bin->left, rvL); std::string colR = fieldFromFA(bin->right, rvR);
+                    if (!colL.empty() && !colR.empty() && ((rvL == var1 && rvR == var2) || (rvL == var2 && rvR == var1))) {
+                        if (!joinCols.has_value()) { if (rvL == var1) joinCols = std::make_pair(colL, colR); else joinCols = std::make_pair(colR, colL); }
+                        return;
+                    }
+                    if (!colL.empty() && rvL == var1 && bin->right->getType() == ASTNodeType::Literal) { auto lit = std::static_pointer_cast<LiteralExpr>(bin->right); eq1.push_back({colL, literalToString(lit->value)}); return; }
+                    if (!colL.empty() && rvL == var2 && bin->right->getType() == ASTNodeType::Literal) { auto lit = std::static_pointer_cast<LiteralExpr>(bin->right); eq2.push_back({colL, literalToString(lit->value)}); return; }
+                    if (bin->left->getType() == ASTNodeType::Literal) { std::string rv; std::string col = fieldFromFA(bin->right, rv); if (!col.empty()) { auto lit = std::static_pointer_cast<LiteralExpr>(bin->left); if (rv == var1) eq1.push_back({col, literalToString(lit->value)}); else if (rv == var2) eq2.push_back({col, literalToString(lit->value)}); } return; }
+                }
+            };
+            for (const auto& f : parse_result.query->filters) collectPreds(f->condition);
+            if (!joinCols.has_value()) {
+                joinSpan.setStatus(false, "join_predicate_missing"); span.setStatus(false, "JOIN requires equality predicate between variables");
+                return makeErrorResponse(http::status::bad_request, "JOIN requires equality predicate between variables", req);
+            }
+            themis::ConjunctiveQuery q1; q1.table = table1; q1.predicates = eq1; q1.rangePredicates = r1;
+            themis::ConjunctiveQuery q2; q2.table = table2; q2.predicates = eq2; q2.rangePredicates = r2;
+            themis::QueryEngine engine(*storage_, *secondary_index_);
+            auto res1 = allow_full_scan ? engine.executeAndEntitiesWithFallback(q1, optimize) : engine.executeAndEntities(q1);
+            if (!res1.first.ok) { joinSpan.setStatus(false, res1.first.message); span.setStatus(false, "Left side execution failed"); return makeErrorResponse(http::status::bad_request, res1.first.message, req); }
+            auto res2 = allow_full_scan ? engine.executeAndEntitiesWithFallback(q2, optimize) : engine.executeAndEntities(q2);
+            if (!res2.first.ok) { joinSpan.setStatus(false, res2.first.message); span.setStatus(false, "Right side execution failed"); return makeErrorResponse(http::status::bad_request, res2.first.message, req); }
+            const auto& leftVec = res1.second; const auto& rightVec = res2.second; bool buildLeft = leftVec.size() <= rightVec.size();
+            const auto [colLeft, colRight] = *joinCols; std::unordered_multimap<std::string, themis::BaseEntity> hash;
+            auto getFieldStr = [&](const themis::BaseEntity& e, const std::string& col)->std::optional<std::string> { auto v = e.getFieldAsString(col); if (v.has_value()) return v; auto d = e.getFieldAsDouble(col); if (d.has_value()) return std::to_string(*d); return std::nullopt; };
+            if (buildLeft) { hash.reserve(leftVec.size()*2+1); for (const auto& e : leftVec) { auto k = getFieldStr(e, colLeft); if (k.has_value()) hash.emplace(*k, e); } }
+            else { hash.reserve(rightVec.size()*2+1); for (const auto& e : rightVec) { auto k = getFieldStr(e, colRight); if (k.has_value()) hash.emplace(*k, e); } }
+            std::string retVar; if (parse_result.query->return_node && parse_result.query->return_node->expression) { if (auto* v = dynamic_cast<VariableExpr*>(parse_result.query->return_node->expression.get())) { retVar = v->name; } }
+            if (retVar != var1 && retVar != var2) { joinSpan.setStatus(false, "return_not_supported_for_join"); span.setStatus(false, "JOIN currently supports RETURN of one bound variable (left or right)"); return makeErrorResponse(http::status::bad_request, "JOIN currently supports RETURN of one bound variable (left or right)", req); }
+            std::vector<themis::BaseEntity> out;
+            if (buildLeft) { for (const auto& e : rightVec) { auto k = getFieldStr(e, colRight); if (!k.has_value()) continue; auto range = hash.equal_range(*k); for (auto it = range.first; it != range.second; ++it) { const themis::BaseEntity& l = it->second; if (retVar == var1) out.push_back(l); else out.push_back(e); } } }
+            else { for (const auto& e : leftVec) { auto k = getFieldStr(e, colLeft); if (!k.has_value()) continue; auto range = hash.equal_range(*k); for (auto it = range.first; it != range.second; ++it) { const themis::BaseEntity& r = it->second; if (retVar == var1) out.push_back(e); else out.push_back(r); } } }
+            if (parse_result.query && parse_result.query->limit) { auto off = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->offset)); auto cnt = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->count)); if (off < out.size()) { size_t last = std::min(out.size(), off + cnt); std::vector<themis::BaseEntity> tmp; tmp.reserve(last - off); for (size_t i = off; i < last; ++i) tmp.emplace_back(std::move(out[i])); out.swap(tmp); } else { out.clear(); } }
+            nlohmann::json entities = nlohmann::json::array(); for (const auto& e : out) entities.push_back(e.toJson()); nlohmann::json response_body = {{"table_left", table1}, {"table_right", table2}, {"count", out.size()}, {"entities", entities}};
+            if (explain) { response_body["query"] = aql_query; response_body["ast"] = parse_result.query->toJSON(); nlohmann::json jp; jp["on_left"] = (*joinCols).first; jp["on_right"] = (*joinCols).second; response_body["join"] = jp; }
+            joinSpan.setAttribute("join.output_count", static_cast<int64_t>(out.size())); joinSpan.setStatus(true); span.setAttribute("aql.result_count", static_cast<int64_t>(out.size())); span.setStatus(true);
+            return makeResponse(http::status::ok, response_body.dump(), req);
+        }
+
+    // Translate AST to Query (relational oder traversal)
+    // Spezialfall: LET-Variablen in FILTER (MVP) – vor Übersetzung einfache Ersetzung erlauben
+    bool letFilterHandled = false; // wenn true, nutzen wir einen manuell konstruierten ConjunctiveQuery
+    themis::ConjunctiveQuery letQuery;
+    if (parse_result.query && parse_result.query->traversal == nullptr && !parse_result.query->for_nodes.empty()) {
+        // Wir unterstützen nur den einfachen relationalen Fall mit genau einer FOR-Klausel
+        const auto& forNode = parse_result.query->for_node;
+        const std::string loopVar = forNode.variable;
+        const std::string table = forNode.collection;
+        if (!parse_result.query->filters.empty() && !parse_result.query->let_nodes.empty()) {
+            // Map der LET-Bindings: var -> expr
+            std::unordered_map<std::string, std::shared_ptr<themis::query::Expression>> letMap;
+            for (const auto& ln : parse_result.query->let_nodes) letMap[ln.variable] = ln.expression;
+
+            using namespace themis::query;
+            // Helfer: löse Ausdruck zu einer Feldspalte der Loop-Variable auf, ggf. via LET-Variable
+            std::function<std::optional<std::string>(const std::shared_ptr<Expression>&)> resolveToLoopField;
+            resolveToLoopField = [&](const std::shared_ptr<Expression>& e)->std::optional<std::string> {
+                if (!e) return std::nullopt;
+                if (auto* fa = dynamic_cast<FieldAccessExpr*>(e.get())) {
+                    // Sammle Feldpfad und prüfe Root-Variable
+                    std::vector<std::string> parts; parts.push_back(fa->field);
+                    auto* cur = fa->object.get();
+                    while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) { parts.push_back(fa2->field); cur = fa2->object.get(); }
+                    auto* root = dynamic_cast<VariableExpr*>(cur);
+                    if (!root || root->name != loopVar) return std::nullopt;
+                    std::string col; for (auto it = parts.rbegin(); it != parts.rend(); ++it) { if (!col.empty()) col += "."; col += *it; }
+                    return col;
+                }
+                if (auto* v = dynamic_cast<VariableExpr*>(e.get())) {
+                    auto it = letMap.find(v->name);
+                    if (it == letMap.end()) return std::nullopt;
+                    return resolveToLoopField(it->second);
+                }
+                return std::nullopt;
+            };
+
+            // Extrahiere Gleichheitsprädikate mit LET auf linkem oder rechtem Operand
+            std::vector<themis::PredicateEq> eqPreds;
+            bool unsupported = false;
+            // Lokale Literal-zu-String Konvertierung (wie im Übersetzer)
+            auto litToString = [&](const themis::query::LiteralValue& value)->std::string{
+                return std::visit([](auto&& arg)->std::string{
+                    using T = std::decay_t<decltype(arg)>;
+                    if constexpr (std::is_same_v<T, std::nullptr_t>) return std::string("null");
+                    else if constexpr (std::is_same_v<T, bool>) return arg ? std::string("true") : std::string("false");
+                    else if constexpr (std::is_same_v<T, int64_t>) return std::to_string(arg);
+                    else if constexpr (std::is_same_v<T, double>) return std::to_string(arg);
+                    else if constexpr (std::is_same_v<T, std::string>) return arg;
+                    else return std::string();
+                }, value);
+            };
+            std::function<void(const std::shared_ptr<Expression>&)> visit;
+            visit = [&](const std::shared_ptr<Expression>& ex){
+                if (!ex || unsupported) return;
+                if (auto* be = dynamic_cast<BinaryOpExpr*>(ex.get())) {
+                    if (be->op == BinaryOperator::And) { visit(be->left); visit(be->right); return; }
+                    if (be->op == BinaryOperator::Eq) {
+                        auto leftCol = resolveToLoopField(be->left);
+                        auto rightCol = resolveToLoopField(be->right);
+                        if (leftCol.has_value() && be->right->getType() == ASTNodeType::Literal) {
+                            auto lit = std::static_pointer_cast<LiteralExpr>(be->right);
+                            eqPreds.push_back({*leftCol, litToString(lit->value)});
+                            return;
+                        }
+                        if (rightCol.has_value() && be->left->getType() == ASTNodeType::Literal) {
+                            auto lit = std::static_pointer_cast<LiteralExpr>(be->left);
+                            eqPreds.push_back({*rightCol, litToString(lit->value)});
+                            return;
+                        }
+                    }
+                    // Alles andere (inkl. OR, Range, Funktionen) im MVP nicht via LET-Filter unterstützt
+                    // Wir markieren nicht global als unsupported, damit andere AND-Zweige extrahiert werden können.
+                    return;
+                }
+            };
+            for (const auto& f : parse_result.query->filters) visit(f->condition);
+
+            // Wenn wir etwas extrahieren konnten, nutzen wir dafür einen direkten ConjunctiveQuery
+            if (!eqPreds.empty()) {
+                letQuery.table = table;
+                letQuery.predicates = std::move(eqPreds);
+                letFilterHandled = true;
+            }
+        }
+    }
+
     auto translateSpan = Tracer::startSpan("aql.translate");
-    auto translate_result = themis::AQLTranslator::translate(parse_result.query);
+    auto translate_result = letFilterHandled
+        ? themis::AQLTranslator::TranslationResult::Success(letQuery)
+        : themis::AQLTranslator::translate(parse_result.query);
         
         if (!translate_result.success) {
             translateSpan.setStatus(false, translate_result.error_message);
@@ -2272,6 +2896,228 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                         return makeResponse(http::status::ok, res.dump(), req);
                     }
                 }
+                    // Joins via doppeltem FOR (MVP): Wenn mehrere FOR-Klauseln vorhanden sind und keine Traversal-Query aktiv ist
+                    if (parse_result.query && parse_result.query->traversal == nullptr && !parse_result.query->for_nodes.empty() && parse_result.query->for_nodes.size() >= 2) {
+                        auto joinSpan = Tracer::startSpan("aql.join");
+                        // Beschränkung: Genau zwei FOR-Klauseln, Equality-Join über FILTER lhs.field == rhs.field
+                        const auto& f1 = parse_result.query->for_nodes[0];
+                        const auto& f2 = parse_result.query->for_nodes[1];
+                        const std::string var1 = f1.variable;
+                        const std::string var2 = f2.variable;
+                        const std::string table1 = f1.collection;
+                        const std::string table2 = f2.collection;
+                        joinSpan.setAttribute("join.var_left", var1);
+                        joinSpan.setAttribute("join.var_right", var2);
+                        joinSpan.setAttribute("join.table_left", table1);
+                        joinSpan.setAttribute("join.table_right", table2);
+
+                        // Hilfsfunktionen zur Extraktion
+                        using namespace themis::query;
+                        std::function<std::string(const std::shared_ptr<Expression>&, std::string&)> fieldFromFA = [&](const std::shared_ptr<Expression>& expr, std::string& rootVar)->std::string {
+                            // Liefert Feldpfad ("a.b") und setzt rootVar auf Variablennamen
+                            auto* fa = dynamic_cast<FieldAccessExpr*>(expr.get());
+                            if (!fa) return std::string();
+                            std::vector<std::string> parts;
+                            parts.push_back(fa->field);
+                            auto* cur = fa->object.get();
+                            while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) {
+                                parts.push_back(fa2->field);
+                                cur = fa2->object.get();
+                            }
+                            auto* root = dynamic_cast<VariableExpr*>(cur);
+                            if (!root) return std::string();
+                            rootVar = root->name;
+                            std::string col;
+                            for (auto it = parts.rbegin(); it != parts.rend(); ++it) { if (!col.empty()) col += "."; col += *it; }
+                            return col;
+                        };
+                        auto literalToString = [&](const LiteralValue& value)->std::string{
+                            return std::visit([](auto&& arg)->std::string{
+                                using T = std::decay_t<decltype(arg)>;
+                                if constexpr (std::is_same_v<T, std::nullptr_t>) return std::string("null");
+                                else if constexpr (std::is_same_v<T, bool>) return arg ? std::string("true") : std::string("false");
+                                else if constexpr (std::is_same_v<T, int64_t>) return std::to_string(arg);
+                                else if constexpr (std::is_same_v<T, double>) return std::to_string(arg);
+                                else if constexpr (std::is_same_v<T, std::string>) return arg;
+                                else return std::string();
+                            }, value);
+                        };
+
+                        // Zerlege FILTER in Konjunktions-Terme und identifiziere Join-Bedingung
+                        std::optional<std::pair<std::string,std::string>> joinCols; // (col1, col2)
+                        std::vector<PredicateEq> eq1, eq2; std::vector<PredicateRange> r1, r2;
+                        std::function<void(const std::shared_ptr<Expression>&)> collectPreds;
+                        collectPreds = [&](const std::shared_ptr<Expression>& e){
+                            if (!e) return;
+                            if (e->getType() == ASTNodeType::BinaryOp) {
+                                auto bin = std::static_pointer_cast<BinaryOpExpr>(e);
+                                if (bin->op == BinaryOperator::And) {
+                                    collectPreds(bin->left); collectPreds(bin->right); return;
+                                }
+                                // Join-Gleichheit: Field(var1.*) == Field(var2.*) oder umgekehrt
+                                if (bin->op == BinaryOperator::Eq) {
+                                    std::string rvL, rvR; std::string colL, colR;
+                                    colL = fieldFromFA(bin->left, rvL);
+                                    colR = fieldFromFA(bin->right, rvR);
+                                    if (!colL.empty() && !colR.empty()) {
+                                        // beide Seiten FieldAccess
+                                        if ((rvL == var1 && rvR == var2) || (rvL == var2 && rvR == var1)) {
+                                            if (joinCols.has_value()) {
+                                                joinSpan.setStatus(false, "multiple_join_predicates_not_supported");
+                                                span.setStatus(false, "Only single equality-join supported");
+                                                return; // ignore further
+                                            }
+                                            if (rvL == var1) joinCols = std::make_pair(colL, colR); else joinCols = std::make_pair(colR, colL);
+                                            return;
+                                        }
+                                    }
+                                    // Seiten-Literal Prädikat
+                                    if (!colL.empty() && rvL == var1 && bin->right->getType() == ASTNodeType::Literal) {
+                                        auto lit = std::static_pointer_cast<LiteralExpr>(bin->right);
+                                        if (!lit) return;
+                                        switch (bin->op) {
+                                            case BinaryOperator::Eq: eq1.push_back({colL, literalToString(lit->value)}); break;
+                                            case BinaryOperator::Lt: r1.push_back({colL, std::nullopt, literalToString(lit->value), true, false}); break;
+                                            case BinaryOperator::Lte: r1.push_back({colL, std::nullopt, literalToString(lit->value), true, true}); break;
+                                            case BinaryOperator::Gt: r1.push_back({colL, literalToString(lit->value), std::nullopt, false, true}); break;
+                                            case BinaryOperator::Gte: r1.push_back({colL, literalToString(lit->value), std::nullopt, true, true}); break;
+                                            default: break;
+                                        }
+                                        return;
+                                    }
+                                    if (!colL.empty() && rvL == var2 && bin->right->getType() == ASTNodeType::Literal) {
+                                        auto lit = std::static_pointer_cast<LiteralExpr>(bin->right);
+                                        switch (bin->op) {
+                                            case BinaryOperator::Eq: eq2.push_back({colL, literalToString(lit->value)}); break;
+                                            case BinaryOperator::Lt: r2.push_back({colL, std::nullopt, literalToString(lit->value), true, false}); break;
+                                            case BinaryOperator::Lte: r2.push_back({colL, std::nullopt, literalToString(lit->value), true, true}); break;
+                                            case BinaryOperator::Gt: r2.push_back({colL, literalToString(lit->value), std::nullopt, false, true}); break;
+                                            case BinaryOperator::Gte: r2.push_back({colL, literalToString(lit->value), std::nullopt, true, true}); break;
+                                            default: break;
+                                        }
+                                        return;
+                                    }
+                                    // Literal == Field(varX.*)
+                                    if (bin->left->getType() == ASTNodeType::Literal) {
+                                        std::string rv; std::string col = fieldFromFA(bin->right, rv);
+                                        if (!col.empty()) {
+                                            auto lit = std::static_pointer_cast<LiteralExpr>(bin->left);
+                                            if (rv == var1) eq1.push_back({col, literalToString(lit->value)});
+                                            else if (rv == var2) eq2.push_back({col, literalToString(lit->value)});
+                                        }
+                                        return;
+                                    }
+                                }
+                                // Range auf rechter oder linker Seite bereits obigen Fällen abgedeckt (nur MVP)
+                            }
+                        };
+                        for (const auto& f : parse_result.query->filters) {
+                            collectPreds(f->condition);
+                        }
+                        if (!joinCols.has_value()) {
+                            joinSpan.setStatus(false, "join_predicate_missing");
+                            span.setStatus(false, "JOIN requires equality predicate between variables");
+                            return makeErrorResponse(http::status::bad_request, "JOIN requires equality predicate between variables", req);
+                        }
+
+                        // Führe Seitenabfragen aus
+                        themis::ConjunctiveQuery q1; q1.table = table1; q1.predicates = eq1; q1.rangePredicates = r1;
+                        themis::ConjunctiveQuery q2; q2.table = table2; q2.predicates = eq2; q2.rangePredicates = r2;
+                        themis::QueryEngine engine(*storage_, *secondary_index_);
+                        auto res1 = allow_full_scan ? engine.executeAndEntitiesWithFallback(q1, optimize) : engine.executeAndEntities(q1);
+                        if (!res1.first.ok) {
+                            joinSpan.setStatus(false, res1.first.message);
+                            span.setStatus(false, "Left side execution failed");
+                            return makeErrorResponse(http::status::bad_request, res1.first.message, req);
+                        }
+                        auto res2 = allow_full_scan ? engine.executeAndEntitiesWithFallback(q2, optimize) : engine.executeAndEntities(q2);
+                        if (!res2.first.ok) {
+                            joinSpan.setStatus(false, res2.first.message);
+                            span.setStatus(false, "Right side execution failed");
+                            return makeErrorResponse(http::status::bad_request, res2.first.message, req);
+                        }
+
+                        // Wähle kleinere Seite für Hash-Index
+                        const auto& leftVec = res1.second; const auto& rightVec = res2.second;
+                        bool buildLeft = leftVec.size() <= rightVec.size();
+                        const auto [colLeft, colRight] = *joinCols;
+                        std::unordered_multimap<std::string, themis::BaseEntity> hash;
+                        auto getFieldStr = [&](const themis::BaseEntity& e, const std::string& col)->std::optional<std::string> { auto v = e.getFieldAsString(col); if (v.has_value()) return v; auto d = e.getFieldAsDouble(col); if (d.has_value()) return std::to_string(*d); return std::nullopt; };
+                        if (buildLeft) {
+                            hash.reserve(leftVec.size()*2+1);
+                            for (const auto& e : leftVec) { auto k = getFieldStr(e, colLeft); if (k.has_value()) hash.emplace(*k, e); }
+                        } else {
+                            hash.reserve(rightVec.size()*2+1);
+                            for (const auto& e : rightVec) { auto k = getFieldStr(e, colRight); if (k.has_value()) hash.emplace(*k, e); }
+                        }
+
+                        // Bestimme welche Variable im RETURN zurückgegeben werden soll
+                        std::string retVar;
+                        if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+                            if (auto* v = dynamic_cast<VariableExpr*>(parse_result.query->return_node->expression.get())) {
+                                retVar = v->name;
+                            }
+                        }
+                        if (retVar != var1 && retVar != var2) {
+                            joinSpan.setStatus(false, "return_not_supported_for_join");
+                            span.setStatus(false, "JOIN currently supports RETURN of one bound variable (left or right)");
+                            return makeErrorResponse(http::status::bad_request, "JOIN currently supports RETURN of one bound variable (left or right)", req);
+                        }
+
+                        // Probiere Join und sammle Ergebnisse
+                        std::vector<themis::BaseEntity> out;
+                        if (buildLeft) {
+                            for (const auto& e : rightVec) {
+                                auto k = getFieldStr(e, colRight); if (!k.has_value()) continue;
+                                auto range = hash.equal_range(*k);
+                                for (auto it = range.first; it != range.second; ++it) {
+                                    const themis::BaseEntity& l = it->second;
+                                    if (retVar == var1) out.push_back(l); else out.push_back(e);
+                                }
+                            }
+                        } else {
+                            for (const auto& e : leftVec) {
+                                auto k = getFieldStr(e, colLeft); if (!k.has_value()) continue;
+                                auto range = hash.equal_range(*k);
+                                for (auto it = range.first; it != range.second; ++it) {
+                                    const themis::BaseEntity& r = it->second;
+                                    if (retVar == var1) out.push_back(e); else out.push_back(r);
+                                }
+                            }
+                        }
+
+                        // LIMIT (post-join slicing)
+                        if (parse_result.query && parse_result.query->limit) {
+                            auto off = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->offset));
+                            auto cnt = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->count));
+                            if (off < out.size()) {
+                                size_t last = std::min(out.size(), off + cnt);
+                                std::vector<themis::BaseEntity> tmp; tmp.reserve(last - off);
+                                for (size_t i = off; i < last; ++i) tmp.emplace_back(std::move(out[i]));
+                                out.swap(tmp);
+                            } else {
+                                out.clear();
+                            }
+                        }
+
+                        // Serialize
+                        nlohmann::json entities = nlohmann::json::array();
+                        for (const auto& e : out) entities.push_back(e.toJson());
+                        nlohmann::json response_body = {
+                            {"table_left", table1}, {"table_right", table2}, {"count", out.size()}, {"entities", entities}
+                        };
+                        if (explain) {
+                            response_body["query"] = aql_query;
+                            response_body["ast"] = parse_result.query->toJSON();
+                            nlohmann::json jp; jp["on_left"] = (*joinCols).first; jp["on_right"] = (*joinCols).second; response_body["join"] = jp;
+                        }
+                        joinSpan.setAttribute("join.output_count", static_cast<int64_t>(out.size()));
+                        joinSpan.setStatus(true);
+                        span.setAttribute("aql.result_count", static_cast<int64_t>(out.size()));
+                        span.setStatus(true);
+                        return makeResponse(http::status::ok, response_body.dump(), req);
+                    }
+
             }
 
             auto evalV = [&](const std::string& pk)->bool{
@@ -2632,9 +3478,127 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return makeResponse(http::status::ok, res.dump(), req);
         }
 
+        // JOIN/LET Query (Multi-FOR or LET without COLLECT)
+        // Note: Single-FOR + COLLECT is handled by conversion to ConjunctiveQuery below
+        if (translate_result.join.has_value()) {
+            const auto& jq = translate_result.join.value();
+            
+            // For single-FOR + COLLECT, convert back to ConjunctiveQuery and skip to standard path
+            if (jq.for_nodes.size() == 1 && jq.collect) {
+                // Reconstruct ConjunctiveQuery from JoinQuery
+                themis::ConjunctiveQuery cq;
+                cq.table = jq.for_nodes[0].collection;
+                
+                // Convert simple equality filters to predicates
+                using namespace themis::query;
+                for (const auto& filter : jq.filters) {
+                    if (filter->condition->getType() == ASTNodeType::BinaryOp) {
+                        auto bin = std::static_pointer_cast<BinaryOpExpr>(filter->condition);
+                        if (bin->op == BinaryOperator::Eq) {
+                            // Check for pattern: var.field == literal
+                            if (bin->left->getType() == ASTNodeType::FieldAccess &&
+                                bin->right->getType() == ASTNodeType::Literal) {
+                                auto fa = std::static_pointer_cast<FieldAccessExpr>(bin->left);
+                                auto lit = std::static_pointer_cast<LiteralExpr>(bin->right);
+                                
+                                // Extract field path
+                                std::vector<std::string> parts;
+                                parts.push_back(fa->field);
+                                auto* cur = fa->object.get();
+                                while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) {
+                                    parts.push_back(fa2->field);
+                                    cur = fa2->object.get();
+                                }
+                                
+                                // Verify it's rooted at the FOR variable
+                                if (auto* rootVar = dynamic_cast<VariableExpr*>(cur)) {
+                                    if (rootVar->name == jq.for_nodes[0].variable) {
+                                        std::string col;
+                                        for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+                                            if (!col.empty()) col += ".";
+                                            col += *it;
+                                        }
+                                        
+                                        // Convert literal to string
+                                        auto litToString = [](const LiteralValue& value)->std::string {
+                                            return std::visit([](auto&& arg)->std::string {
+                                                using T = std::decay_t<decltype(arg)>;
+                                                if constexpr (std::is_same_v<T, std::nullptr_t>) return std::string("null");
+                                                else if constexpr (std::is_same_v<T, bool>) return arg ? std::string("true") : std::string("false");
+                                                else if constexpr (std::is_same_v<T, int64_t>) return std::to_string(arg);
+                                                else if constexpr (std::is_same_v<T, double>) return std::to_string(arg);
+                                                else if constexpr (std::is_same_v<T, std::string>) return arg;
+                                                else return std::string();
+                                            }, value);
+                                        };
+                                        
+                                        cq.predicates.push_back({col, litToString(lit->value)});
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Store in translate_result.query for standard processing
+                translate_result.query = std::move(cq);
+                // Clear join to fall through to standard path
+                translate_result.join = std::nullopt;
+            } else if (!jq.collect) {
+                // Multi-FOR or single-FOR + LET: use executeJoin
+                auto joinSpan = Tracer::startSpan("aql.join_execution");
+                joinSpan.setAttribute("join.for_count", static_cast<int64_t>(jq.for_nodes.size()));
+                joinSpan.setAttribute("join.let_count", static_cast<int64_t>(jq.let_nodes.size()));
+                joinSpan.setAttribute("join.filter_count", static_cast<int64_t>(jq.filters.size()));
+                
+                themis::QueryEngine engine(*storage_, *secondary_index_);
+                auto res = engine.executeJoin(
+                    jq.for_nodes,
+                    jq.filters,
+                    jq.let_nodes,
+                    jq.return_node,
+                    jq.sort,
+                    jq.limit
+                );
+                
+                if (!res.first.ok) {
+                    joinSpan.setStatus(false, res.first.message);
+                    span.setStatus(false, "JOIN execution failed");
+                    return makeErrorResponse(http::status::bad_request, res.first.message, req);
+                }
+                
+                nlohmann::json response_body;
+                nlohmann::json entities = nlohmann::json::array();
+                for (const auto& result : res.second) {
+                    entities.push_back(result);
+                }
+                
+                // Determine table name for response (use first FOR collection)
+                std::string table = jq.for_nodes.empty() ? std::string("unknown") : jq.for_nodes[0].collection;
+                
+                response_body = {
+                    {"table", table},
+                    {"count", entities.size()},
+                    {"entities", entities}
+                };
+                
+                if (explain) {
+                    response_body["query"] = aql_query;
+                    response_body["ast"] = parse_result.query->toJSON();
+                    response_body["join_query"] = true;
+                }
+                
+                joinSpan.setAttribute("join.result_count", static_cast<int64_t>(entities.size()));
+                joinSpan.setStatus(true);
+                span.setAttribute("aql.result_count", static_cast<int64_t>(entities.size()));
+                span.setStatus(true);
+                return makeResponse(http::status::ok, response_body.dump(), req);
+            }
+        }
+
         // Relationale Query (mutable Kopie f�r Cursor-Anker/Limit-Anpassungen)
-        auto forSpan = Tracer::startSpan("aql.for");
-        auto q = translate_result.query;
+    auto forSpan = Tracer::startSpan("aql.for");
+    auto q = translate_result.query;
         std::string table = q.table;
         forSpan.setAttribute("for.table", table);
         forSpan.setAttribute("for.predicates_count", static_cast<int64_t>(q.predicates.size()));
@@ -2944,13 +3908,101 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return makeResponse(http::status::ok, response_body.dump(), req);
         }
 
-        // Serialize entities
+        // Serialize entities or projections with LET support
         auto returnSpan = Tracer::startSpan("aql.return");
         returnSpan.setAttribute("return.input_count", static_cast<int64_t>(sliced.size()));
-        
+
+        using namespace themis::query;
+        const std::string loopVar = parse_result.query->for_node.variable;
+
+        // Helper: extract column path from FieldAccess rooted at loop var
+        std::function<std::optional<std::string>(const std::shared_ptr<Expression>&, bool&)> extractColFromFA;
+        extractColFromFA = [&](const std::shared_ptr<Expression>& expr, bool& rootedAtLoop)->std::optional<std::string> {
+            auto* fa = dynamic_cast<FieldAccessExpr*>(expr.get()); if (!fa) return std::nullopt;
+            std::vector<std::string> parts; parts.push_back(fa->field);
+            auto* cur = fa->object.get();
+            while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) { parts.push_back(fa2->field); cur = fa2->object.get(); }
+            if (auto* rootVarExpr = dynamic_cast<VariableExpr*>(cur)) { rootedAtLoop = (rootVarExpr->name == loopVar); }
+            else { rootedAtLoop = false; }
+            std::string col; for (auto it = parts.rbegin(); it != parts.rend(); ++it) { if (!col.empty()) col += "."; col += *it; }
+            return col;
+        };
+
+        // Evaluate limited expressions to JSON (Literal, Variable, FieldAccess, Object, Array)
+        std::function<nlohmann::json(const std::shared_ptr<Expression>&,
+                                     const themis::BaseEntity&,
+                                     const std::unordered_map<std::string, nlohmann::json>&)> evalExpr;
+        evalExpr = [&](const std::shared_ptr<Expression>& expr,
+                       const themis::BaseEntity& ent,
+                       const std::unordered_map<std::string, nlohmann::json>& env)->nlohmann::json {
+            if (!expr) return nlohmann::json();
+            switch (expr->getType()) {
+                case ASTNodeType::Literal: {
+                    // reuse toJSON Value
+                    return static_cast<LiteralExpr*>(expr.get())->toJSON()["value"]; }
+                case ASTNodeType::Variable: {
+                    auto* v = static_cast<VariableExpr*>(expr.get());
+                    if (v->name == loopVar) return ent.toJson();
+                    auto it = env.find(v->name); if (it != env.end()) return it->second; return nullptr; }
+                case ASTNodeType::FieldAccess: {
+                    bool rooted = false; auto colOpt = extractColFromFA(expr, rooted);
+                    if (colOpt.has_value() && rooted) {
+                        // Extract from entity
+                        auto asDouble = ent.getFieldAsDouble(*colOpt); if (asDouble.has_value()) return *asDouble;
+                        auto asStr = ent.getFieldAsString(*colOpt); if (asStr.has_value()) return *asStr; return nullptr;
+                    } else {
+                        // Evaluate object part and index JSON
+                        auto* fa = static_cast<FieldAccessExpr*>(expr.get());
+                        auto base = evalExpr(fa->object, ent, env);
+                        if (base.is_object()) {
+                            auto it = base.find(fa->field); if (it != base.end()) return *it; return nullptr;
+                        }
+                        return nullptr;
+                    }
+                }
+                case ASTNodeType::ObjectConstruct: {
+                    auto* oc = static_cast<ObjectConstructExpr*>(expr.get());
+                    nlohmann::json obj = nlohmann::json::object();
+                    for (const auto& kv : oc->fields) obj[kv.first] = evalExpr(kv.second, ent, env);
+                    return obj; }
+                case ASTNodeType::ArrayLiteral: {
+                    auto* ar = static_cast<ArrayLiteralExpr*>(expr.get());
+                    nlohmann::json arr = nlohmann::json::array();
+                    for (const auto& el : ar->elements) arr.push_back(evalExpr(el, ent, env));
+                    return arr; }
+                default:
+                    return nullptr;
+            }
+        };
+
+        // Decide if we can fast-path return of the loop variable
+        bool simpleReturnLoopVar = false;
+        if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+            if (auto* v = dynamic_cast<VariableExpr*>(parse_result.query->return_node->expression.get())) {
+                simpleReturnLoopVar = (v->name == loopVar) && (parse_result.query->let_nodes.empty());
+            }
+        }
+
         json entities = json::array();
-        for (const auto& e : sliced) {
-            entities.push_back(e.toJson());
+        if (simpleReturnLoopVar) {
+            for (const auto& e : sliced) entities.push_back(e.toJson());
+        } else {
+            for (const auto& e : sliced) {
+                // Build LET environment per row
+                std::unordered_map<std::string, nlohmann::json> env;
+                for (const auto& ln : parse_result.query->let_nodes) {
+                    // Only allow Literal, FieldAccess and Variable
+                    auto val = evalExpr(ln.expression, e, env);
+                    env[ln.variable] = std::move(val);
+                }
+                // Evaluate RETURN expression; if missing, default to loop var entity
+                if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+                    auto out = evalExpr(parse_result.query->return_node->expression, e, env);
+                    entities.push_back(std::move(out));
+                } else {
+                    entities.push_back(e.toJson());
+                }
+            }
         }
         
         returnSpan.setStatus(true);
@@ -2996,6 +4048,10 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             response_body["query"] = aql_query;
             response_body["ast"] = parse_result.query->toJSON();
             if (!plan_json.is_null()) {
+                // Markiere, wenn LET-Filter vor der Übersetzung extrahiert wurden (MVP-Sonderpfad)
+                if (letFilterHandled) {
+                    try { plan_json["let_pre_extracted"] = true; } catch (...) { /* noop */ }
+                }
                 response_body["plan"] = plan_json;
             }
         }
@@ -3134,8 +4190,23 @@ http::response<http::string_body> HttpServer::handleVectorSearch(
                 ", got " + std::to_string(queryVector.size()), req);
         }
         
-        // Perform k-NN search
-        auto [status, results] = vector_index_->searchKnn(queryVector, k);
+        // Optional cursor-based pagination for vector search
+        bool use_cursor = body_json.value("use_cursor", false);
+        size_t offset = 0;
+        if (use_cursor && body_json.contains("cursor")) {
+            try {
+                // Einfaches Cursor-Format: numerischer Offset als String
+                std::string cur = body_json["cursor"].get<std::string>();
+                offset = static_cast<size_t>(std::stoull(cur));
+            } catch (...) {
+                offset = 0;
+            }
+        }
+
+        size_t want_k = use_cursor ? (k + offset + 1) : k;
+
+        // Perform k-NN search (ggf. mit erweitertem k für Pagination)
+        auto [status, results] = vector_index_->searchKnn(queryVector, want_k);
         
         if (!status.ok) {
             span.setStatus(false, status.message);
@@ -3143,24 +4214,35 @@ http::response<http::string_body> HttpServer::handleVectorSearch(
                 "Vector search failed: " + status.message, req);
         }
         
-        // Format response
-        json resultJson = json::array();
-        for (const auto& result : results) {
-            resultJson.push_back({
-                {"pk", result.pk},
-                {"distance", result.distance}
-            });
-        }
-        
-        json response = {
-            {"results", resultJson},
-            {"k", k},
-            {"count", results.size()}
-        };
-        
+        if (use_cursor) {
+            // Slice [offset, offset+k) und Cursor-Felder setzen
+            json items = json::array();
+            size_t start = std::min(offset, results.size());
+            size_t end = std::min(results.size(), start + k);
+            for (size_t i = start; i < end; ++i) {
+                items.push_back({{"pk", results[i].pk}, {"distance", results[i].distance}});
+            }
+            bool has_more = results.size() > end;
+            json response = {
+                {"items", items},
+                {"batch_size", end - start},
+                {"has_more", has_more}
+            };
+            if (has_more) response["next_cursor"] = std::to_string(end);
+            span.setAttribute("vector.results_count", static_cast<int64_t>(end - start));
+            span.setStatus(true);
+            return makeResponse(http::status::ok, response.dump(), req);
+        } else {
+            // Legacy Format
+            json resultJson = json::array();
+            for (const auto& result : results) {
+                resultJson.push_back({{"pk", result.pk}, {"distance", result.distance}});
+            }
+            json response = {{"results", resultJson}, {"k", k}, {"count", results.size()}};
             span.setAttribute("vector.results_count", static_cast<int64_t>(results.size()));
             span.setStatus(true);
-        return makeResponse(http::status::ok, response.dump(), req);
+            return makeResponse(http::status::ok, response.dump(), req);
+        }
 
     } catch (const json::exception& e) {
         span.setStatus(false, e.what());
@@ -3319,6 +4401,160 @@ http::response<http::string_body> HttpServer::handleVectorIndexStats(
 
     } catch (const std::exception& e) {
         THEMIS_ERROR("Vector stats error: {}", e.what());
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleVectorBatchInsert(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleVectorBatchInsert");
+    span.setAttribute("http.method", "POST");
+    span.setAttribute("http.path", "/vector/batch_insert");
+
+    try {
+        auto body = json::parse(req.body());
+
+        if (!body.contains("items") || !body["items"].is_array()) {
+            span.setStatus(false, "missing_items");
+            return makeErrorResponse(http::status::bad_request, "Missing required field: items (array)", req);
+        }
+
+        std::string vector_field = body.value("vector_field", std::string("embedding"));
+        std::string object_name = vector_index_->getObjectName();
+        int configured_dim = vector_index_->getDimension();
+        size_t inserted = 0;
+        size_t errors = 0;
+
+        // Optionale Auto-Init falls noch nicht konfiguriert
+        if (configured_dim <= 0) {
+            // Dimension aus dem ersten Element ableiten
+            for (const auto& it : body["items"]) {
+                if (it.contains("vector") && it["vector"].is_array()) {
+                    int dim = static_cast<int>(it["vector"].size());
+                    if (dim > 0) {
+                        auto st = vector_index_->init("vectors", dim, themis::VectorIndexManager::Metric::COSINE);
+                        if (!st.ok) {
+                            span.setStatus(false, st.message);
+                            return makeErrorResponse(http::status::internal_server_error, std::string("Failed to init vector index: ") + st.message, req);
+                        }
+                        configured_dim = dim;
+                        object_name = vector_index_->getObjectName();
+                    }
+                    break;
+                }
+            }
+            if (configured_dim <= 0) {
+                span.setStatus(false, "cannot_infer_dim");
+                return makeErrorResponse(http::status::bad_request, "Cannot infer dimension from items", req);
+            }
+        }
+
+        for (const auto& it : body["items"]) {
+            try {
+                if (!it.contains("pk") || !it["pk"].is_string()) { ++errors; continue; }
+                if (!it.contains("vector") || !it["vector"].is_array()) { ++errors; continue; }
+
+                std::string pk = it["pk"].get<std::string>();
+                std::vector<float> vec;
+                vec.reserve(it["vector"].size());
+                for (const auto& v : it["vector"]) {
+                    if (!v.is_number()) { vec.clear(); break; }
+                    vec.push_back(v.get<float>());
+                }
+                if (vec.empty() || static_cast<int>(vec.size()) != configured_dim) { ++errors; continue; }
+
+                // Build entity
+                BaseEntity e(pk);
+                e.setField(vector_field, vec);
+                if (it.contains("fields") && it["fields"].is_object()) {
+                    for (auto fit = it["fields"].begin(); fit != it["fields"].end(); ++fit) {
+                        const auto& val = fit.value();
+                        const std::string key = fit.key();
+                        if (val.is_string()) e.setField(key, val.get<std::string>());
+                        else if (val.is_number_integer()) e.setField(key, static_cast<int64_t>(val.get<int64_t>()));
+                        else if (val.is_number_float()) e.setField(key, val.get<double>());
+                        else if (val.is_boolean()) e.setField(key, val.get<bool>());
+                    }
+                }
+
+                auto st = vector_index_->addEntity(e, vector_field);
+                if (st.ok) ++inserted; else { ++errors; }
+            } catch (...) {
+                ++errors;
+            }
+        }
+
+        json response = {
+            {"inserted", inserted},
+            {"errors", errors},
+            {"objectName", vector_index_->getObjectName()},
+            {"dimension", vector_index_->getDimension()}
+        };
+        span.setAttribute("batch.inserted", static_cast<int64_t>(inserted));
+        span.setAttribute("batch.errors", static_cast<int64_t>(errors));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+
+    } catch (const json::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::bad_request, std::string("Invalid JSON: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleVectorDeleteByFilter(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleVectorDeleteByFilter");
+    span.setAttribute("http.method", "DELETE");
+    span.setAttribute("http.path", "/vector/by-filter");
+
+    try {
+        if (req.body().empty()) {
+            return makeErrorResponse(http::status::bad_request, "Empty body; expected { pks: [...]} or { prefix: '...' }", req);
+        }
+        auto body = json::parse(req.body());
+
+        size_t deleted = 0;
+        if (body.contains("pks") && body["pks"].is_array()) {
+            for (const auto& v : body["pks"]) {
+                if (!v.is_string()) continue;
+                auto st = vector_index_->removeByPk(v.get<std::string>());
+                if (st.ok) ++deleted;
+            }
+            json resp = {{"deleted", deleted}, {"method", "pks"}};
+            span.setAttribute("deleted", static_cast<int64_t>(deleted));
+            span.setStatus(true);
+            return makeResponse(http::status::ok, resp.dump(), req);
+        }
+
+        if (body.contains("prefix") && body["prefix"].is_string()) {
+            std::string prefix = body["prefix"].get<std::string>();
+            // Scan RocksDB for keys starting with objectName:prefix
+            std::string fullPrefix = vector_index_->getObjectName() + ":" + prefix;
+            storage_->scanPrefix(fullPrefix, [&](std::string_view key, std::string_view /*value*/){
+                try {
+                    std::string pk = KeySchema::extractPrimaryKey(key);
+                    auto st = vector_index_->removeByPk(pk);
+                    if (st.ok) ++deleted;
+                } catch (...) {}
+                return true; // continue
+            });
+            json resp = {{"deleted", deleted}, {"method", "prefix"}, {"prefix", prefix}};
+            span.setAttribute("deleted", static_cast<int64_t>(deleted));
+            span.setStatus(true);
+            return makeResponse(http::status::ok, resp.dump(), req);
+        }
+
+        return makeErrorResponse(http::status::bad_request, "Provide either 'pks' array or 'prefix' string", req);
+    } catch (const json::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::bad_request, std::string("Invalid JSON: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, e.what());
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
 }
@@ -4306,6 +5542,189 @@ http::response<http::string_body> HttpServer::handleTimeSeriesAggregate(
     } catch (const json::exception& e) {
         span.setStatus(false, "json_error");
         return makeErrorResponse(http::status::bad_request, "JSON error: " + std::string(e.what()), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// ============================================================================
+// Sprint C: Adaptive Indexing Endpoints
+// ============================================================================
+
+http::response<http::string_body> HttpServer::handleIndexSuggestions(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleIndexSuggestions");
+    
+    try {
+        auto target = std::string(req.target());
+        
+        // Parse query parameters
+        std::string collection;
+        double min_score = 0.5;
+        size_t limit = 10;
+        
+        // Extract query params from URL
+        auto query_pos = target.find('?');
+        if (query_pos != std::string::npos) {
+            std::string query_string = target.substr(query_pos + 1);
+            std::istringstream iss(query_string);
+            std::string param;
+            
+            while (std::getline(iss, param, '&')) {
+                auto eq_pos = param.find('=');
+                if (eq_pos != std::string::npos) {
+                    std::string key = param.substr(0, eq_pos);
+                    std::string value = param.substr(eq_pos + 1);
+                    
+                    if (key == "collection") {
+                        collection = value;
+                    } else if (key == "min_score") {
+                        min_score = std::stod(value);
+                    } else if (key == "limit") {
+                        limit = std::stoull(value);
+                    }
+                }
+            }
+        }
+        
+        span.setAttribute("collection", collection);
+        span.setAttribute("min_score", min_score);
+        span.setAttribute("limit", static_cast<int64_t>(limit));
+        
+        auto suggestions = adaptive_index_->getSuggestions(collection, min_score, limit);
+        
+        json response = json::array();
+        for (const auto& suggestion : suggestions) {
+            response.push_back(suggestion.toJson());
+        }
+        
+        span.setAttribute("suggestions.count", static_cast<int64_t>(suggestions.size()));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleIndexPatterns(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleIndexPatterns");
+    
+    try {
+        auto target = std::string(req.target());
+        
+        // Parse collection from query params
+        std::string collection;
+        auto query_pos = target.find('?');
+        if (query_pos != std::string::npos) {
+            std::string query_string = target.substr(query_pos + 1);
+            auto coll_pos = query_string.find("collection=");
+            if (coll_pos != std::string::npos) {
+                collection = query_string.substr(coll_pos + 11);
+                auto amp_pos = collection.find('&');
+                if (amp_pos != std::string::npos) {
+                    collection = collection.substr(0, amp_pos);
+                }
+            }
+        }
+        
+        span.setAttribute("collection", collection);
+        
+        auto patterns = adaptive_index_->getPatterns(collection);
+        
+        json response = json::array();
+        for (const auto& pattern : patterns) {
+            response.push_back(pattern.toJson());
+        }
+        
+        span.setAttribute("patterns.count", static_cast<int64_t>(patterns.size()));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleIndexRecordPattern(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleIndexRecordPattern");
+    
+    try {
+        json body = json::parse(req.body());
+        
+        std::string collection = body.value("collection", "");
+        std::string field = body.value("field", "");
+        std::string operation = body.value("operation", "eq");
+        int64_t execution_time_ms = body.value("execution_time_ms", int64_t(0));
+        
+        // Validate required fields
+        if (collection.empty()) {
+            return makeErrorResponse(http::status::bad_request, "collection is required", req);
+        }
+        if (field.empty()) {
+            return makeErrorResponse(http::status::bad_request, "field is required", req);
+        }
+        
+        if (collection.empty() || field.empty()) {
+            span.setStatus(false, "missing_fields");
+            return makeErrorResponse(http::status::bad_request, 
+                "Missing required fields: collection, field", req);
+        }
+        
+        span.setAttribute("collection", collection);
+        span.setAttribute("field", field);
+        span.setAttribute("operation", operation);
+        
+        adaptive_index_->getPatternTracker()->recordPattern(
+            collection, field, operation, execution_time_ms
+        );
+        
+        json response = {
+            {"status", "recorded"},
+            {"collection", collection},
+            {"field", field},
+            {"operation", operation}
+        };
+        
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
+    } catch (const json::exception& e) {
+        span.setStatus(false, "json_error");
+        return makeErrorResponse(http::status::bad_request, "JSON error: " + std::string(e.what()), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleIndexClearPatterns(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleIndexClearPatterns");
+    
+    try {
+        size_t count_before = adaptive_index_->getPatternTracker()->size();
+        
+        adaptive_index_->getPatternTracker()->clear();
+        
+        json response = {
+            {"status", "cleared"},
+            {"patterns_removed", count_before}
+        };
+        
+        span.setAttribute("patterns.removed", static_cast<int64_t>(count_before));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
     } catch (const std::exception& e) {
         span.setStatus(false, "error");
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);

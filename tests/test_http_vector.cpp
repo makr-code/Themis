@@ -162,6 +162,32 @@ protected:
         return json::parse(res.body());
     }
 
+    json httpDelete(const std::string& target, const json& body) {
+        net::io_context ioc;
+        tcp::resolver resolver(ioc);
+        beast::tcp_stream stream(ioc);
+
+        auto const results = resolver.resolve("127.0.0.1", std::to_string(18085));
+        stream.connect(results);
+
+        http::request<http::string_body> req{http::verb::delete_, target, 11};
+        req.set(http::field::host, "127.0.0.1");
+        req.set(http::field::content_type, "application/json");
+        req.body() = body.dump();
+        req.prepare_payload();
+
+        http::write(stream, req);
+
+        beast::flat_buffer buffer;
+        http::response<http::string_body> res;
+        http::read(stream, buffer, res);
+
+        beast::error_code ec;
+        stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+
+        return json::parse(res.body());
+    }
+
     std::shared_ptr<themis::RocksDBWrapper> storage_;
     std::shared_ptr<themis::SecondaryIndexManager> secondary_index_;
     std::shared_ptr<themis::GraphIndexManager> graph_index_;
@@ -392,4 +418,96 @@ TEST_F(HttpVectorApiTest, VectorSearch_RejectsInvalidK) {
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
     EXPECT_NE(response["message"].get<std::string>().find("k' must be greater than 0"), std::string::npos);
+}
+
+TEST_F(HttpVectorApiTest, VectorBatchInsert_InsertsItems) {
+    // Insert two additional docs via batch_insert with vector_field 'vec'
+    json request = {
+        {"vector_field", "vec"},
+        {"items", json::array({
+            json{{"pk","doc4"},{"vector", {1.0f, 0.0f, 0.0f}}, {"fields", json{{"content","fourth"}}}},
+            json{{"pk","doc5"},{"vector", {0.0f, 1.0f, 0.0f}}, {"fields", json{{"content","fifth"}}}}
+        })}
+    };
+    auto resp = httpPost("/vector/batch_insert", request);
+    ASSERT_TRUE(resp.contains("inserted"));
+    EXPECT_EQ(resp["inserted"], 2);
+
+    // Verify new vector searchable
+    json searchReq = {{"vector", {0.0f, 1.0f, 0.0f}}, {"k", 1}};
+    auto searchResp = httpPost("/vector/search", searchReq);
+    ASSERT_TRUE(searchResp.contains("results"));
+    auto results = searchResp["results"];
+    ASSERT_GE(results.size(), 1);
+    EXPECT_EQ(results[0]["pk"], "doc5");
+}
+
+TEST_F(HttpVectorApiTest, VectorDeleteByFilter_SupportsPksAndPrefix) {
+    // Ensure an extra PK exists to delete
+    json insertReq = {
+        {"vector_field", "vec"},
+        {"items", json::array({ json{{"pk","tmp-1"},{"vector", {0.0f, 1.0f, 0.0f}}} })}
+    };
+    (void)httpPost("/vector/batch_insert", insertReq);
+
+    // Delete by PK
+    json delByPk = {{"pks", json::array({"doc2"})}};
+    auto delResp1 = httpDelete("/vector/by-filter", delByPk);
+    ASSERT_TRUE(delResp1.contains("deleted"));
+    EXPECT_EQ(delResp1["deleted"], 1);
+
+    // Verify doc2 no longer the nearest to [0,1,0]
+    json searchReq = {{"vector", {0.0f, 1.0f, 0.0f}}, {"k", 1}};
+    auto searchResp = httpPost("/vector/search", searchReq);
+    ASSERT_TRUE(searchResp.contains("results"));
+    auto results = searchResp["results"];
+    ASSERT_GE(results.size(), 1);
+    EXPECT_NE(results[0]["pk"].get<std::string>(), std::string("doc2"));
+
+    // Delete by prefix
+    json delByPrefix = {{"prefix", "tmp-"}};
+    auto delResp2 = httpDelete("/vector/by-filter", delByPrefix);
+    ASSERT_TRUE(delResp2.contains("method"));
+    EXPECT_EQ(delResp2["method"], "prefix");
+}
+
+TEST_F(HttpVectorApiTest, VectorSearch_CursorPagination_Works) {
+    // Insert a few extras to ensure more than k results
+    json batch = {
+        {"vector_field", "vec"},
+        {"items", json::array({
+            json{{"pk","p1"},{"vector", {1.0f, 0.0f, 0.0f}}},
+            json{{"pk","p2"},{"vector", {1.0f, 0.0f, 0.0f}}},
+            json{{"pk","p3"},{"vector", {1.0f, 0.0f, 0.0f}}}
+        })}
+    };
+    (void)httpPost("/vector/batch_insert", batch);
+
+    // Page 1
+    json req1 = {
+        {"vector", {1.0f, 0.0f, 0.0f}},
+        {"k", 2},
+        {"use_cursor", true}
+    };
+    auto r1 = httpPost("/vector/search", req1);
+    ASSERT_TRUE(r1.contains("items"));
+    ASSERT_TRUE(r1.contains("has_more"));
+    auto items1 = r1["items"];
+    ASSERT_EQ(items1.size(), 2);
+    bool has_more = r1["has_more"].get<bool>();
+    ASSERT_TRUE(r1.contains("next_cursor") || !has_more);
+    if (!has_more) return; // nothing more to test
+
+    // Page 2 using cursor
+    std::string cursor = r1["next_cursor"].get<std::string>();
+    json req2 = {
+        {"vector", {1.0f, 0.0f, 0.0f}},
+        {"k", 2},
+        {"use_cursor", true},
+        {"cursor", cursor}
+    };
+    auto r2 = httpPost("/vector/search", req2);
+    ASSERT_TRUE(r2.contains("items"));
+    auto items2 = r2["items"];
+    ASSERT_GE(items2.size(), 1);
 }

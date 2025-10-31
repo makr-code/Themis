@@ -1,7 +1,7 @@
 ﻿# AQL - THEMIS Query Language
 
 **Version:** 1.0  
-**Datum:** 28. Oktober 2025  
+**Datum:** 30. Oktober 2025  
 **Inspiriert von:** ArangoDB AQL, mit Fokus auf Multi-Modell-Queries
 
 ---
@@ -24,6 +24,7 @@
 
 ```aql
 FOR variable IN collection
+  [LET var = expression [, ...]]
   [FILTER condition]
   [SORT expression [ASC|DESC] [, ...]]
   [LIMIT offset, count]
@@ -35,9 +36,18 @@ FOR variable IN collection
 2. `FILTER` - Prädikat-Evaluation (mit Index-Nutzung)
 3. `SORT` - Sortierung (mit Index-Nutzung wenn möglich)
 4. `LIMIT` - Pagination/Offset
-5. `RETURN` - Projektion (Felder auswählen)
+5. `RETURN` - Projektion (Felder/Objekte/Arrays)
 
 ---
+
+## MVP-Einschränkungen und Hinweise
+
+Damit Erwartungen klar sind, hier die wichtigsten Begrenzungen des aktuellen MVP:
+
+- Kein generisches OR im Translator. AND wird unterstützt; OR ist in Arbeit und wird später ergänzt.
+- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt. Ein spezieller Join-Pfad erlaubt jedoch Gleichheits‑Joins über genau zwei FOR‑Klauseln (siehe Abschnitt „Einfache Joins (MVP)“).
+- LET in FILTER: Falls einfache LET‑Bindungen in FILTER vorkommen, werden diese vor der Übersetzung extrahiert („pre‑extracted“). Bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`.
+- Subqueries, OR, komplexe Ausdrücke/Funktionen sind (noch) eingeschränkt und werden iterativ erweitert.
 
 ## Kern-Klauseln
 
@@ -56,13 +66,43 @@ FOR u IN users
 - `variable` - Beliebiger Bezeichner (lowercase empfohlen)
 - `collection` - Table-Name aus Storage-Layer
 
-**Multi-Collection (später):**
+**Multi-Collection (Joins - MVP seit 31.10.2025):**
+
+Themis unterstützt Nested-Loop-Joins über mehrere Collections via sequenzielle `FOR`-Klauseln:
+
 ```aql
 FOR u IN users
   FOR o IN orders
     FILTER o.user_id == u._key
     RETURN {user: u.name, order: o.id}
 ```
+
+**Join-Arten (MVP):**
+- **Equality Join:** Verknüpfung über `FILTER var1.field == var2.field`
+- **Cross Product + Filter:** Kartesisches Produkt mit nachträglicher Filterung
+
+**Beispiel - User-City-Join:**
+```aql
+FOR user IN users
+  FOR city IN cities
+    FILTER user.city_id == city._key
+    RETURN {
+      user_name: user.name,
+      city_name: city.name,
+      country: city.country
+    }
+```
+
+**Performance-Hinweise:**
+- ⚠️ Nested-Loop kann **teuer** sein bei großen Datasets (O(n×m) Komplexität)
+- 💡 Empfehlung: FILTER-Bedingungen so spezifisch wie möglich
+- 💡 Zukünftig: Hash-Join-Optimierung für große Collections geplant
+- 💡 Verwende Indizes auf Join-Spalten (z.B. `city_id`) wo möglich
+
+**Multi-FOR Limitierungen (MVP):**
+- Maximal 2-3 FOR-Klauseln empfohlen (Performance)
+- Join-Bedingung muss in FILTER sein (keine impliziten Joins)
+- Nur Equality-Joins (`==`) optimiert
 
 ---
 
@@ -81,7 +121,7 @@ FILTER doc.age <= 65          // Kleiner-Gleich
 **Logische Operatoren:**
 ```aql
 FILTER doc.age > 18 AND doc.city == "Berlin"
-FILTER doc.status == "active" OR doc.status == "pending"
+FILTER doc.status == "active" OR doc.status == "pending"   // Hinweis: OR im MVP noch nicht unterstützt
 FILTER NOT doc.deleted
 ```
 
@@ -178,43 +218,139 @@ RETURN {
 }
 ```
 
-**Arrays (später):**
+**Arrays:**
 ```aql
 RETURN [doc.name, doc.age, doc.city]
 ```
+
+Unterstützte Ausdrücke im MVP:
+- Literale: Zahl, String, Bool, null
+- Variablen und Feldzugriff: `doc`, `doc.field`
+- Objekt- und Array-Literale (verschachtelt möglich)
+- Einfache Let-Bindings pro Zeile (siehe LET)
 
 ---
 
 ## Erweiterte Features (Phase 1.1+)
 
-### LET - Variable Binding
+### LET - Variable Binding (MVP seit 31.10.2025)
 
+Bindet pro Iteration Werte an Variablen, die in `FILTER` und `RETURN` genutzt werden können.
+
+**Einfaches Beispiel:**
 ```aql
-FOR doc IN users
-  LET age_category = (
-    doc.age < 18 ? "minor" :
-    doc.age < 65 ? "adult" :
-    "senior"
-  )
-  FILTER age_category == "adult"
-  RETURN {name: doc.name, category: age_category}
+FOR u IN users
+  LET city_name = u.city
+  RETURN {name: u.name, city: city_name}
 ```
 
-### COLLECT - Aggregationen
-
+**Berechnungen mit LET:**
 ```aql
-FOR doc IN orders
-  COLLECT city = doc.city
-  AGGREGATE total = SUM(doc.amount), count = COUNT()
-  RETURN {city, total, count}
+FOR product IN products
+  LET total_value = product.price * product.quantity
+  FILTER total_value > 1000
+  RETURN {
+    product: product.name,
+    value: total_value
+  }
 ```
 
-**Aggregations-Funktionen:**
-- `COUNT()` - Anzahl
-- `SUM(expr)` - Summe
-- `AVG(expr)` - Durchschnitt
-- `MIN(expr)` / `MAX(expr)` - Minimum/Maximum
+**Mehrere LET-Bindungen:**
+```aql
+FOR sale IN sales
+  LET net = sale.amount
+  LET tax = net * 0.19
+  LET gross = net + tax
+  RETURN {sale_id: sale._key, net, tax, gross}
+```
+
+**LET in Joins:**
+```aql
+FOR user IN users
+  FOR order IN orders
+    FILTER order.user_id == user._key
+    LET full_name = CONCAT(user.first_name, " ", user.last_name)
+    RETURN {customer: full_name, order_id: order._key}
+```
+
+**MVP-Einschränkungen:**
+- Unterstützt sind aktuell einfache Ausdrücke: Literale, Variablen, Feldzugriffe, Binäroperationen (+, -, *, /), Objekt-/Array-Literale
+- LETs werden sequenziell ausgewertet; spätere LETs können frühere verwenden
+- Komplexe Funktionen (CONCAT, SUBSTRING, etc.) in Entwicklung
+- Explain: Wenn `LET`‑Variablen in `FILTER` zu einfachen Gleichheitsprädikaten vor der Übersetzung extrahiert wurden, enthält der Plan das Flag `plan.let_pre_extracted = true`
+
+---
+
+### COLLECT - Aggregationen (MVP seit 31.10.2025)
+
+Gruppiert Ergebnisse und berechnet Aggregatfunktionen.
+
+**Einfaches GROUP BY:**
+```aql
+FOR user IN users
+  COLLECT city = user.city
+  RETURN {city, count: LENGTH(1)}
+```
+
+**COUNT-Aggregation:**
+```aql
+FOR user IN users
+  COLLECT city = user.city WITH COUNT INTO total
+  RETURN {city, total}
+```
+
+**SUM-Aggregation:**
+```aql
+FOR sale IN sales
+  COLLECT category = sale.category
+  AGGREGATE total_revenue = SUM(sale.amount)
+  RETURN {category, total_revenue}
+```
+
+**Mehrere Aggregationen:**
+```aql
+FOR order IN orders
+  COLLECT status = order.status
+  AGGREGATE 
+    total_count = COUNT(),
+    total_amount = SUM(order.amount),
+    avg_amount = AVG(order.amount),
+    min_amount = MIN(order.amount),
+    max_amount = MAX(order.amount)
+  RETURN {status, total_count, total_amount, avg_amount, min_amount, max_amount}
+```
+
+**COLLECT mit FILTER:**
+```aql
+FOR user IN users
+  FILTER user.age > 18
+  COLLECT city = user.city
+  AGGREGATE adult_count = COUNT()
+  RETURN {city, adult_count}
+```
+
+**Unterstützte Aggregatfunktionen (MVP):**
+- `COUNT()` - Anzahl der Gruppen-Elemente
+- `SUM(expr)` - Summe eines numerischen Felds
+- `AVG(expr)` - Durchschnitt eines numerischen Felds
+- `MIN(expr)` - Minimum eines Felds
+- `MAX(expr)` - Maximum eines Felds
+
+**Performance-Hinweise:**
+- Hash-basiertes Grouping: O(n) Komplexität
+- FILTER vor COLLECT reduziert Datenvolumen (wird automatisch optimiert)
+- Für sehr große Gruppen: Memory-Nutzung beachten
+
+**Geplante Erweiterungen:**
 - `STDDEV(expr)` - Standardabweichung
+- `VARIANCE(expr)` - Varianz
+- `PERCENTILE(expr, n)` - n-tes Perzentil
+- `UNIQUE(expr)` - Distinct Values
+
+Hinweise (MVP):
+- Gruppierung erfolgt über exakte String-Matches der Group-Keys
+- Mehrere GROUP BY-Felder via Tuple-Keys geplant
+- HAVING-Clause (Post-Aggregation-Filter) in Entwicklung
 
 ---
 
@@ -309,6 +445,38 @@ FOR doc IN articles
 **Funktionen:**
 - `FULLTEXT(field, query)` - Tokenisierte Suche
 - `BM25(doc)` - Relevanz-Score (0.0+)
+
+---
+
+## Einfache Joins (MVP)
+
+Unterstützt werden Equality-Joins über genau zwei `FOR`-Klauseln mit einem Gleichheitsprädikat zwischen Variablen.
+
+```aql
+FOR u IN users
+  FOR o IN orders
+  FILTER u._key == o.user_id
+  RETURN u
+```
+
+Eigenschaften und Einschränkungen (MVP):
+- Genau zwei `FOR`‑Klauseln; ein Equality‑Prädikat `var1.field == var2.field` in `FILTER`.
+- Zusätzliche `FILTER` pro Seite sind erlaubt und werden vor dem Join angewendet.
+- `RETURN` muss aktuell eine der Variablen zurückgeben (typisch `u` oder `o`).
+- `LIMIT` wird nach dem Join angewendet. `SORT` im Join‑Pfad ist derzeit nicht unterstützt.
+- `explain: true` liefert einen Plan, der den Join‑Pfad ausweist; bei LET‑Pre‑Extraction wird `plan.let_pre_extracted = true` gesetzt.
+
+Projektion mit LET im Join-Kontext:
+
+```aql
+FOR u IN users
+  FOR o IN orders
+  FILTER u._key == o.user_id
+  LET info = { user: u.name, order: o.id }
+  RETURN info
+```
+
+Hinweis: Komplexe Projektionen können je nach Datenvolumen höhere Kosten verursachen; nutze `LIMIT` wo sinnvoll.
 
 ---
 
@@ -473,28 +641,15 @@ POST /query/aql
 **Response:**
 ```json
 {
-  "explain_plan": {
-    "steps": [
-      {
-        "type": "IndexScan",
-        "index": "range_users_age",
-        "condition": "age > 18",
-        "estimated_rows": 1200
-      },
-      {
-        "type": "Sort",
-        "field": "created_at",
-        "order": "DESC",
-        "index_used": "range_users_created_at"
-      },
-      {
-        "type": "Limit",
-        "offset": 0,
-        "count": 10
-      }
+  "plan": {
+    "mode": "range_aware",
+    "order": [
+      { "column": "created_at", "value": "DESC" }
     ],
-    "estimated_cost": 145.3,
-    "estimated_rows": 10
+    "estimates": [
+      { "column": "age", "value": "> 18", "estimatedCount": 1200, "capped": false }
+    ],
+    "let_pre_extracted": true
   }
 }
 ```
@@ -666,3 +821,112 @@ FOR user IN users
 
 **Status:** ✅ Syntax-Definition vollständig  
 **Nächster Schritt:** Parser-Implementation mit PEGTL
+
+## Vollständige Beispiele (MVP Features)
+
+### Beispiel 1: User-City-Join mit Aggregation
+
+**Szenario:** Finde alle User in ihren Städten, gruppiert nach Land mit Zählung:
+
+```aql
+FOR user IN users
+  FOR city IN cities
+    FILTER user.city_id == city._key
+    COLLECT country = city.country
+    AGGREGATE user_count = COUNT()
+    RETURN {country, user_count}
+```
+
+**Ergebnis:**
+```json
+[
+  {"country": "Germany", "user_count": 125},
+  {"country": "France", "user_count": 87},
+  {"country": "Spain", "user_count": 43}
+]
+```
+
+---
+
+### Beispiel 2: Sales-Analyse mit LET und Aggregation
+
+**Szenario:** Berechne Netto/Brutto-Umsätze pro Kategorie:
+
+```aql
+FOR sale IN sales
+  LET net = sale.amount
+  LET tax = net * 0.19
+  LET gross = net + tax
+  COLLECT category = sale.category
+  AGGREGATE 
+    total_net = SUM(net),
+    total_gross = SUM(gross),
+    count = COUNT()
+  RETURN {
+    category,
+    total_net,
+    total_gross,
+    avg_sale: total_net / count,
+    count
+  }
+```
+
+---
+
+### Beispiel 3: Top-10 Städte nach User-Count
+
+**Szenario:** Häufigste Städte finden:
+
+```aql
+FOR user IN users
+  COLLECT city_id = user.city_id WITH COUNT INTO user_count
+  SORT user_count DESC
+  LIMIT 10
+  RETURN {city_id, user_count}
+```
+
+---
+
+## Performance-Best-Practices (MVP)
+
+### 1. JOIN-Optimierung
+
+** Schlecht:** Kartesisches Produkt ohne Filter
+** Gut:** Spezifische FILTER-Bedingungen, LIMIT verwenden
+
+### 2. LET für Wiederverwendung
+
+Berechnungen einmal durchführen, mehrfach nutzen:
+
+```aql
+FOR sale IN sales
+  LET net = sale.amount
+  LET tax = net * 0.19
+  RETURN {net, tax, gross: net + tax}
+```
+
+### 3. FILTER vor COLLECT
+
+Datenvolumen reduzieren bevor gruppiert wird.
+
+---
+
+## Implementation-Status (31.10.2025)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **FOR** (Single) |  Production | Vollständig optimiert |
+| **FOR** (Multi/Join) |  MVP | Nested-Loop, Hash-Join geplant |
+| **FILTER** |  Production | Equality + Range + AND |
+| **SORT** |  Production | Index-optimiert |
+| **LIMIT** |  Production | Offset + Count |
+| **RETURN** |  Production | Field/Object/Array |
+| **LET** |  MVP | Basis-Expressions, Arithmetik |
+| **COLLECT** |  MVP | Hash-Grouping, COUNT/SUM/AVG/MIN/MAX |
+| **OR-Operator** |  Planned | Index-Merge geplant |
+| **Subqueries** |  Planned | Phase 1.2 |
+
+---
+
+**Dokumentations-Version:** 1.1 (31. Oktober 2025)  
+**Letzte Aktualisierung:** JOIN/LET/COLLECT MVP-Features dokumentiert

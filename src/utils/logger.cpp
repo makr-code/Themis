@@ -66,5 +66,53 @@ std::shared_ptr<spdlog::logger> Logger::get() {
     return logger_;
 }
 
+void Logger::setLevel(Level level) {
+    if (!logger_) {
+        init();
+    }
+    spdlog::level::level_enum spdlog_level;
+    switch (level) {
+        case Level::TRACE: spdlog_level = spdlog::level::trace; break;
+        case Level::DEBUG: spdlog_level = spdlog::level::debug; break;
+        case Level::INFO: spdlog_level = spdlog::level::info; break;
+        case Level::WARN: spdlog_level = spdlog::level::warn; break;
+        case Level::ERROR: spdlog_level = spdlog::level::err; break;
+        case Level::CRITICAL: spdlog_level = spdlog::level::critical; break;
+        default: spdlog_level = spdlog::level::info;
+    }
+    logger_->set_level(spdlog_level);
+}
+
+void Logger::setPattern(const std::string& pattern) {
+    if (!logger_) {
+        init();
+    }
+    logger_->set_pattern(pattern);
+}
+
+Logger::Level Logger::levelFromString(const std::string& lvl) {
+    std::string s = lvl;
+    for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+    if (s == "trace") return Level::TRACE;
+    if (s == "debug") return Level::DEBUG;
+    if (s == "info") return Level::INFO;
+    if (s == "warn" || s == "warning") return Level::WARN;
+    if (s == "error" || s == "err") return Level::ERROR;
+    if (s == "critical" || s == "crit") return Level::CRITICAL;
+    return Level::INFO;
+}
+
+const char* Logger::levelToString(Level lvl) {
+    switch (lvl) {
+        case Level::TRACE: return "trace";
+        case Level::DEBUG: return "debug";
+        case Level::INFO: return "info";
+        case Level::WARN: return "warn";
+        case Level::ERROR: return "error";
+        case Level::CRITICAL: return "critical";
+        default: return "info";
+    }
+}
+
 } // namespace utils
 } // namespace themis

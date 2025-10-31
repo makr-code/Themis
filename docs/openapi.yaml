@@ -768,6 +768,9 @@ paths:
         - in: query
           name: long_poll_ms
           schema: { type: integer, default: 0 }
+        - in: query
+          name: key_prefix
+          schema: { type: string }
       responses:
         '200':
           description: Changes
@@ -775,6 +778,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChangefeedResponse'
+
+  /changefeed/stats:
+    get:
+      tags: [CDC]
+      summary: Changefeed stats
+      operationId: getChangefeedStats
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_events: { type: integer, format: int64 }
+                  latest_sequence: { type: integer, format: int64 }
+                  total_size_bytes: { type: integer, format: int64 }
+
+  /changefeed/retention:
+    post:
+      tags: [CDC]
+      summary: Changefeed retention
+      operationId: postChangefeedRetention
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                before_sequence: { type: integer, format: int64 }
+              required: [before_sequence]
+      responses:
+        '200':
+          description: Retention applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer, format: int64 }
+                  before_sequence: { type: integer, format: int64 }
 
 components:
   schemas:
@@ -1160,9 +1205,9 @@ components:
     ChangefeedResponse:
       type: object
       properties:
-        from_seq: { type: integer, format: int64 }
-        next_seq: { type: integer, format: int64 }
-        entries:
+        latest_sequence: { type: integer, format: int64 }
+        count: { type: integer }
+        events:
           type: array
           items: { $ref: '#/components/schemas/ChangeEntry' }
 

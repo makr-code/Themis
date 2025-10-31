@@ -1,5 +1,5 @@
-#ifndef THEMIS_TIMESERIES_STORE_H
-#define THEMIS_TIMESERIES_STORE_H
+#ifndef THEMIS_TSSTORE_H
+#define THEMIS_TSSTORE_H
 
 #include <string>
 #include <vector>
@@ -41,7 +41,7 @@ namespace themis {
  * - Automatic retention policies
  * - Downsampling (1m → 1h → 1d)
  */
-class TimeSeriesStore {
+class TSStore {
 public:
     struct DataPoint {
         std::string metric;           // Metric name (e.g., "cpu_usage")
@@ -91,14 +91,14 @@ public:
     };
     
     /**
-     * @brief Construct TimeSeriesStore
+     * @brief Construct TSStore
      * @param db RocksDB TransactionDB instance (not owned)
      * @param cf Optional column family handle (nullptr = default CF)
      */
-    explicit TimeSeriesStore(rocksdb::TransactionDB* db, 
-                             rocksdb::ColumnFamilyHandle* cf = nullptr);
+    explicit TSStore(rocksdb::TransactionDB* db, 
+                     rocksdb::ColumnFamilyHandle* cf = nullptr);
     
-    ~TimeSeriesStore() = default;
+    ~TSStore() = default;
     
     /**
      * @brief Write a data point
@@ -140,6 +140,14 @@ public:
      * @return Number of data points deleted
      */
     size_t deleteOldData(int64_t before_timestamp_ms);
+
+    /**
+     * @brief Delete old data for a specific metric (retention policy)
+     * @param metric Metric name
+     * @param before_timestamp_ms Delete data points with timestamp < this value
+     * @return Number of data points deleted for that metric
+     */
+    size_t deleteOldDataForMetric(const std::string& metric, int64_t before_timestamp_ms);
     
     /**
      * @brief Delete all data for a specific metric
@@ -178,4 +186,4 @@ private:
 
 } // namespace themis
 
-#endif // THEMIS_TIMESERIES_STORE_H
+#endif // THEMIS_TSSTORE_H

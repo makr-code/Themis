@@ -43,7 +43,8 @@ public:
     struct TranslationResult {
         bool success = false;
         std::string error_message;
-        ConjunctiveQuery query; // für relationale AQL
+        ConjunctiveQuery query; // für relationale AQL (single-FOR)
+        
         // Graph-Traversal Query (optional)
         struct TraversalQuery {
             enum class Direction { Outbound, Inbound, Any };
@@ -56,12 +57,32 @@ public:
         };
         std::optional<TraversalQuery> traversal;
         
+        // Join Query (multi-FOR)
+        struct JoinQuery {
+            std::vector<query::ForNode> for_nodes;                                    // Multiple FOR clauses
+            std::vector<std::shared_ptr<query::FilterNode>> filters;                  // JOIN conditions + filters
+            std::vector<query::LetNode> let_nodes;                                    // LET bindings
+            std::shared_ptr<query::ReturnNode> return_node;                           // RETURN expression
+            std::shared_ptr<query::SortNode> sort;                                    // SORT clause
+            std::shared_ptr<query::LimitNode> limit;                                  // LIMIT clause
+            std::shared_ptr<query::CollectNode> collect;                       // COLLECT/GROUP BY
+        };
+        std::optional<JoinQuery> join;
+        
         static TranslationResult Success(ConjunctiveQuery q) {
             TranslationResult r;
             r.success = true;
             r.query = std::move(q);
             return r;
         }
+        
+        static TranslationResult SuccessJoin(JoinQuery j) {
+            TranslationResult r;
+            r.success = true;
+            r.join = std::move(j);
+            return r;
+        }
+        
         static TranslationResult SuccessTraversal(TraversalQuery t) {
             TranslationResult r;
             r.success = true;

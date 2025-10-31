@@ -25,7 +25,7 @@ enum class ASTNodeType {
     SortNode,           // SORT expr [ASC|DESC]
     LimitNode,          // LIMIT offset, count
     ReturnNode,         // RETURN expression
-    LetNode,            // LET variable = expression (Phase 2)
+    LetNode,            // LET variable = expression
     CollectNode,        // COLLECT ... AGGREGATE ... (Phase 2)
     
     // Expressions
@@ -272,6 +272,23 @@ struct ReturnNode {
 };
 
 // ============================================================================
+// LET Node
+// ============================================================================
+
+struct LetNode {
+    std::string variable;                              // variable name defined by LET
+    std::shared_ptr<Expression> expression;            // expression to bind to variable
+
+    nlohmann::json toJSON() const {
+        return {
+            {"type", "let"},
+            {"variable", variable},
+            {"expression", expression ? expression->toJSON() : nlohmann::json()}
+        };
+    }
+};
+
+// ============================================================================
 // Collect/GROUP BY Nodes (MVP)
 // ============================================================================
 
@@ -308,11 +325,13 @@ struct CollectNode {
 // ============================================================================
 
 struct Query {
-    ForNode for_node;
+    ForNode for_node; // first FOR (backwards compatibility)
+    std::vector<ForNode> for_nodes; // support multiple FOR clauses for joins
     std::vector<std::shared_ptr<FilterNode>> filters;
     std::shared_ptr<SortNode> sort;
     std::shared_ptr<LimitNode> limit;
     std::shared_ptr<ReturnNode> return_node;
+    std::vector<LetNode> let_nodes; // LET bindings in order of appearance
     std::shared_ptr<CollectNode> collect; // optional GROUP BY/AGGREGATE
     // Optional: Graph Traversal-Klausel (FOR v[,e[,p]] IN min..max OUTBOUND|INBOUND|ANY start GRAPH name)
     // Wenn gesetzt, beschreibt sie eine Traversal-Query statt einer Collection-Iteration.
@@ -349,6 +368,11 @@ struct Query {
             {"type", "query"},
             {"for", for_node.toJSON()}
         };
+        if (!for_nodes.empty()) {
+            nlohmann::json fors = nlohmann::json::array();
+            for (const auto& f : for_nodes) fors.push_back(f.toJSON());
+            j["fors"] = std::move(fors);
+        }
         
         if (!filters.empty()) {
             nlohmann::json filters_json = nlohmann::json::array();
@@ -368,6 +392,11 @@ struct Query {
         
         if (return_node) {
             j["return"] = return_node->toJSON();
+        }
+        if (!let_nodes.empty()) {
+            nlohmann::json lets = nlohmann::json::array();
+            for (const auto& l : let_nodes) lets.push_back(l.toJSON());
+            j["lets"] = std::move(lets);
         }
         if (collect) {
             j["collect"] = collect->toJSON();

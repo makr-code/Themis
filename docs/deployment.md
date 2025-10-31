@@ -150,6 +150,135 @@ export THEMIS_WORKER_THREADS=16
 # ✓ Worker threads: 8 (optimal for 8-core CPU)
 ```
 
+### Runtime Configuration (Hot-Reload)
+
+THEMIS supports **hot-reload** for specific configuration values without requiring a server restart.
+
+#### Supported Hot-Reload Settings
+
+The following settings can be updated at runtime via `POST /config`:
+
+1. **Logging Configuration**
+   - `logging.level`: "trace", "debug", "info", "warn", "error"
+   - `logging.format`: "text" (human-readable), "json" (structured logs for aggregation)
+
+2. **Request Timeout**
+   - `request_timeout_ms`: 1000-300000 (1 second to 5 minutes)
+
+3. **Feature Flags** (Beta features)
+   - `features.semantic_cache`: Enable/disable semantic query caching
+   - `features.llm_store`: Enable/disable LLM interaction storage
+   - `features.cdc`: Enable/disable Change Data Capture streaming
+   - `features.timeseries`: Enable/disable time-series data store
+
+4. **CDC Retention Policy** (Logging only - requires manual cleanup)
+   - `cdc_retention_hours`: 1-8760 (1 hour to 1 year)
+
+#### Hot-Reload Examples
+
+**Example 1: Enable JSON Logging**
+
+```bash
+curl -X POST http://localhost:8765/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "logging": {
+      "level": "info",
+      "format": "json"
+    }
+  }'
+
+# Response: Updated config with all current settings
+# Server logs now output structured JSON
+```
+
+**Example 2: Update Request Timeout**
+
+```bash
+curl -X POST http://localhost:8765/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_timeout_ms": 60000
+  }'
+
+# Timeout increased to 60 seconds for long-running queries
+```
+
+**Example 3: Enable CDC Feature**
+
+```bash
+curl -X POST http://localhost:8765/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "features": {
+      "cdc": true
+    }
+  }'
+
+# CDC streaming endpoints now accessible: /changefeed/stream
+```
+
+**Example 4: Multiple Settings at Once**
+
+```bash
+curl -X POST http://localhost:8765/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "logging": {
+      "level": "debug",
+      "format": "json"
+    },
+    "request_timeout_ms": 45000,
+    "features": {
+      "semantic_cache": true,
+      "cdc": true
+    }
+  }'
+```
+
+#### Limitations
+
+**Cannot be changed at runtime (requires restart):**
+
+- `server.port`: HTTP server port
+- `server.threads`: Number of worker threads (thread pool is fixed at startup)
+- `rocksdb.*`: All RocksDB storage settings (memtable size, block cache, compression, etc.)
+- `vector.dimension`: Vector index dimensionality
+- Data directory paths
+
+**Validation Rules:**
+
+- `request_timeout_ms`: Must be between 1000 and 300000 (1s-5min)
+- `cdc_retention_hours`: Must be between 1 and 8760 (1h-1yr)
+- Feature flags: Boolean values only
+
+#### Verify Current Configuration
+
+```bash
+# GET current config
+curl http://localhost:8765/config | jq .
+
+# Output includes all settings (read-only + hot-reload capable)
+{
+  "server": {
+    "port": 8765,
+    "threads": 8,
+    "request_timeout_ms": 30000
+  },
+  "features": {
+    "semantic_cache": false,
+    "llm_store": false,
+    "cdc": true,
+    "timeseries": false
+  },
+  "rocksdb": {
+    "db_path": "/var/lib/vccdb/data",
+    "memtable_size_mb": 256,
+    ...
+  }
+}
+```
+
 ## Production Deployment
 
 ### Systemd Service (Linux)
@@ -397,6 +526,76 @@ kubectl expose deployment vccdb --type=LoadBalancer --port=8765
 ```
 
 ## Monitoring & Observability
+
+### Reverse Proxy und SSE/Keep-Alive Hinweise
+
+Server‑Sent Events (SSE) nutzen eine langlebige HTTP/1.1‑Verbindung mit kontinuierlichen Datenflüssen. Für stabile Streams sollten Reverse Proxies und Load Balancer speziell konfiguriert werden:
+
+- HTTP/1.1 erzwingen und Keep‑Alive aktiv halten
+- Timeouts großzügig setzen (Lese‑/Idle‑Timeout ≥ 60s)
+- Pufferung und Komprimierung für SSE deaktivieren
+- Sticky Sessions/Session Affinity aktivieren, wenn mehrere Backend‑Instanzen genutzt werden
+
+Beispiele:
+
+1) Nginx
+
+```
+location /changefeed/stream {
+  proxy_http_version 1.1;
+  proxy_set_header Connection "";           # Keep-Alive nicht explizit schließen
+  proxy_set_header Cache-Control no-cache;
+  proxy_buffering off;                       # wichtig für SSE
+  gzip off;                                  # keine Komprimierung für SSE
+  chunked_transfer_encoding on;
+  proxy_read_timeout 120s;                   # ausreichend hoch
+  proxy_send_timeout 120s;
+}
+```
+
+2) HAProxy
+
+```
+frontend http
+  bind *:80
+  default_backend app
+
+backend app
+  option http-keep-alive
+  option http-server-close          # optional je nach Setup
+  timeout server  120s
+  timeout client  120s
+  timeout http-keep-alive 120s
+  http-response set-header Cache-Control no-cache
+```
+
+3) Windows/IIS (Beispielauszug web.config)
+
+```
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Cache-Control" value="no-cache" />
+      </customHeaders>
+    </httpProtocol>
+    <serverRuntime frequentHitThreshold="1" frequentHitTimePeriod="00:00:10" />
+    <httpCompression directory="%SystemDrive%\\inetpub\\temp\\IIS Temporary Compressed Files">
+      <dynamicTypes>
+        <add enabled="false" mimeType="text/event-stream" />
+      </dynamicTypes>
+    </httpCompression>
+    <handlers>
+      <add name="SSE" path="changefeed/stream" verb="GET" modules="IsapiModule" scriptProcessor="%windir%\\system32\\inetsrv\\asp.dll" resourceType="Unspecified" requireAccess="Read" />
+    </handlers>
+  </system.webServer>
+</configuration>
+```
+
+Zusätzlich in der Anwendungspool‑Konfiguration Idle‑Timeout ≥ 2 Minuten setzen und ggf. Request Filtering Limits (z. B. responseBufferLimit) erhöhen/abschalten.
+
+Hinweis: Detaillierte Betriebsaspekte zum CDC‑Stream siehe `docs/cdc.md`.
 
 ### Prometheus Configuration
 

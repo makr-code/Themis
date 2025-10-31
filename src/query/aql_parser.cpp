@@ -13,7 +13,7 @@ namespace query {
 
 enum class TokenType {
     // Keywords
-    FOR, IN, FILTER, SORT, LIMIT, RETURN,
+    FOR, IN, FILTER, SORT, LIMIT, RETURN, LET,
     ASC, DESC, AND, OR, XOR, NOT,
     GRAPH, OUTBOUND, INBOUND, ANY,
     COLLECT, AGGREGATE,
@@ -28,7 +28,7 @@ enum class TokenType {
     IDENTIFIER, STRING, INTEGER, FLOAT,
     
     // Punctuation
-    DOT, COMMA, LPAREN, RPAREN, LBRACE, RBRACE,
+    DOT, COMMA, COLON, LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET,
     
     // Special
     END_OF_FILE, INVALID
@@ -195,7 +195,8 @@ private:
         if (lower == "filter") return Token(TokenType::FILTER, value, line, col);
         if (lower == "sort") return Token(TokenType::SORT, value, line, col);
         if (lower == "limit") return Token(TokenType::LIMIT, value, line, col);
-        if (lower == "return") return Token(TokenType::RETURN, value, line, col);
+    if (lower == "return") return Token(TokenType::RETURN, value, line, col);
+    if (lower == "let") return Token(TokenType::LET, value, line, col);
         if (lower == "asc") return Token(TokenType::ASC, value, line, col);
         if (lower == "desc") return Token(TokenType::DESC, value, line, col);
     if (lower == "and") return Token(TokenType::AND, value, line, col);
@@ -243,6 +244,7 @@ private:
         // Single-character operators/punctuation
         advance();
         switch (ch) {
+            case ':': return Token(TokenType::COLON, ":", line, col);
             case '=': return Token(TokenType::ASSIGN, "=", line, col);  // Single = for assignments
             case '<': return Token(TokenType::LT, "<", line, col);
             case '>': return Token(TokenType::GT, ">", line, col);
@@ -256,6 +258,8 @@ private:
             case ')': return Token(TokenType::RPAREN, ")", line, col);
             case '{': return Token(TokenType::LBRACE, "{", line, col);
             case '}': return Token(TokenType::RBRACE, "}", line, col);
+            case '[': return Token(TokenType::LBRACKET, "[", line, col);
+            case ']': return Token(TokenType::RBRACKET, "]", line, col);
             default: return Token(TokenType::INVALID, std::string(1, ch), line, col);
         }
     }
@@ -323,13 +327,29 @@ private:
     std::shared_ptr<Query> parseQuery() {
         auto query = std::make_shared<Query>();
         
-        // FOR clause (required)
+        // One or more FOR clauses (first is also stored in for_node for backward compat)
+        if (!match(TokenType::FOR)) {
+            throw std::runtime_error("Expected FOR");
+        }
+        // Parse first FOR
         query->for_node = parseForClause();
+        query->for_nodes.push_back(query->for_node);
         if (lastTraversal_) {
             query->traversal = lastTraversal_;
             lastTraversal_.reset();
         }
+        // Additional FOR clauses (for joins); traversal queries won't have additional FORs
+        while (match(TokenType::FOR)) {
+            auto f = parseForClause();
+            query->for_nodes.push_back(std::move(f));
+        }
         
+        // LET clauses (optional, multiple)
+        while (match(TokenType::LET)) {
+            auto let = parseLetClause();
+            query->let_nodes.push_back(std::move(let));
+        }
+
         // FILTER clauses (optional, multiple)
         while (match(TokenType::FILTER)) {
             query->filters.push_back(parseFilterClause());
@@ -462,6 +482,19 @@ private:
         }
 
         throw std::runtime_error("Expected collection name or traversal after IN");
+    }
+
+    LetNode parseLetClause() {
+        expect(TokenType::LET, "Expected LET");
+        if (!match(TokenType::IDENTIFIER)) {
+            throw std::runtime_error("Expected variable name after LET");
+        }
+        std::string var = current().value;
+        advance();
+        expect(TokenType::ASSIGN, "Expected '=' after variable name in LET");
+        auto expr = parseExpression();
+        LetNode node{var, expr};
+        return node;
     }
     
     std::shared_ptr<FilterNode> parseFilterClause() {
@@ -711,6 +744,47 @@ private:
             auto expr = parseExpression();
             expect(TokenType::RPAREN, "Expected ')'");
             return expr;
+        }
+        // Object literal: { key: expr, ... }
+        if (match(TokenType::LBRACE)) {
+            advance();
+            std::vector<std::pair<std::string, std::shared_ptr<Expression>>> fields;
+            if (!match(TokenType::RBRACE)) {
+                while (true) {
+                    // key can be IDENTIFIER or STRING
+                    std::string key;
+                    if (match(TokenType::IDENTIFIER) || match(TokenType::STRING)) {
+                        key = current().value; advance();
+                    } else {
+                        throw std::runtime_error("Expected object key (identifier or string)");
+                    }
+                    expect(TokenType::COLON, "Expected ':' after object key");
+                    auto val = parseExpression();
+                    fields.emplace_back(key, val);
+                    if (match(TokenType::COMMA)) { advance(); continue; }
+                    break;
+                }
+                expect(TokenType::RBRACE, "Expected '}' at end of object");
+            } else {
+                advance(); // empty object {}
+            }
+            return std::make_shared<ObjectConstructExpr>(std::move(fields));
+        }
+        // Array literal: [ expr, ... ]
+        if (match(TokenType::LBRACKET)) {
+            advance();
+            std::vector<std::shared_ptr<Expression>> elems;
+            if (!match(TokenType::RBRACKET)) {
+                while (true) {
+                    elems.push_back(parseExpression());
+                    if (match(TokenType::COMMA)) { advance(); continue; }
+                    break;
+                }
+                expect(TokenType::RBRACKET, "Expected ']' at end of array");
+            } else {
+                advance(); // []
+            }
+            return std::make_shared<ArrayLiteralExpr>(std::move(elems));
         }
         
         // Literals

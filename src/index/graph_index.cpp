@@ -812,4 +812,100 @@ GraphIndexManager::dijkstraAtTime(std::string_view startPk, std::string_view tar
 	return {Status::OK(), result};
 }
 
+// ===== Sprint B Extended: Time-Range Queries =====
+
+std::pair<GraphIndexManager::Status, std::vector<GraphIndexManager::EdgeInfo>>
+GraphIndexManager::getEdgesInTimeRange(int64_t range_start_ms, int64_t range_end_ms, bool require_full_containment) const {
+	if (!db_.isOpen()) {
+		return {Status::Error("getEdgesInTimeRange: Datenbank ist nicht geöffnet"), {}};
+	}
+
+	TimeRangeFilter filter = TimeRangeFilter::between(range_start_ms, range_end_ms);
+	std::vector<EdgeInfo> result;
+
+	// Scan all edges with prefix "graph:out:"
+	std::string prefix = "graph:out:";
+	db_.scanPrefix(prefix, [this, &filter, require_full_containment, &result](std::string_view key, std::string_view val) {
+		// Parse key: graph:out:<from_pk>:<edge_id>
+		std::string keyStr(key);
+		size_t firstColon = keyStr.find(':');
+		if (firstColon == std::string::npos) return true;
+		size_t secondColon = keyStr.find(':', firstColon + 1);
+		if (secondColon == std::string::npos) return true;
+		size_t thirdColon = keyStr.find(':', secondColon + 1);
+		if (thirdColon == std::string::npos) return true;
+
+		std::string fromPk = keyStr.substr(secondColon + 1, thirdColon - secondColon - 1);
+		std::string edgeId = keyStr.substr(thirdColon + 1);
+		std::string toPk(val);
+
+		// Load edge entity to check temporal fields (edges use "edge:" prefix, not "entity:")
+		std::string edgeKey = "edge:" + edgeId;
+		auto blob = db_.get(edgeKey);
+		if (!blob.has_value()) return true;
+
+		BaseEntity edge = BaseEntity::deserialize(edgeId, *blob);
+		std::optional<int64_t> valid_from = edge.getFieldAsInt("valid_from");
+		std::optional<int64_t> valid_to = edge.getFieldAsInt("valid_to");
+
+		// Check if edge is in time range
+		bool match = require_full_containment 
+			? filter.fullyContains(valid_from, valid_to)
+			: filter.hasOverlap(valid_from, valid_to);
+
+		if (match) {
+			result.push_back({edgeId, fromPk, toPk, valid_from, valid_to});
+		}
+		return true;
+	});
+
+	return {Status::OK(), result};
+}
+
+std::pair<GraphIndexManager::Status, std::vector<GraphIndexManager::EdgeInfo>>
+GraphIndexManager::getOutEdgesInTimeRange(std::string_view fromPk, int64_t range_start_ms, int64_t range_end_ms, bool require_full_containment) const {
+	if (!db_.isOpen()) {
+		return {Status::Error("getOutEdgesInTimeRange: Datenbank ist nicht geöffnet"), {}};
+	}
+	if (fromPk.empty()) {
+		return {Status::Error("getOutEdgesInTimeRange: fromPk darf nicht leer sein"), {}};
+	}
+
+	TimeRangeFilter filter = TimeRangeFilter::between(range_start_ms, range_end_ms);
+	std::vector<EdgeInfo> result;
+
+	// Scan edges with prefix "graph:out:<from_pk>:"
+	std::string prefix = "graph:out:" + std::string(fromPk) + ":";
+	db_.scanPrefix(prefix, [this, &filter, &fromPk, require_full_containment, &result](std::string_view key, std::string_view val) {
+		// Parse key: graph:out:<from_pk>:<edge_id>
+		std::string keyStr(key);
+		size_t lastColon = keyStr.rfind(':');
+		if (lastColon == std::string::npos) return true;
+		
+		std::string edgeId = keyStr.substr(lastColon + 1);
+		std::string toPk(val);
+
+		// Load edge entity to check temporal fields (edges use "edge:" prefix, not "entity:")
+		std::string edgeKey = "edge:" + edgeId;
+		auto blob = db_.get(edgeKey);
+		if (!blob.has_value()) return true;
+
+		BaseEntity edge = BaseEntity::deserialize(edgeId, *blob);
+		std::optional<int64_t> valid_from = edge.getFieldAsInt("valid_from");
+		std::optional<int64_t> valid_to = edge.getFieldAsInt("valid_to");
+
+		// Check if edge is in time range
+		bool match = require_full_containment 
+			? filter.fullyContains(valid_from, valid_to)
+			: filter.hasOverlap(valid_from, valid_to);
+
+		if (match) {
+			result.push_back({edgeId, std::string(fromPk), toPk, valid_from, valid_to});
+		}
+		return true;
+	});
+
+	return {Status::OK(), result};
+}
+
 } // namespace themis

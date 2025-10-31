@@ -1,4 +1,4 @@
-#include "timeseries/timeseries_store.h"
+#include "timeseries/tsstore.h"
 #include "utils/logger.h"
 #include <rocksdb/utilities/transaction_db.h>
 #include <rocksdb/utilities/transaction.h>
@@ -10,7 +10,7 @@ namespace themis {
 
 // ===== DataPoint JSON Serialization =====
 
-nlohmann::json TimeSeriesStore::DataPoint::toJson() const {
+nlohmann::json TSStore::DataPoint::toJson() const {
     nlohmann::json j;
     j["metric"] = metric;
     j["entity"] = entity;
@@ -21,7 +21,7 @@ nlohmann::json TimeSeriesStore::DataPoint::toJson() const {
     return j;
 }
 
-TimeSeriesStore::DataPoint TimeSeriesStore::DataPoint::fromJson(const nlohmann::json& j) {
+TSStore::DataPoint TSStore::DataPoint::fromJson(const nlohmann::json& j) {
     DataPoint point;
     point.metric = j.value("metric", "");
     point.entity = j.value("entity", "");
@@ -34,15 +34,15 @@ TimeSeriesStore::DataPoint TimeSeriesStore::DataPoint::fromJson(const nlohmann::
 
 // ===== TimeSeriesStore Implementation =====
 
-TimeSeriesStore::TimeSeriesStore(rocksdb::TransactionDB* db, 
-                                 rocksdb::ColumnFamilyHandle* cf)
+TSStore::TSStore(rocksdb::TransactionDB* db, 
+                 rocksdb::ColumnFamilyHandle* cf)
     : db_(db), cf_(cf) {
     if (!db_) {
         throw std::invalid_argument("TimeSeriesStore: db cannot be null");
     }
 }
 
-std::string TimeSeriesStore::makeKey(const std::string& metric, 
+std::string TSStore::makeKey(const std::string& metric, 
                                      const std::string& entity, 
                                      int64_t timestamp_ms) const {
     // Format: "ts:{metric}:{entity}:{timestamp_ms_padded}"
@@ -53,8 +53,8 @@ std::string TimeSeriesStore::makeKey(const std::string& metric,
     return oss.str();
 }
 
-std::optional<TimeSeriesStore::KeyComponents> 
-TimeSeriesStore::parseKey(const std::string& key) const {
+std::optional<TSStore::KeyComponents> 
+TSStore::parseKey(const std::string& key) const {
     // Expected format: "ts:{metric}:{entity}:{timestamp_ms}"
     if (key.compare(0, strlen(KEY_PREFIX), KEY_PREFIX) != 0) {
         return std::nullopt;
@@ -80,7 +80,7 @@ TimeSeriesStore::parseKey(const std::string& key) const {
     return comp;
 }
 
-bool TimeSeriesStore::matchesTagFilter(const DataPoint& point, 
+bool TSStore::matchesTagFilter(const DataPoint& point, 
                                        const nlohmann::json& tag_filter) const {
     if (tag_filter.is_null() || tag_filter.empty()) {
         return true; // No filter = match all
@@ -98,7 +98,7 @@ bool TimeSeriesStore::matchesTagFilter(const DataPoint& point,
     return true;
 }
 
-TimeSeriesStore::Status TimeSeriesStore::putDataPoint(const DataPoint& point) {
+TSStore::Status TSStore::putDataPoint(const DataPoint& point) {
     if (point.metric.empty()) {
         return Status::Error("Metric name cannot be empty");
     }
@@ -129,7 +129,7 @@ TimeSeriesStore::Status TimeSeriesStore::putDataPoint(const DataPoint& point) {
     return Status::OK();
 }
 
-TimeSeriesStore::Status TimeSeriesStore::putDataPoints(const std::vector<DataPoint>& points) {
+TSStore::Status TSStore::putDataPoints(const std::vector<DataPoint>& points) {
     if (points.empty()) {
         return Status::OK();
     }
@@ -163,8 +163,8 @@ TimeSeriesStore::Status TimeSeriesStore::putDataPoints(const std::vector<DataPoi
     return Status::OK();
 }
 
-std::pair<TimeSeriesStore::Status, std::vector<TimeSeriesStore::DataPoint>>
-TimeSeriesStore::query(const QueryOptions& options) const {
+std::pair<TSStore::Status, std::vector<TSStore::DataPoint>>
+TSStore::query(const QueryOptions& options) const {
     std::vector<DataPoint> results;
     
     if (options.metric.empty()) {
@@ -243,8 +243,8 @@ TimeSeriesStore::query(const QueryOptions& options) const {
     return {Status::OK(), results};
 }
 
-std::pair<TimeSeriesStore::Status, TimeSeriesStore::AggregationResult>
-TimeSeriesStore::aggregate(const QueryOptions& options) const {
+std::pair<TSStore::Status, TSStore::AggregationResult>
+TSStore::aggregate(const QueryOptions& options) const {
     AggregationResult result;
     
     auto [status, data_points] = query(options);
@@ -277,7 +277,7 @@ TimeSeriesStore::aggregate(const QueryOptions& options) const {
     return {Status::OK(), result};
 }
 
-TimeSeriesStore::Stats TimeSeriesStore::getStats() const {
+TSStore::Stats TSStore::getStats() const {
     Stats stats;
     
     rocksdb::ReadOptions read_opts;
@@ -324,7 +324,7 @@ TimeSeriesStore::Stats TimeSeriesStore::getStats() const {
     return stats;
 }
 
-size_t TimeSeriesStore::deleteOldData(int64_t before_timestamp_ms) {
+size_t TSStore::deleteOldData(int64_t before_timestamp_ms) {
     size_t deleted_count = 0;
     
     rocksdb::ReadOptions read_opts;
@@ -376,7 +376,45 @@ size_t TimeSeriesStore::deleteOldData(int64_t before_timestamp_ms) {
     return deleted_count;
 }
 
-TimeSeriesStore::Status TimeSeriesStore::deleteMetric(const std::string& metric) {
+size_t TSStore::deleteOldDataForMetric(const std::string& metric, int64_t before_timestamp_ms) {
+    if (metric.empty()) return 0;
+    size_t deleted_count = 0;
+    rocksdb::ReadOptions read_opts;
+    std::unique_ptr<rocksdb::Iterator> it;
+    if (cf_) it.reset(db_->NewIterator(read_opts, cf_)); else it.reset(db_->NewIterator(read_opts));
+
+    std::string prefix = KEY_PREFIX + metric + ":";
+    std::string end_key;
+    {
+        // end_key as first key with timestamp >= cutoff for any entity; we'll check entities in loop
+        // We will iterate all keys with metric prefix and delete those with timestamp < cutoff
+    }
+
+    rocksdb::WriteBatch batch;
+    it->Seek(prefix);
+    while (it->Valid()) {
+        std::string key = it->key().ToString();
+        if (key.compare(0, prefix.size(), prefix) != 0) break;
+        auto comp = parseKey(key);
+        if (comp.has_value() && comp->metric == metric && comp->timestamp_ms < before_timestamp_ms) {
+            if (cf_) batch.Delete(cf_, key); else batch.Delete(key);
+            deleted_count++;
+        }
+        it->Next();
+    }
+    if (deleted_count > 0) {
+        rocksdb::WriteOptions write_opts;
+        rocksdb::Status s = db_->Write(write_opts, &batch);
+        if (!s.ok()) {
+            THEMIS_ERROR("Failed to delete old data for metric {}: {}", metric, s.ToString());
+            return 0;
+        }
+        THEMIS_INFO("Deleted {} old data points for metric {} (before {})", deleted_count, metric, before_timestamp_ms);
+    }
+    return deleted_count;
+}
+
+TSStore::Status TSStore::deleteMetric(const std::string& metric) {
     if (metric.empty()) {
         return Status::Error("Metric name cannot be empty");
     }
@@ -427,7 +465,7 @@ TimeSeriesStore::Status TimeSeriesStore::deleteMetric(const std::string& metric)
     return Status::OK();
 }
 
-void TimeSeriesStore::clear() {
+void TSStore::clear() {
     rocksdb::ReadOptions read_opts;
     std::unique_ptr<rocksdb::Iterator> it;
     

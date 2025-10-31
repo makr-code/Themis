@@ -21,6 +21,7 @@
 #include "content/content_manager.h"
 #include "content/content_processor.h"
 #include "cache/semantic_cache.h"
+#include "server/sse_connection_manager.h"
 
 namespace themis {
 // Forward declarations
@@ -32,6 +33,7 @@ class TransactionManager;
 class LLMInteractionStore;
 class Changefeed;
 class TimeSeriesStore;
+class AdaptiveIndexManager;
 
 namespace server {
 
@@ -153,6 +155,8 @@ private:
     http::response<http::string_body> handleVectorIndexConfigGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleVectorIndexConfigPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleVectorIndexStats(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleVectorBatchInsert(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleVectorDeleteByFilter(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTransaction(const http::request<http::string_body>& req);
     http::response<http::string_body> handleCreateIndex(const http::request<http::string_body>& req);
     http::response<http::string_body> handleDropIndex(const http::request<http::string_body>& req);
@@ -183,11 +187,21 @@ private:
     http::response<http::string_body> handleLlmInteractionList(const http::request<http::string_body>& req);
     http::response<http::string_body> handleLlmInteractionGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleChangefeedGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleChangefeedStreamSse(const http::request<http::string_body>& req);
+    // CDC admin endpoints
+    http::response<http::string_body> handleChangefeedStats(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleChangefeedRetention(const http::request<http::string_body>& req);
     
     // Sprint B: Time-Series endpoints
     http::response<http::string_body> handleTimeSeriesPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTimeSeriesQuery(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTimeSeriesAggregate(const http::request<http::string_body>& req);
+    
+    // Sprint C: Adaptive Indexing endpoints
+    http::response<http::string_body> handleIndexSuggestions(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleIndexPatterns(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleIndexRecordPattern(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleIndexClearPatterns(const http::request<http::string_body>& req);
     
     // Transaction endpoints
     http::response<http::string_body> handleTransactionBegin(const http::request<http::string_body>& req);
@@ -237,12 +251,18 @@ private:
     rocksdb::ColumnFamilyHandle* llm_cf_handle_ = nullptr;
     
     // Changefeed (Sprint A CDC)
-    std::unique_ptr<Changefeed> changefeed_;
+    std::shared_ptr<Changefeed> changefeed_; // shared_ptr for SSE manager
     rocksdb::ColumnFamilyHandle* cdc_cf_handle_ = nullptr;
+    
+    // SSE Connection Manager for Changefeed streaming
+    std::unique_ptr<SseConnectionManager> sse_manager_;
     
     // Time-Series Store (Sprint B)
     std::unique_ptr<TimeSeriesStore> timeseries_;
     rocksdb::ColumnFamilyHandle* ts_cf_handle_ = nullptr;
+    
+    // Adaptive Index Manager (Sprint C)
+    std::unique_ptr<AdaptiveIndexManager> adaptive_index_;
 
     // Networking
     net::io_context ioc_;

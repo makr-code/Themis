@@ -20,6 +20,12 @@ public:
     static void init(const std::string& log_file = "vccdb.log", Level level = Level::INFO);
     static void shutdown();
     static std::shared_ptr<spdlog::logger> get();
+    // Runtime controls
+    static void setLevel(Level level);
+    static void setPattern(const std::string& pattern);
+    // Helper to convert from string to Level; returns INFO on unknown
+    static Level levelFromString(const std::string& lvl);
+    static const char* levelToString(Level lvl);
     
     template<typename FormatString, typename... Args>
     static void trace(FormatString&& fmt, Args&&... args);

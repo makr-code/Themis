@@ -1,3 +1,6 @@
+# Ignore local Jaeger zip artifacts (too large for git)
+tools/jaeger/*.zip
+
 // Build output
 build/
 out/
@@ -16,6 +19,7 @@ vcpkg_installed/
 *.sln
 *.vcxproj
 *.vcxproj.filters
+tools/jaeger/
 
 // Compilation
 *.o

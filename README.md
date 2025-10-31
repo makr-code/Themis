@@ -147,6 +147,12 @@ THEMIS/
   - `rebuildIndex`, `reindexTable`
   - TTL-Cleanup und Performance-Hinweise
 
+## Content Ingestion (v0)
+
+- Bulk-Ingestion von bereits vorverarbeiteten Inhalten (Content/Chunks/Edges/Blob): siehe `docs/content/ingestion.md`
+  - Endpunkte: `POST /content/import`, `GET /content/{id}`, `GET /content/{id}/chunks`, `GET /content/{id}/blob`
+  - Beispielpayloads und Felderläuterungen sind in der Doku enthalten.
+
 ## Dependencies
 
 Core libraries managed via vcpkg:
@@ -591,6 +597,7 @@ Create a `config.json` file:
 - Memory Tuning — `docs/memory_tuning.md`
 - AQL Profiling & Metriken — `docs/aql_explain_profile.md`
 - Pfad‑Constraints (Design) — `docs/path_constraints.md`
+- Change Data Capture (CDC) — `docs/cdc.md`
   
 Hinweis: Weitere Dokumente (Architecture, Deployment, Indexes, OpenAPI) werden nachgezogen; siehe auch `todo.md`.
 
@@ -807,6 +814,7 @@ curl http://localhost:8765/metrics
 - **[Base Entity](docs/base_entity.md)** - Entity serialization and storage
 - **[Memory Tuning](docs/memory_tuning.md)** - Performance optimization
 - **[OpenAPI Specification](docs/openapi.yaml)** - Complete REST API reference
+- **[Change Data Capture (CDC)](docs/cdc.md)** - Changefeed API, Checkpointing, Backpressure, Retention
 
 ## License
 

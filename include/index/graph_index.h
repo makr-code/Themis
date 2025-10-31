@@ -84,6 +84,30 @@ public:
         int64_t timestamp_ms
     ) const;
 
+    // Sprint B Extended: Time-Range Queries
+    // Find all edges valid during a time window (any overlap)
+    struct EdgeInfo {
+        std::string edgeId;
+        std::string fromPk;
+        std::string toPk;
+        std::optional<int64_t> valid_from;
+        std::optional<int64_t> valid_to;
+    };
+    
+    std::pair<Status, std::vector<EdgeInfo>> getEdgesInTimeRange(
+        int64_t range_start_ms,
+        int64_t range_end_ms,
+        bool require_full_containment = false
+    ) const;
+    
+    // Find edges from specific node valid in time range
+    std::pair<Status, std::vector<EdgeInfo>> getOutEdgesInTimeRange(
+        std::string_view fromPk,
+        int64_t range_start_ms,
+        int64_t range_end_ms,
+        bool require_full_containment = false
+    ) const;
+
     // Traversierungen
     std::pair<Status, std::vector<std::string>> bfs(
         std::string_view startPk,
