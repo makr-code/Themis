@@ -16,10 +16,11 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 Diese Kurzliste verdichtet die wichtigsten noch offenen Themen aus den detaillierten Abschnitten weiter unten.
 
 - AQL-Erweiterungen: Equality-Joins, Subqueries/LET, Aggregationen (COLLECT), OR/NOT mit Index-Merge, RETURN-Projektionen
-- Vector-Index: Batch-Inserts, Delete-by-Filter, Reindex/Compaction, Cursor/Pagination mit Scores
+- Vector-Index: Batch-Inserts, Delete-by-Filter, Reindex/Compaction, Cursor/Pagination mit Scores, **DOT-Metric (pure dot-product ohne Normalisierung)**
 - Content/Filesystem Phase 4: Document-/Chunk-Schema, Bulk-Chunk-Upload, Extraktionspipeline, Hybrid-Query-Beispiele
 - CDC Streaming (Optional): Server-Sent Events/WebSockets für near-real-time Changefeed
 - Time-Series: Gorilla-Compression + Continuous Aggregates/Retention Policies
+- **Compression Strategy**: Gorilla Time-Series (10-20x Ratio), Content-Blob ZSTD (1.5-2x), Vector Quantization (SQ8 für >1M Vektoren)
 - Security: Column-Level Encryption Key Rotation, Dynamic Data Masking, RBAC-Basis
 - Observability/Ops: POST /config (Hot-Reload), strukturierte Logs, inkrementelle Backups
 - Auto-Scaling (Serverless-Basis): Request-basiertes Scaling, Auto-Pause, Global Secondary Indexes (eventual)
@@ -213,7 +214,16 @@ Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Ve
   - [ ] Doku: Feature Store-API, Online-Learning-Beispiele
 ### 5.3 Polyglot Persistence Patterns (vs. DynamoDB/DocumentDB/Timestream)
 **Gap:** Kein Time-Series Storage, Event Sourcing, Wide-Column Support
-- [ ] Time-Series Engine mit Gorilla Compression
+- [ ] Time-Series Engine mit Gorilla Compression (**Codec implementiert ✅, TSStore-Integration TODO**)
+  - **Compression Strategy dokumentiert**: `docs/compression_strategy.md`
+  - **Impact**: 10-20x Speicherersparnis bei +15% CPU-Overhead
+  - **Priority**: 🔴 HIGH (größter ROI für Monitoring/IoT-Workloads)
+- [ ] Content-Blob Compression mit ZSTD Level 19 (**TODO**)
+  - **Impact**: 1.5-2x Ratio für PDF/DOCX/TXT (skip Images/Videos)
+  - **Priority**: 🟡 MEDIUM (+30% Upload-CPU, -15% Download)
+- [ ] Vector Quantization (SQ8/PQ) (**Nicht nötig für <1M Vektoren**)
+  - **Best-Practice Check**: ✅ Float32 ist korrekt für <1M Vektoren
+  - **Future**: SQ8 bei >1M Vektoren (4x Ratio, 97% Recall)
 - [ ] Event Store mit CQRS und Projektionen
 - [ ] Wide-Column Support (Column Families wie Cassandra)
 - [ ] Cross-Model Distributed Transactions
@@ -227,10 +237,17 @@ Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Ve
       - compression: "gorilla"
       - continuous_aggregates: true
       - retention_policies: "30d raw, 1y hourly"
+  storage:
+    compression_default: "lz4"      # ✅ IMPLEMENTED (JSON/Graph optimal)
+    compression_bottommost: "zstd"  # ✅ IMPLEMENTED (2.4x ratio)
+  content:
+    compress_blobs: true            # 🟡 TODO (ZSTD Level 19)
+    skip_compressed_mimes: ["image/jpeg", "video/mp4"]
   ```
 - **Ressourcen:**
   - [AWS Timestream](https://docs.aws.amazon.com/timestream/)
   - [Martin Kleppmann - Designing Data-Intensive Applications](https://dataintensive.net/)
+  - **Themis Compression Analysis**: `docs/compression_strategy.md`
 
 ### 5.4 Serverless & Auto-Scaling (vs. DynamoDB On-Demand/Cosmos DB)
 **Gap:** Keine Request-basierte Skalierung, kein Pay-per-Request

@@ -17,7 +17,7 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
-find_package(CURL REQUIRED)
+find_package(CURL CONFIG REQUIRED)
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)

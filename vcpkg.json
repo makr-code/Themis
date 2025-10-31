@@ -7,6 +7,7 @@
   "license": "MIT",
   "builtin-baseline": "beea85fdd8bf6b716acdac191cde9bfc7c72b73b",
   "dependencies": [
+    { "name": "openssl" },
     { "name": "rocksdb", "features": ["lz4", "zstd"] },
     { "name": "simdjson" },
     { "name": "tbb" },

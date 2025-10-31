@@ -4326,7 +4326,14 @@ http::response<http::string_body> HttpServer::handleVectorIndexConfigGet(
     const http::request<http::string_body>& req
 ) {
     try {
-        std::string metricStr = (vector_index_->getMetric() == themis::VectorIndexManager::Metric::L2) ? "L2" : "COSINE";
+        std::string metricStr;
+        if (vector_index_->getMetric() == themis::VectorIndexManager::Metric::L2) {
+            metricStr = "L2";
+        } else if (vector_index_->getMetric() == themis::VectorIndexManager::Metric::DOT) {
+            metricStr = "DOT";
+        } else {
+            metricStr = "COSINE";
+        }
         
         json response = {
             {"objectName", vector_index_->getObjectName()},
@@ -4385,7 +4392,14 @@ http::response<http::string_body> HttpServer::handleVectorIndexStats(
     const http::request<http::string_body>& req
 ) {
     try {
-        std::string metricStr = (vector_index_->getMetric() == themis::VectorIndexManager::Metric::L2) ? "L2" : "COSINE";
+        std::string metricStr;
+        if (vector_index_->getMetric() == themis::VectorIndexManager::Metric::L2) {
+            metricStr = "L2";
+        } else if (vector_index_->getMetric() == themis::VectorIndexManager::Metric::DOT) {
+            metricStr = "DOT";
+        } else {
+            metricStr = "COSINE";
+        }
         
         json response = {
             {"objectName", vector_index_->getObjectName()},

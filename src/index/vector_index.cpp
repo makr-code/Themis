@@ -78,6 +78,16 @@ float VectorIndexManager::cosineOneMinus(const std::vector<float>& a, const std:
 	return 1.0f - cosv;
 }
 
+float VectorIndexManager::dotProduct(const std::vector<float>& a, const std::vector<float>& b) {
+	float dot = 0.0f;
+	for (size_t i = 0; i < a.size(); ++i) {
+		dot += a[i] * b[i];
+	}
+	// Return negative dot product so that "lower is better" ordering works
+	// (higher dot product = more similar → negate for distance semantics)
+	return -dot;
+}
+
 void VectorIndexManager::normalizeL2(std::vector<float>& v) {
 	float n2 = 0.0f;
 	for (float x : v) n2 += x * x;
@@ -88,7 +98,9 @@ void VectorIndexManager::normalizeL2(std::vector<float>& v) {
 }
 
 float VectorIndexManager::distance(const std::vector<float>& a, const std::vector<float>& b) const {
-	return (metric_ == Metric::L2) ? l2(a, b) : cosineOneMinus(a, b);
+	if (metric_ == Metric::L2) return l2(a, b);
+	if (metric_ == Metric::DOT) return dotProduct(a, b);
+	return cosineOneMinus(a, b); // COSINE
 }
 
 std::string VectorIndexManager::makeObjectKey(std::string_view pk) const {
@@ -130,9 +142,15 @@ VectorIndexManager::Status VectorIndexManager::init(std::string_view objectName,
 #ifdef THEMIS_HNSW_ENABLED
 	try {
 		hnswlib::SpaceInterface<float>* space = nullptr;
-	if (metric == Metric::L2) space = new hnswlib::L2Space(dim);
-	else space = new hnswlib::InnerProductSpace(dim); // Cosine via normalisierte Vektoren (InnerProduct)
-	auto* appr = new hnswlib::HierarchicalNSW<float>(space, 1000 /*initial*/, M, efConstruction);
+		if (metric == Metric::L2) {
+			space = new hnswlib::L2Space(dim);
+		} else if (metric == Metric::DOT) {
+			// DOT uses InnerProductSpace (same as COSINE, but without normalization)
+			space = new hnswlib::InnerProductSpace(dim);
+		} else { // COSINE
+			space = new hnswlib::InnerProductSpace(dim);
+		}
+		auto* appr = new hnswlib::HierarchicalNSW<float>(space, 1000 /*initial*/, M, efConstruction);
 		appr->ef_ = efSearch;
 		hnswIndex_ = static_cast<void*>(appr);
 		useHnsw_ = true;
@@ -178,6 +196,7 @@ VectorIndexManager::Status VectorIndexManager::rebuildFromStorage() {
 			auto vecOpt = e.extractVector("embedding");
 			if (!vecOpt || vecOpt->size() != static_cast<size_t>(dim_)) return true;
 			std::vector<float> v = *vecOpt;
+			// Normalize only for COSINE (not for DOT or L2)
 			if (metric_ == Metric::COSINE) normalizeL2(v);
 			cache_[pk] = v;
 			if (useHnsw_) {
@@ -215,7 +234,7 @@ VectorIndexManager::Status VectorIndexManager::addEntity(const BaseEntity& e, st
 		return Status::Error("addEntity: RocksDB put fehlgeschlagen");
 	}
 
-	// In-Memory Cache aktualisieren (bei COSINE mit L2-Normalisierung)
+	// In-Memory Cache aktualisieren (nur COSINE normalisiert; DOT/L2 bleiben raw)
 	std::vector<float> vv = *v;
 	if (metric_ == Metric::COSINE) normalizeL2(vv);
 	cache_[pk] = vv;
@@ -250,7 +269,7 @@ VectorIndexManager::Status VectorIndexManager::addEntity(const BaseEntity& e, Ro
 	std::vector<uint8_t> serialized = e.serialize();
 	batch.put(key, serialized);
 
-	// In-Memory Cache aktualisieren (optimistisch); bei COSINE normalisieren
+	// In-Memory Cache aktualisieren (nur COSINE normalisiert; DOT/L2 bleiben raw)
 	std::vector<float> vv = *v;
 	if (metric_ == Metric::COSINE) normalizeL2(vv);
 	cache_[pk] = vv;
@@ -518,7 +537,7 @@ VectorIndexManager::Status VectorIndexManager::addEntity(const BaseEntity& e, Ro
 	std::vector<uint8_t> serialized = e.serialize();
 	txn.put(key, serialized);
 
-	// In-Memory Cache aktualisieren (bei COSINE mit L2-Normalisierung)
+	// In-Memory Cache aktualisieren (nur COSINE normalisiert; DOT/L2 bleiben raw)
 	std::vector<float> vv = *v;
 	if (metric_ == Metric::COSINE) normalizeL2(vv);
 	cache_[pk] = vv;

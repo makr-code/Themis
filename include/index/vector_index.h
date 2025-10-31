@@ -20,7 +20,7 @@ class BaseEntity;
 /// - In-Memory Cache für schnellen Zugriff, optional HNSW-Index für ANN
 class VectorIndexManager {
 public:
-    enum class Metric { L2, COSINE };
+    enum class Metric { L2, COSINE, DOT };
 
     struct Status {
         bool ok = true;
@@ -122,6 +122,7 @@ private:
     // Hilfsfunktionen
     static float l2(const std::vector<float>& a, const std::vector<float>& b);
     static float cosineOneMinus(const std::vector<float>& a, const std::vector<float>& b);
+    static float dotProduct(const std::vector<float>& a, const std::vector<float>& b);
     static void normalizeL2(std::vector<float>& v);
     float distance(const std::vector<float>& a, const std::vector<float>& b) const;
 
