@@ -10,6 +10,9 @@ on:
       - 'config/config.qnap.json'
   workflow_dispatch:
 
+env:
+  DOCKERHUB_REPO: themisdb/themis
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -41,5 +44,6 @@ jobs:
           build-args: |
             VCPKG_TRIPLET=${{ matrix.triplet }}
           tags: |
-            ${{ secrets.DOCKERHUB_REPO }}:latest-${{ matrix.triplet }}
-            ${{ secrets.DOCKERHUB_REPO }}:${{ github.sha }}-${{ matrix.triplet }}
+            ${{ env.DOCKERHUB_REPO }}:latest
+            ${{ env.DOCKERHUB_REPO }}:latest-${{ matrix.triplet }}
+            ${{ env.DOCKERHUB_REPO }}:${{ github.sha }}-${{ matrix.triplet }}
