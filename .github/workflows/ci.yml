@@ -23,7 +23,6 @@ jobs:
         uses: lukka/run-vcpkg@v11
         id: vcpkg
         with:
-          vcpkgGitCommitId: master
           runVcpkgInstall: true
 
       - name: Configure CMake

@@ -5,6 +5,7 @@
   "description": "Themis Multi-Model Database System",
   "homepage": "https://github.com/makr-code/VCC",
   "license": "MIT",
+  "builtin-baseline": "beea85fdd8bf6b716acdac191cde9bfc7c72b73b",
   "dependencies": [
     { "name": "rocksdb", "features": ["lz4", "zstd"] },
     { "name": "simdjson" },

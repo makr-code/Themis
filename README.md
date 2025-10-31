@@ -71,6 +71,23 @@ cd vcpkg
 $env:VCPKG_ROOT = (Get-Location).Path
 ```
 
+### vcpkg Baseline (reproducible builds)
+
+Dieses Repository nutzt den vcpkg Manifest-Modus mit einer festen Baseline für reproduzierbare Builds. Die Baseline ist in `vcpkg.json` unter `"builtin-baseline"` auf einen 40‑Hex Commit von `microsoft/vcpkg` gepinnt.
+
+- Aktuelle Baseline (Stand): siehe `vcpkg.json` → `builtin-baseline`
+- Warum? Stabile, deterministische Abhängigkeitsauflösung in CI und lokal
+
+Baseline aktualisieren:
+
+```powershell
+# Im Repo-Root ausführen
+vcpkg x-update-baseline
+# Danach die geänderte vcpkg.json committen
+```
+
+Alternativ kann die Eigenschaft `builtin-baseline` manuell auf einen gewünschten vollen Commit‑Hash aus https://github.com/microsoft/vcpkg gesetzt werden.
+
 ### 2. Build the project
 
 ```powershell
