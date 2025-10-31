@@ -1,10 +1,13 @@
 #include "timeseries/tsstore.h"
 #include "utils/logger.h"
+#include "timeseries/gorilla.h"
 #include <rocksdb/utilities/transaction_db.h>
 #include <rocksdb/utilities/transaction.h>
 #include <rocksdb/write_batch.h>
 #include <sstream>
 #include <iomanip>
+#include <map>
+#include <algorithm>
 
 namespace themis {
 
@@ -35,8 +38,9 @@ TSStore::DataPoint TSStore::DataPoint::fromJson(const nlohmann::json& j) {
 // ===== TimeSeriesStore Implementation =====
 
 TSStore::TSStore(rocksdb::TransactionDB* db, 
-                 rocksdb::ColumnFamilyHandle* cf)
-    : db_(db), cf_(cf) {
+                 rocksdb::ColumnFamilyHandle* cf,
+                 Config config)
+    : db_(db), cf_(cf), config_(std::move(config)) {
     if (!db_) {
         throw std::invalid_argument("TimeSeriesStore: db cannot be null");
     }
@@ -106,6 +110,10 @@ TSStore::Status TSStore::putDataPoint(const DataPoint& point) {
         return Status::Error("Entity ID cannot be empty");
     }
     
+    // For Gorilla compression, we'd need to buffer points and flush in chunks
+    // For now, fall back to raw storage for single points with Gorilla config
+    // TODO: Implement buffering strategy for single-point inserts with Gorilla
+    
     std::string key = makeKey(point.metric, point.entity, point.timestamp_ms);
     std::string value = point.toJson().dump();
     
@@ -123,8 +131,9 @@ TSStore::Status TSStore::putDataPoint(const DataPoint& point) {
         return Status::Error("Failed to write data point: " + s.ToString());
     }
     
-    THEMIS_DEBUG("Wrote data point: metric={}, entity={}, timestamp={}, value={}", 
-                 point.metric, point.entity, point.timestamp_ms, point.value);
+    THEMIS_DEBUG("Wrote data point: metric={}, entity={}, timestamp={}, value={}, compression={}", 
+                 point.metric, point.entity, point.timestamp_ms, point.value,
+                 config_.compression == CompressionType::Gorilla ? "gorilla" : "none");
     
     return Status::OK();
 }
@@ -134,6 +143,94 @@ TSStore::Status TSStore::putDataPoints(const std::vector<DataPoint>& points) {
         return Status::OK();
     }
     
+    // If Gorilla compression is enabled, group points by metric+entity and compress
+    if (config_.compression == CompressionType::Gorilla) {
+        // Group points by metric:entity
+        std::map<std::string, std::vector<DataPoint>> grouped;
+        for (const auto& point : points) {
+            if (point.metric.empty() || point.entity.empty()) {
+                return Status::Error("Invalid data point: metric and entity cannot be empty");
+            }
+            std::string group_key = point.metric + ":" + point.entity;
+            grouped[group_key].push_back(point);
+        }
+        
+        rocksdb::WriteBatch batch;
+        
+        for (auto& [group_key, group_points] : grouped) {
+            // Sort by timestamp for Gorilla efficiency
+            std::sort(group_points.begin(), group_points.end(),
+                [](const DataPoint& a, const DataPoint& b) {
+                    return a.timestamp_ms < b.timestamp_ms;
+                });
+            
+            // Extract timestamps and values
+            std::vector<int64_t> timestamps;
+            std::vector<double> values;
+            timestamps.reserve(group_points.size());
+            values.reserve(group_points.size());
+            
+            for (const auto& p : group_points) {
+                timestamps.push_back(p.timestamp_ms);
+                values.push_back(p.value);
+            }
+            
+            // Compress with Gorilla
+            try {
+                GorillaEncoder encoder;
+                for (size_t i = 0; i < timestamps.size(); ++i) {
+                    encoder.add(timestamps[i], values[i]);
+                }
+                std::vector<uint8_t> compressed = encoder.finish();
+                
+                // Store compressed chunk with special prefix
+                // Key format: "tsc:{metric}:{entity}:{first_ts}:{last_ts}"
+                std::string chunk_key = std::string(GORILLA_CHUNK_PREFIX) +
+                    group_points.front().metric + ":" +
+                    group_points.front().entity + ":" +
+                    std::to_string(timestamps.front()) + ":" +
+                    std::to_string(timestamps.back());
+                
+                // Store tags/metadata from first point (assuming homogeneous in chunk)
+                nlohmann::json chunk_meta;
+                chunk_meta["compression"] = "gorilla";
+                chunk_meta["count"] = group_points.size();
+                chunk_meta["tags"] = group_points.front().tags;
+                chunk_meta["metadata"] = group_points.front().metadata;
+                chunk_meta["data"] = nlohmann::json::binary(compressed);
+                
+                std::string value = chunk_meta.dump();
+                
+                if (cf_) {
+                    batch.Put(cf_, chunk_key, value);
+                } else {
+                    batch.Put(chunk_key, value);
+                }
+                
+                THEMIS_DEBUG("Gorilla compressed {} points for {} (ratio: {:.2f}x)",
+                    group_points.size(), group_key,
+                    static_cast<double>(group_points.size() * (sizeof(int64_t) + sizeof(double))) / compressed.size());
+                
+            } catch (const std::exception& e) {
+                THEMIS_ERROR("Gorilla compression failed for {}: {}", group_key, e.what());
+                return Status::Error("Gorilla compression failed: " + std::string(e.what()));
+            }
+        }
+        
+        rocksdb::WriteOptions write_opts;
+        rocksdb::Status s = db_->Write(write_opts, &batch);
+        
+        if (!s.ok()) {
+            THEMIS_ERROR("Failed to write Gorilla-compressed batch: {}", s.ToString());
+            return Status::Error("Failed to write batch: " + s.ToString());
+        }
+        
+        THEMIS_INFO("Wrote Gorilla-compressed batch of {} data points ({} chunks)", 
+            points.size(), grouped.size());
+        return Status::OK();
+    }
+    
+    // No compression: write raw JSON
     rocksdb::WriteBatch batch;
     
     for (const auto& point : points) {
@@ -159,7 +256,7 @@ TSStore::Status TSStore::putDataPoints(const std::vector<DataPoint>& points) {
         return Status::Error("Failed to write batch: " + s.ToString());
     }
     
-    THEMIS_INFO("Wrote batch of {} data points", points.size());
+    THEMIS_INFO("Wrote batch of {} data points (raw)", points.size());
     return Status::OK();
 }
 
@@ -171,19 +268,7 @@ TSStore::query(const QueryOptions& options) const {
         return {Status::Error("Metric name is required"), results};
     }
     
-    // Build start and end keys for range scan
-    std::string start_key, end_key;
-    
-    if (options.entity.has_value()) {
-        // Scan specific entity
-        start_key = makeKey(options.metric, *options.entity, options.from_timestamp_ms);
-        end_key = makeKey(options.metric, *options.entity, options.to_timestamp_ms);
-    } else {
-        // Scan all entities for this metric
-        start_key = KEY_PREFIX + options.metric + ":";
-        end_key = KEY_PREFIX + options.metric + ";"; // ';' is next char after ':'
-    }
-    
+    // Scan both raw data (ts:) and compressed chunks (tsc:)
     rocksdb::ReadOptions read_opts;
     std::unique_ptr<rocksdb::Iterator> it;
     
@@ -194,49 +279,135 @@ TSStore::query(const QueryOptions& options) const {
     }
     
     size_t count = 0;
-    it->Seek(start_key);
     
-    while (it->Valid() && count < options.limit) {
-        std::string key = it->key().ToString();
+    // First, scan raw data points (ts: prefix)
+    {
+        std::string start_key, end_key;
         
-        // Check if still within range
-        if (key > end_key) {
-            break;
+        if (options.entity.has_value()) {
+            start_key = makeKey(options.metric, *options.entity, options.from_timestamp_ms);
+            end_key = makeKey(options.metric, *options.entity, options.to_timestamp_ms);
+        } else {
+            start_key = KEY_PREFIX + options.metric + ":";
+            end_key = KEY_PREFIX + options.metric + ";";
         }
         
-        // Check if still in metric prefix
-        if (!options.entity.has_value()) {
-            // When scanning all entities, check metric prefix
-            std::string expected_prefix = KEY_PREFIX + options.metric + ":";
-            if (key.compare(0, expected_prefix.size(), expected_prefix) != 0) {
-                break;
+        it->Seek(start_key);
+        
+        while (it->Valid() && count < options.limit) {
+            std::string key = it->key().ToString();
+            
+            if (key > end_key) break;
+            
+            if (!options.entity.has_value()) {
+                std::string expected_prefix = KEY_PREFIX + options.metric + ":";
+                if (key.compare(0, expected_prefix.size(), expected_prefix) != 0) {
+                    break;
+                }
             }
+            
+            try {
+                nlohmann::json j = nlohmann::json::parse(it->value().ToString());
+                DataPoint point = DataPoint::fromJson(j);
+                
+                if (point.timestamp_ms >= options.from_timestamp_ms && 
+                    point.timestamp_ms <= options.to_timestamp_ms &&
+                    matchesTagFilter(point, options.tag_filter)) {
+                    results.push_back(point);
+                    count++;
+                }
+            } catch (const std::exception& e) {
+                THEMIS_WARN("Failed to parse data point at key {}: {}", key, e.what());
+            }
+            
+            it->Next();
+        }
+    }
+    
+    // Second, scan Gorilla-compressed chunks (tsc: prefix)
+    if (count < options.limit) {
+        std::string start_key, end_key;
+        
+        if (options.entity.has_value()) {
+            start_key = std::string(GORILLA_CHUNK_PREFIX) + options.metric + ":" + *options.entity + ":";
+            end_key = std::string(GORILLA_CHUNK_PREFIX) + options.metric + ":" + *options.entity + ";";
+        } else {
+            start_key = std::string(GORILLA_CHUNK_PREFIX) + options.metric + ":";
+            end_key = std::string(GORILLA_CHUNK_PREFIX) + options.metric + ";";
         }
         
-        try {
-            nlohmann::json j = nlohmann::json::parse(it->value().ToString());
-            DataPoint point = DataPoint::fromJson(j);
-            
-            // Apply time range filter
-            if (point.timestamp_ms < options.from_timestamp_ms || 
-                point.timestamp_ms > options.to_timestamp_ms) {
-                it->Next();
-                continue;
-            }
-            
-            // Apply tag filter
-            if (!matchesTagFilter(point, options.tag_filter)) {
-                it->Next();
-                continue;
-            }
-            
-            results.push_back(point);
-            count++;
-        } catch (const std::exception& e) {
-            THEMIS_WARN("Failed to parse data point at key {}: {}", key, e.what());
-        }
+        it->Seek(start_key);
         
-        it->Next();
+        while (it->Valid() && count < options.limit) {
+            std::string key = it->key().ToString();
+            
+            if (key > end_key) break;
+            
+            try {
+                nlohmann::json chunk_meta = nlohmann::json::parse(it->value().ToString());
+                
+                if (!chunk_meta.contains("compression") || chunk_meta["compression"] != "gorilla") {
+                    it->Next();
+                    continue;
+                }
+                
+                // Decode Gorilla-compressed data
+                auto compressed_data = chunk_meta["data"].get<std::vector<uint8_t>>();
+                GorillaDecoder decoder(compressed_data);
+                
+                // Extract tags/metadata from chunk
+                nlohmann::json tags = chunk_meta.value("tags", nlohmann::json::object());
+                nlohmann::json metadata = chunk_meta.value("metadata", nlohmann::json::object());
+                
+                // Parse chunk key to get metric and entity
+                // Key format: "tsc:{metric}:{entity}:{first_ts}:{last_ts}"
+                size_t pos1 = strlen(GORILLA_CHUNK_PREFIX);
+                size_t pos2 = key.find(':', pos1);
+                size_t pos3 = key.find(':', pos2 + 1);
+                
+                std::string metric = key.substr(pos1, pos2 - pos1);
+                std::string entity = key.substr(pos2 + 1, pos3 - pos2 - 1);
+                
+                // Decode all points from chunk
+                while (auto point_opt = decoder.next()) {
+                    auto [timestamp_ms, value] = *point_opt;
+                    
+                    // Check timestamp bounds
+                    if (timestamp_ms < options.from_timestamp_ms || timestamp_ms > options.to_timestamp_ms) {
+                        continue;
+                    }
+                    
+                    DataPoint dp;
+                    dp.metric = metric;
+                    dp.entity = entity;
+                    dp.timestamp_ms = timestamp_ms;
+                    dp.value = value;
+                    dp.tags = tags;
+                    dp.metadata = metadata;
+                    
+                    if (matchesTagFilter(dp, options.tag_filter)) {
+                        results.push_back(dp);
+                        count++;
+                        if (count >= options.limit) break;
+                    }
+                }
+                
+            } catch (const std::exception& e) {
+                THEMIS_WARN("Failed to decode Gorilla chunk at key {}: {}", key, e.what());
+            }
+            
+            it->Next();
+        }
+    }
+    
+    // Sort results by timestamp (mixed raw + compressed may be out of order)
+    std::sort(results.begin(), results.end(),
+        [](const DataPoint& a, const DataPoint& b) {
+            return a.timestamp_ms < b.timestamp_ms;
+        });
+    
+    if (!it->status().ok()) {
+        return {Status::Error("Scan failed: " + it->status().ToString()), results};
     }
     
     THEMIS_DEBUG("Query returned {} data points for metric={}", results.size(), options.metric);
