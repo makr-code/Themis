@@ -1,0 +1,42 @@
+{
+  "storage": {
+    "rocksdb_path": "/data/themis_server",
+    "memtable_size_mb": 256,
+    "block_cache_size_mb": 1024,
+    "enable_blobdb": true,
+    "compression": {
+      "default": "lz4",
+      "bottommost": "zstd"
+    }
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "worker_threads": 4
+  },
+  "vector_index": {
+    "object_name": "documents",
+    "dimension": 10,
+    "metric": "COSINE",
+    "engine": "hnsw",
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "ef_search": 64,
+    "use_gpu": false,
+    "auto_save": true,
+    "save_path": "/data/vector_indexes",
+    "save_on_shutdown": true,
+    "load_on_startup": true
+  },
+  "tracing": {
+    "enabled": false,
+    "service_name": "themis-server",
+    "otlp_endpoint": "http://host.docker.internal:4318"
+  },
+  "features": {
+    "semantic_cache": true,
+    "llm_store": true,
+    "cdc": true,
+    "timeseries": true
+  }
+}
