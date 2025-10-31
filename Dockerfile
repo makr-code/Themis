@@ -29,7 +29,7 @@ RUN cmake -S . -B build -G Ninja \
 FROM ubuntu:22.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl \
+    ca-certificates curl jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary and vcpkg-installed libs to satisfy shared deps
@@ -42,9 +42,20 @@ ENV LD_LIBRARY_PATH=/opt/vcpkg/installed/${VCPKG_TRIPLET}/lib:$LD_LIBRARY_PATH
 
 # Default config and data
 COPY config/config.json /etc/vccdb/config.json
+# Default Linux/QNAP config template inside image
+RUN mkdir -p /usr/local/share/themis
+COPY config/config.qnap.json /usr/local/share/themis/config.qnap.json
 VOLUME ["/data"]
-EXPOSE 8080
+EXPOSE 8080 18765
 
 # Default to root; can be overridden via docker-compose (user: "0:0" or non-root)
 
-ENTRYPOINT ["/usr/local/bin/themis_server", "--config", "/etc/vccdb/config.json"]
+# Configurable server port (overrides JSON via entrypoint)
+ENV THEMIS_PORT=18765
+ENV THEMIS_CONFIG_PATH=/etc/vccdb/config.json
+
+# Bootstrap entrypoint to adjust config and ensure directories
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
