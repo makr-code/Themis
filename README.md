@@ -13,6 +13,23 @@ cd THEMIS
 # 2. Build
 .\build.ps1
 
+### Container Images (GHCR + Docker Hub)
+
+Images werden bei jedem Push auf `main` automatisch gebaut und veröffentlicht.
+
+- GitHub Container Registry (empfohlen):
+  - Repo: `ghcr.io/makr-code/themis`
+  - Tags:
+    - Multi-Arch Manifeste: `latest`, `g<shortsha>`
+    - Arch-spezifisch: `latest-x64-linux`, `latest-arm64-linux`, sowie `g<shortsha>-<triplet>`
+- Docker Hub (optional, falls Secrets gesetzt):
+  - Repo: `themisdb/themis`
+  - Gleiche Tag-Strategie wie oben
+
+Pull-Beispiele:
+
+```bash
+
 # 3. Start server
 .\build\Release\themis_server.exe
 
@@ -22,10 +39,18 @@ curl http://localhost:8765/health
 
 **5 Minute Tutorial:**
 
+Run-Beispiel (lokal):
+
+```bash
+
 ```powershell
 # Create an entity
 curl -X PUT http://localhost:8765/entities/users:alice `
   -H "Content-Type: application/json" `
+
+QNAP Compose:
+
+```bash
   -d '{"blob":"{\"name\":\"Alice\",\"age\":30,\"city\":\"Berlin\"}"}'
 
 # Create index for queries
