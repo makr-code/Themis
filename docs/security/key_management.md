@@ -2,7 +2,7 @@
 
 ThemisDB unterstützt eine externe Schlüsselverwaltung via KeyProvider. Aktuell ist standardmäßig ein MockKeyProvider verdrahtet; eine Vault‑basierte Implementierung ist vorbereitet.
 
-**⚠️ Hinweis zur PKI-Integration:** Die aktuelle PKI-Client-Implementierung (`src/utils/pki_client.cpp`) ist ein Demo-Stub für Entwicklung/Tests. Für produktive Nutzung mit eIDAS-konformen Signaturen ist eine echte RSA/OpenSSL-Integration erforderlich. Details siehe `CODE_AUDIT_MOCKUPS_STUBS.md`.
+**✅ PKI-Integration (Nov 2025):** Die PKI-Client-Implementierung (`src/utils/pki_client.cpp`) unterstützt jetzt echte RSA-Signaturen via OpenSSL (RSA-SHA256). ENV-Variablen (`THEMIS_PKI_PRIVATE_KEY`, `THEMIS_PKI_CERTIFICATE`, `THEMIS_PKI_PRIVATE_KEY_PASSPHRASE`) aktivieren produktive Signaturen; ohne ENV läuft der Server im Stub-Modus (Base64, Development). Details siehe `docs/security/pki_rsa_integration.md`.
 
 ## Schlüsselarten (Beispiele)
 - LEK: Local Encryption Key
