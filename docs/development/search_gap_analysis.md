@@ -1,18 +1,23 @@
 # Suche & Relevanz – Gap-Analyse (Stand: 2025-11-02)
 
-Ziel: Abgleich Dokumentation (Kapitel „Suche & Relevanz“) mit dem aktuellen Quellcode. Fokus auf BM25/TF‑IDF, Hybrid (RRF / gewichtete Fusion) und Fulltext-Funktionalität.
+**Status Update (02.11.2025):** BM25 v1 und HTTP-API implementiert (Commit 94af141)
+
+Ziel: Abgleich Dokumentation (Kapitel „Suche & Relevanz") mit dem aktuellen Quellcode. Fokus auf BM25/TF‑IDF, Hybrid (RRF / gewichtete Fusion) und Fulltext-Funktionalität.
 
 ## Zusammenfassung
 
-- Fulltext (einfach): Implementiert
+- ✅ Fulltext mit BM25 Scoring: **Implementiert** (v1)
   - Inverted Index: vorhanden (SecondaryIndexManager::createFulltextIndex)
-  - Tokenisierung: vorhanden (Whitespace + lowercase; keine Analyzer)
-  - Suche: vorhanden (scanFulltext) – AND-Logik über Tokens, keine Scores, keine Sortierung
-- BM25/TF‑IDF Scoring: Nicht implementiert
-  - Keine Berechnung/Verwendung von TF/IDF, keine Ranking-Sortierung nach Relevanz
-  - AQL-Beispiele („BM25(doc)“) sind Dokumentation/Plan, kein ausführbarer Pfad
-- Hybrid-Search (Vector + Text Fusion, RRF/Reranking): Nicht implementiert
+  - Tokenisierung: vorhanden (Whitespace + lowercase; keine Analyzer/Stemming)
+  - TF/IDF Storage: TF pro (token, doc), DocLength pro doc – automatische Pflege bei put/delete
+  - BM25 Ranking: scanFulltextWithScores liefert {pk, score} sortiert nach Relevanz (k1=1.2, b=0.75)
+  - HTTP API: POST /search/fulltext mit Score-Antwort
+  - Backward-kompatibel: scanFulltext (ohne Scores) weiterhin verfügbar
+- ⏳ AQL BM25(doc) Funktion: **In Arbeit** (Task 3)
+  - Parser-Erweiterung und Query-Engine-Integration geplant
+- 🔲 Hybrid-Search (Vector + Text Fusion, RRF/Reranking): **Geplant** (Task 2)
   - Keine Score-Fusion, kein Reranking über Text- und Vektor-Ergebnisse
+  - Implementation als POST /search/hybrid geplant
 
 ## Detaillierter Abgleich
 
@@ -36,17 +41,22 @@ Ziel: Abgleich Dokumentation (Kapitel „Suche & Relevanz“) mit dem aktuellen 
 
 ## Vorschlag: Minimaler Umsetzungsplan
 
-1) BM25 v1 (minimal-invasiv)
-- Indexpflege: zusätzlich pro (token, doc) die Termfrequenz (TF) speichern; pro Dokument DocLength/AvgDL tracken
-- Query: scanFulltext(token) liefert Kandidaten; anschließend BM25-Score je PK berechnen und Top‑k sortiert zurückgeben
-- API/AQL: Ergebnis um `score` ergänzen; `SORT BM25(doc) DESC` optional in Parser/Executor abbilden (oder als implizites „score“ Feld)
+### ✅ 1) BM25 v1 (minimal-invasiv) – **ABGESCHLOSSEN** (94af141)
+- ✅ Indexpflege: zusätzlich pro (token, doc) die Termfrequenz (TF) speichern; pro Dokument DocLength/AvgDL tracken
+- ✅ Query: scanFulltextWithScores liefert Kandidaten mit BM25-Score; Top‑k sortiert zurückgegeben
+- ✅ API: POST /search/fulltext mit `{"results": [{"pk": "...", "score": 3.14}, ...]}` Response
+- ⏳ AQL: `SORT BM25(doc) DESC` in Parser/Executor abbildbar (Task 3)
+- Effort: ~2d (Implementation + Tests)
 
-2) Hybrid-Fusion v1
+### 🔲 2) Hybrid-Fusion v1 – **IN ARBEIT** (Task 2)
 - Normalisierung: Min‑Max pro Liste (Text/Vektor) oder robustere RRF (Σ 1/(k + rank))
-- Fusion: score = α*BM25 + (1−α)*SIM oder RRF; Parameter in HTTP/AQL konfigurierbar
+- Fusion: score = α*BM25 + (1−α)*SIM oder RRF; Parameter in HTTP konfigurierbar
+- API: POST /search/hybrid mit text_query, vector_query, fusion_mode (rrf|weighted), weight_text
+- Effort: ~1-2d
 
-3) Analyzer/Quality (später)
-- Stemming/N‑Grams, Phrase-/Prefix-Suche, Highlighting
+### 🔲 3) Analyzer/Quality (später) – **BACKLOG** (Task 4)
+- Stemming/N‑Grams (Snowball Porter für DE/EN), Phrase-/Prefix-Suche, Highlighting
+- Effort: ~1-2d
 
 ## Akzeptanzkriterien (v1)
 - Fulltext-Suche liefert `items` mit `{ pk, score }` (BM25); `SORT BY score DESC`
