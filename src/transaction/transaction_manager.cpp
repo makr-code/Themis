@@ -306,16 +306,31 @@ TransactionManager::Status TransactionManager::Transaction::addVector(const Base
 TransactionManager::Status TransactionManager::Transaction::updateVector(const BaseEntity& entity, std::string_view vectorField) {
     if (!mvcc_txn_ || !mvcc_txn_->isActive()) return Status::Error("updateVector: keine aktive Transaktion");
     
-    // For update: save old vector for restoration
+    // Capture old vector for compensation (MVCC: read before write)
     std::string pk = entity.getPrimaryKey();
-    // TODO: Capture old vector value for proper compensation
-    saga_->addStep("vectorUpdate:" + pk, [this, pk]() {
-        THEMIS_DEBUG("SAGA: Vector update compensation for '{}' (simplified - removes vector)", pk);
-        vecIdx_.removeByPk(pk);
-    });
+    std::string vector_key = "vector:" + pk;
+    
+    auto old_data = mvcc_txn_->get(vector_key);
+    if (old_data) {
+        // Old vector exists: capture for restoration
+        auto old_entity = BaseEntity::deserialize(pk, *old_data);
+        
+        saga_->addStep("vectorUpdate:" + pk, [this, old_entity = std::move(old_entity), vectorField = std::string(vectorField)]() {
+            THEMIS_DEBUG("SAGA: Restoring old vector for '{}'", old_entity.getPrimaryKey());
+            auto status = vecIdx_.updateEntity(old_entity, vectorField);
+            if (!status.ok) {
+                THEMIS_WARN("SAGA: Vector restore failed for '{}': {}", old_entity.getPrimaryKey(), status.message);
+            }
+        });
+    } else {
+        // No old vector: this is effectively an insert, compensate with remove
+        saga_->addStep("vectorUpdate:" + pk, [this, pk]() {
+            THEMIS_DEBUG("SAGA: Removing newly added vector for '{}'", pk);
+            vecIdx_.removeByPk(pk);
+        });
+    }
     
     // Update vector entity in MVCC transaction
-    std::string vector_key = "vector:" + pk;
     auto serialized = entity.serialize();
     if (!mvcc_txn_->put(vector_key, serialized)) {
         return Status::Error("updateVector: MVCC conflict detected");
@@ -333,15 +348,30 @@ TransactionManager::Status TransactionManager::Transaction::updateVector(const B
 TransactionManager::Status TransactionManager::Transaction::removeVector(std::string_view pk) {
     if (!mvcc_txn_ || !mvcc_txn_->isActive()) return Status::Error("removeVector: keine aktive Transaktion");
     
-    // Save vector before removal for compensation
-    // TODO: Capture vector data for restoration
+    // Capture old vector before removal for compensation
     std::string pk_str(pk);
-    saga_->addStep("vectorRemove:" + pk_str, [this, pk_str]() {
-        THEMIS_DEBUG("SAGA: Vector remove compensation for '{}' (data loss - cannot restore without saved vector)", pk_str);
-    });
+    std::string vector_key = "vector:" + pk_str;
+    
+    auto old_data = mvcc_txn_->get(vector_key);
+    if (old_data) {
+        // Old vector exists: capture for restoration
+        auto old_entity = BaseEntity::deserialize(pk_str, *old_data);
+        
+        saga_->addStep("vectorRemove:" + pk_str, [this, old_entity = std::move(old_entity)]() {
+            THEMIS_DEBUG("SAGA: Restoring removed vector for '{}'", old_entity.getPrimaryKey());
+            auto status = vecIdx_.addEntity(old_entity, "embedding");
+            if (!status.ok) {
+                THEMIS_WARN("SAGA: Vector restoration failed for '{}': {}", old_entity.getPrimaryKey(), status.message);
+            }
+        });
+    } else {
+        // No old vector: nothing to compensate
+        saga_->addStep("vectorRemove:" + pk_str, [pk_str]() {
+            THEMIS_DEBUG("SAGA: Vector remove compensation skipped (no old data) for '{}'", pk_str);
+        });
+    }
     
     // Delete vector entity from MVCC transaction
-    std::string vector_key = "vector:" + pk_str;
     if (!mvcc_txn_->del(vector_key)) {
         return Status::Error("removeVector: MVCC conflict detected");
     }
