@@ -9,6 +9,12 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 **Technologie-Stack:** C++, RocksDB TransactionDB (MVCC), Intel TBB, HNSWlib, Apache Arrow  
 **Datum:** 29. Oktober 2025
 
+> Update – 02. November 2025
+> - AdminTools: RetentionManager von Demo auf Live-API umgestellt.
+>   - Verwendet jetzt GET /api/retention/policies über ThemisApiClient (inkl. Name-Filter, Pagination vorbereitet).
+>   - DI eingerichtet (appsettings.json, ThemisApiClient), Startup via App.xaml.cs.
+>   - Nächste Schritte: Create/Update/Delete, History und Stats an UI anbinden.
+
 ---
 
 ## Kurzstatus – Offene Schwerpunkte (Nächste 1–2 Sprints)
@@ -189,7 +195,17 @@ Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Ve
   - [ ] Test: Prompt CRUD, Chain-of-Thought, Token/Latency Tracking
   - [ ] Doku: LLM Store-Architektur, Beispiel-Interaktionen
 
-  ## 6. Time-Series Engine & Retention Policies
+  ## 7. PII Manager - Backend-Anbindung an echte Datenquelle
+  - [ ] Design: PII-Mapping-Speicherung in RocksDB (ColumnFamily: pii_mappings), Schema-Definition (original_uuid → pseudonym, created_at, updated_at, active)
+  - [ ] Implementierung: 
+    - PIIApiHandler: Ersetzung Demo-Daten durch echte RocksDB-Queries (listMappings, exportCsv, deleteByUuid)
+    - Integration mit PII Pseudonymizer (src/utils/pii_pseudonymizer.cpp) für UUID-Mapping
+    - CRUD-Operationen: addMapping, getMapping, deleteMapping, listMappings mit Filter/Pagination
+  - [ ] Test: Unit-Tests für PII CRUD, Integration-Tests für API-Endpunkte, Concurrency-Tests
+  - [ ] Doku: `docs/pii_manager_api.md` (API-Referenz, Beispiele, DSGVO Art. 17-Workflow)
+  - **Status:** MVP mit Demo-Daten abgeschlossen; Backend-Anbindung ausstehend
+
+  ## 8. Time-Series Engine & Retention Policies
   - [ ] Design: Time-Series Storage mit Gorilla-Kompression, Continuous Aggregates, Retention-Strategien
   - [ ] Implementierung: Storage-Engine, Aggregations-API, Retention-Manager
   - [ ] Test: Zeitreihen-Inserts, Aggregations, Retention-Trigger

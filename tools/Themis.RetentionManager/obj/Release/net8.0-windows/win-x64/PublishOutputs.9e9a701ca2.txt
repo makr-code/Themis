@@ -1,0 +1,3 @@
+C:\VCC\themis\dist\Themis.RetentionManager\Themis.RetentionManager.pdb
+C:\VCC\themis\dist\Themis.RetentionManager\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\dist\Themis.RetentionManager\Themis.RetentionManager.exe

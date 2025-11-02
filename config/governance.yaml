@@ -1,0 +1,146 @@
+# Themis Governance & Compliance Configuration
+# This file defines data classification, retention policies, and enforcement rules
+# aligned with encryption_strategy.md and compliance_governance_strategy.md
+
+# VS Classification Levels (VSA / German Federal Classification)
+vs_classification:
+  offen:
+    description: "Public data, no special protection required"
+    encryption_required: false
+    ann_allowed: true
+    export_allowed: true
+    cache_allowed: true
+    redaction_level: "none"
+    retention_days: 365
+    log_encryption: false
+  
+  vs-nfd:
+    description: "Restricted (Verschlusssache - Nur für den Dienstgebrauch)"
+    encryption_required: true
+    ann_allowed: true
+    export_allowed: true
+    cache_allowed: true
+    redaction_level: "standard"
+    retention_days: 1825  # 5 years
+    log_encryption: true
+  
+  geheim:
+    description: "Secret (Geheim)"
+    encryption_required: true
+    ann_allowed: false  # ANN disabled; exact search only
+    export_allowed: false
+    cache_allowed: false
+    redaction_level: "strict"
+    retention_days: 3650  # 10 years
+    log_encryption: true
+  
+  streng-geheim:
+    description: "Top Secret (Streng Geheim)"
+    encryption_required: true
+    ann_allowed: false
+    export_allowed: false
+    cache_allowed: false
+    redaction_level: "strict"
+    retention_days: 7300  # 20 years
+    log_encryption: true
+
+# SAGA Logging Configuration (Encrypt-then-Sign)
+saga_signing:
+  enabled: true
+  pki_cert_path: "c:/vcc/pki/certs/themis-saga.crt"
+  pki_key_path: "c:/vcc/pki/private/themis-saga.key"
+  signature_algorithm: "RSA-SHA256"
+  batch_size: 100
+  batch_interval_seconds: 60
+
+# Log Encryption (LEK rotation for Encrypt-then-Sign)
+log_encryption:
+  enabled: true
+  algorithm: "AES-256-GCM"
+  lek_rotation_interval_hours: 24
+  lek_storage_path: "data/lek"  # relative to server root
+  archive_encrypted_logs: true
+
+# Audit Trail Configuration
+audit_logging:
+  enabled: true
+  log_all_queries: false  # Log only mutations by default
+  log_vector_search: true
+  log_content_access: true
+  structured_format: "json"
+  siem_export:
+    enabled: false
+    endpoint: "https://siem.example.com/ingest"
+    batch_size: 1000
+
+# PII Detection & Anonymization
+pii_detection:
+  enabled: true
+  strategies:
+    - type: "regex"
+      patterns:
+        - name: "email"
+          regex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+        - name: "phone_de"
+          regex: "\\+49\\s?\\d{2,4}\\s?\\d{6,10}"
+        - name: "ssn_de"
+          regex: "\\d{2}\\.\\d{2}\\.\\d{2}-[A-Z]\\d{3}-\\d{2}"
+    - type: "schema"
+      fields:
+        - "email"
+        - "phone"
+        - "ssn"
+        - "address"
+  anonymization:
+    method: "uuid_replacement"
+    mapping_storage: "pii_mappings"
+    retention_days: 3650  # 10 years for compliance
+
+# Retention Policies
+retention:
+  default_policy:
+    retention_days: 365
+    archive_after_days: 180
+  
+  metric_policies:
+    - metric: "audit_log"
+      retention_days: 2555  # 7 years (compliance)
+      archive_after_days: 365
+    
+    - metric: "saga_log"
+      retention_days: 3650  # 10 years
+      archive_after_days: 730
+    
+    - metric: "application_metrics"
+      retention_days: 90
+      archive_after_days: 30
+  
+  archive_compression: "zstd"
+  archive_encryption: true
+
+# Enforcement Rules (Resource → Classification Mapping)
+enforcement:
+  # Map API routes/resources to minimum required classification
+  resource_mapping:
+    "/admin/*": "vs-nfd"
+    "/admin/status": "vs-nfd"
+    "/vector/search": "offen"  # can be elevated by request header
+    "/content/import": "offen"
+    "/transaction/*": "vs-nfd"
+    "/query/aql": "vs-nfd"
+  
+  # Governance headers accepted by endpoints
+  governance_headers:
+    classification: "X-Classification"
+    mode: "X-Governance-Mode"
+    encrypt_logs: "X-Encrypt-Logs"
+    redaction: "X-Redaction-Level"
+  
+  # Default enforcement mode
+  default_mode: "enforce"  # or "observe" for gradual rollout
+  
+  # Compliance frameworks
+  frameworks:
+    - "GDPR"
+    - "VSA"
+    - "BSI-C5"

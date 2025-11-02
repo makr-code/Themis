@@ -1,0 +1,33 @@
+<Window x:Class="Themis.AuditLogViewer.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Über Themis" Height="260" Width="420" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <TextBlock Text="Themis" FontSize="28" FontWeight="Bold" Foreground="#64B5F6"/>
+            <TextBlock Text="  – Audit Log Viewer" FontSize="18" VerticalAlignment="Bottom"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <TextBlock Text="Version: 1.0.0" Margin="0,0,0,5"/>
+            <TextBlock Text="Build: net8.0-windows" Margin="0,0,0,5"/>
+            <TextBlock Text="ThemisDB Admin Tools" Margin="0,0,0,5"/>
+            <TextBlock Text="Copyright © 2025"/>
+            <Separator Margin="0,10,0,10"/>
+            <TextBlock TextWrapping="Wrap">
+                Dieses Tool zeigt Audit-Logs für alle Datenbankoperationen an und ermöglicht erweiterte Filterung und Export.
+            </TextBlock>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="OK" Width="80" IsDefault="True" Click="Ok_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

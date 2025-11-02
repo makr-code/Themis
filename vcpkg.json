@@ -20,7 +20,8 @@
     { "name": "spdlog" },
     { "name": "nlohmann-json" },
     { "name": "opentelemetry-cpp", "features": ["otlp-http"] },
-    { "name": "curl" }
+    { "name": "curl" },
+    { "name": "yaml-cpp" }
   ],
   "features": {
     "gpu": {

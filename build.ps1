@@ -1,6 +1,11 @@
 ﻿# Build script for THEMIS
 # Run this script from PowerShell
 
+param(
+    [switch]$WithSecurityScan = $false,
+    [switch]$FailOnScanWarnings = $false
+)
+
 Write-Host "=== THEMIS Build Script ===" -ForegroundColor Cyan
 Write-Host ""
 
@@ -66,6 +71,26 @@ Write-Host ""
 Write-Host "To run the demo:" -ForegroundColor Cyan
 Write-Host "  .\build\Release\themis_server.exe" -ForegroundColor Gray
 Write-Host ""
+
+# Optional: Run security scan after successful build
+if ($WithSecurityScan) {
+    Write-Host "=== Security Scan (optional) ===" -ForegroundColor Cyan
+    $scanScript = Join-Path (Get-Location).Path "..\security-scan.ps1"
+    if (Test-Path $scanScript) {
+        $scanOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scanScript 2>&1 | Out-String
+        Write-Host $scanOutput
+        if ($FailOnScanWarnings) {
+            if ($scanOutput -match "WARN|\[C/C\+\+\]|\[Secrets\]") {
+                Write-Host "Security scan reported warnings and FailOnScanWarnings is set. Failing the build." -ForegroundColor Red
+                # Return to project root before exit
+                Set-Location ..
+                exit 2
+            }
+        }
+    } else {
+        Write-Warning "security-scan.ps1 not found. Skipping security scan."
+    }
+}
 
 # Return to project root
 Set-Location ..

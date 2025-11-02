@@ -1,0 +1,261 @@
+# Retention Policies Configuration
+# GDPR/eIDAS compliance settings for data lifecycle management
+#
+# Reference:
+# - GDPR Art. 5(1)(e): Storage limitation principle
+# - eIDAS Article 24(2): Trust service providers retention requirements
+# - BSI TR-03125: Long-term archiving and deletion
+
+# Global Settings
+global:
+  # Enable automatic retention checks
+  enabled: true
+  
+  # Check interval in hours (24h = daily)
+  check_interval_hours: 24
+  
+  # Default retention period if not specified (in days)
+  default_retention_days: 2555  # 7 years (GDPR Article 17(3)(b) public interest)
+  
+  # Enable audit trail for all retention actions
+  audit_enabled: true
+
+# Policy Definitions
+policies:
+  # User Data - Personal Information
+  - name: "user_personal_data"
+    description: "Personal data subject to GDPR right to erasure"
+    
+    # Retention period in days
+    retention_days: 1095  # 3 years after account closure
+    
+    # Archive period before purge (in days)
+    archive_days: 730  # Archive after 2 years
+    
+    # Auto-purge after retention period expires
+    auto_purge: false  # Requires manual review for GDPR compliance
+    
+    # Legal basis for retention
+    legal_basis: "GDPR Art. 6(1)(b) - Contract performance"
+    
+    # Data categories covered
+    categories:
+      - "user_profiles"
+      - "contact_information"
+      - "preferences"
+    
+    # Compliance tags
+    compliance:
+      - "GDPR"
+      - "DSGVO"
+      - "right_to_erasure"
+
+  # Transaction Logs - Financial Records
+  - name: "transaction_logs"
+    description: "Financial transaction records (tax law requirements)"
+    
+    retention_days: 3650  # 10 years (German HGB §147, AO §147)
+    archive_days: 2555    # Archive after 7 years
+    auto_purge: true
+    
+    legal_basis: "HGB §147, AO §147 - Tax retention requirements"
+    
+    categories:
+      - "invoices"
+      - "payment_records"
+      - "financial_transactions"
+    
+    compliance:
+      - "HGB"
+      - "AO"
+      - "GoBD"
+
+  # Audit Logs - Security Events
+  - name: "audit_logs"
+    description: "Security and compliance audit trails"
+    
+    retention_days: 2555  # 7 years (BSI IT-Grundschutz)
+    archive_days: 1825    # Archive after 5 years
+    auto_purge: true
+    
+    legal_basis: "GDPR Art. 5(2) - Accountability principle, BSI IT-Grundschutz"
+    
+    categories:
+      - "authentication_logs"
+      - "access_logs"
+      - "governance_events"
+      - "pii_detection_events"
+    
+    compliance:
+      - "GDPR"
+      - "BSI"
+      - "ISO27001"
+
+  # eIDAS Trust Service Data
+  - name: "eidas_trust_service"
+    description: "Trust service provider records (eIDAS requirements)"
+    
+    retention_days: 1825  # 5 years minimum (eIDAS Article 24(2)(d))
+    archive_days: 1095    # Archive after 3 years
+    auto_purge: false     # Regulatory review required
+    
+    legal_basis: "eIDAS Regulation Article 24(2)(d)"
+    
+    categories:
+      - "certificates"
+      - "signature_records"
+      - "timestamps"
+      - "validation_data"
+    
+    compliance:
+      - "eIDAS"
+      - "eIDAS-VO"
+      - "trust_services"
+
+  # Temporary Data - Session Information
+  - name: "session_data"
+    description: "Temporary session and cache data"
+    
+    retention_days: 30    # 30 days
+    archive_days: 0       # No archiving needed
+    auto_purge: true
+    
+    legal_basis: "GDPR Art. 6(1)(f) - Legitimate interest"
+    
+    categories:
+      - "session_tokens"
+      - "cache_entries"
+      - "temporary_uploads"
+    
+    compliance:
+      - "GDPR"
+      - "data_minimization"
+
+  # Anonymized Analytics
+  - name: "analytics_data"
+    description: "Anonymized usage statistics (GDPR-exempt)"
+    
+    retention_days: 1825  # 5 years
+    archive_days: 1095    # Archive after 3 years
+    auto_purge: true
+    
+    legal_basis: "GDPR Recital 26 - Anonymized data exemption"
+    
+    categories:
+      - "usage_statistics"
+      - "performance_metrics"
+      - "anonymized_queries"
+    
+    compliance:
+      - "GDPR"
+      - "anonymization"
+
+  # Backup Data
+  - name: "backup_data"
+    description: "System backups for disaster recovery"
+    
+    retention_days: 365   # 1 year
+    archive_days: 0       # Backups are already archived
+    auto_purge: true
+    
+    legal_basis: "GDPR Art. 32 - Security of processing"
+    
+    categories:
+      - "full_backups"
+      - "incremental_backups"
+      - "snapshot_backups"
+    
+    compliance:
+      - "GDPR"
+      - "BSI"
+      - "disaster_recovery"
+
+# Archive Configuration
+archive:
+  # Archive storage location
+  storage_path: "./data/archive"
+  
+  # Compression settings
+  compression:
+    enabled: true
+    algorithm: "zstd"  # Fast compression with good ratio
+    level: 3           # Balanced speed/ratio
+  
+  # Encryption for archived data
+  encryption:
+    enabled: true
+    algorithm: "AES-256-GCM"
+    key_rotation_days: 365
+
+# Purge Configuration
+purge:
+  # Purge strategy: "immediate", "batch", "scheduled"
+  strategy: "batch"
+  
+  # Batch size for purge operations
+  batch_size: 1000
+  
+  # Delay between batches (milliseconds)
+  batch_delay_ms: 100
+  
+  # Require confirmation for manual purges
+  require_confirmation: true
+  
+  # Secure deletion settings
+  secure_delete:
+    enabled: true
+    overwrite_passes: 3  # DoD 5220.22-M standard
+
+# Notification Configuration
+notifications:
+  # Notify before auto-purge
+  pre_purge_notification_days: 30
+  
+  # Notification channels
+  channels:
+    - type: "email"
+      enabled: true
+      recipients:
+        - "compliance@example.com"
+        - "dpo@example.com"  # Data Protection Officer
+    
+    - type: "log"
+      enabled: true
+      severity: "warning"
+    
+    - type: "audit"
+      enabled: true
+
+# Exceptions and Holds
+exceptions:
+  # Legal hold capability (e.g., litigation, investigation)
+  legal_holds:
+    enabled: true
+    
+    # Active holds (managed externally)
+    holds: []
+    
+  # Right to erasure requests (GDPR Art. 17)
+  erasure_requests:
+    enabled: true
+    
+    # Processing queue
+    queue_path: "./data/erasure_requests"
+    
+    # Response deadline (days)
+    response_deadline_days: 30  # GDPR requirement
+
+# Monitoring and Reporting
+monitoring:
+  # Generate retention reports
+  reports:
+    enabled: true
+    frequency: "monthly"
+    output_path: "./reports/retention"
+    
+  # Metrics collection
+  metrics:
+    enabled: true
+    track_archive_size: true
+    track_purge_count: true
+    track_policy_violations: true

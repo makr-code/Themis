@@ -1,0 +1,18 @@
+# systemd Timer for ThemisDB Incremental Backups
+# Place in /etc/systemd/system/themisdb-backup.timer
+
+[Unit]
+Description=ThemisDB Incremental Backup Timer
+Requires=themisdb-backup.service
+
+[Timer]
+# Run daily at 2:00 AM
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+# Run 15 minutes after boot (catch-up if system was down)
+OnBootSec=15min
+# Persistent: run missed timers after reboot
+Persistent=true
+
+[Install]
+WantedBy=timers.target

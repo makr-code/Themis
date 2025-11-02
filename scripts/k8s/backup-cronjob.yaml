@@ -1,0 +1,129 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: themisdb-backup
+  namespace: themis
+spec:
+  # Schedule: Daily at 2:00 AM UTC
+  schedule: "0 2 * * *"
+  
+  # Keep last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  # Concurrency policy: forbid overlapping backups
+  concurrencyPolicy: Forbid
+  
+  jobTemplate:
+    spec:
+      # Cleanup completed backup pods after 1 hour
+      ttlSecondsAfterFinished: 3600
+      
+      template:
+        metadata:
+          labels:
+            app: themisdb-backup
+        spec:
+          restartPolicy: OnFailure
+          
+          # Service account with permissions to access PVCs
+          serviceAccountName: themisdb-backup-sa
+          
+          containers:
+          - name: backup
+            image: themisdb/backup-tools:latest
+            imagePullPolicy: IfNotPresent
+            
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              echo "Starting ThemisDB backup at $(date)"
+              
+              # Run backup script
+              /scripts/backup-incremental.sh \
+                --db-path /data/themis \
+                --backup-root /backup/themis \
+                --retention-days 14 \
+                --verbose
+              
+              echo "Backup completed successfully at $(date)"
+            
+            # Environment variables
+            env:
+            - name: TZ
+              value: "UTC"
+            
+            # Volume mounts
+            volumeMounts:
+            - name: themis-data
+              mountPath: /data/themis
+              readOnly: true
+            - name: backup-storage
+              mountPath: /backup/themis
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            
+            # Resource limits
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+          
+          volumes:
+          # Themis database data (PVC)
+          - name: themis-data
+            persistentVolumeClaim:
+              claimName: themisdb-data-pvc
+          
+          # Backup storage (PVC or NFS)
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: themisdb-backup-pvc
+          
+          # Scripts ConfigMap
+          - name: scripts
+            configMap:
+              name: themisdb-backup-scripts
+              defaultMode: 0755
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: themisdb-backup-sa
+  namespace: themis
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: themisdb-backup-scripts
+  namespace: themis
+data:
+  backup-incremental.sh: |
+    #!/bin/bash
+    # Embedded backup script (or mount from Git repo)
+    # See scripts/backup-incremental.sh for full content
+    echo "Backup script placeholder - replace with actual script content"
+    exit 0
+
+---
+# Example PVC for backup storage (adjust storage class and size)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: themisdb-backup-pvc
+  namespace: themis
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 100Gi

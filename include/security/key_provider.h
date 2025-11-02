@@ -180,6 +180,31 @@ public:
      * @throws KeyOperationException if key is still ACTIVE or data exists
      */
     virtual void deleteKey(const std::string& key_id, uint32_t version) = 0;
+    
+    /**
+     * @brief Check if a key exists
+     * 
+     * @param key_id Key identifier
+     * @param version Key version (0 = check if any version exists)
+     * @return true if key exists, false otherwise
+     */
+    virtual bool hasKey(const std::string& key_id, uint32_t version = 0) = 0;
+    
+    /**
+     * @brief Create a new key from raw bytes
+     * 
+     * Used for importing keys or creating derived keys.
+     * 
+     * @param key_id Key identifier
+     * @param key_bytes Raw key material (must be 32 bytes for AES-256)
+     * @param metadata Optional metadata (algorithm, created_at, etc.)
+     * @return Key version number
+     * @throws KeyOperationException if key creation fails
+     */
+    virtual uint32_t createKeyFromBytes(
+        const std::string& key_id,
+        const std::vector<uint8_t>& key_bytes,
+        const KeyMetadata& metadata = KeyMetadata()) = 0;
 };
 
 /**

@@ -1,0 +1,8 @@
+# MkDocs Documentation Dependencies
+mkdocs>=1.5.0
+mkdocs-material>=9.4.0
+
+# Print-friendly single-page HTML (can be printed to PDF from browser)
+mkdocs-print-site-plugin>=2.3.6
+
+

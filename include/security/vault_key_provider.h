@@ -117,6 +117,11 @@ public:
     std::vector<KeyMetadata> listKeys() override;
     KeyMetadata getKeyMetadata(const std::string& key_id, uint32_t version = 0) override;
     void deleteKey(const std::string& key_id, uint32_t version) override;
+    bool hasKey(const std::string& key_id, uint32_t version = 0) override;
+    uint32_t createKeyFromBytes(
+        const std::string& key_id,
+        const std::vector<uint8_t>& key_bytes,
+        const KeyMetadata& metadata = KeyMetadata()) override;
     
     /**
      * @brief Clear all cached keys

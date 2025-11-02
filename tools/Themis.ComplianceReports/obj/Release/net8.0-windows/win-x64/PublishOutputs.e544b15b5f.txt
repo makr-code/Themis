@@ -1,0 +1,3 @@
+C:\VCC\themis\dist\Themis.ComplianceReports\Themis.ComplianceReports.pdb
+C:\VCC\themis\dist\Themis.ComplianceReports\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\dist\Themis.ComplianceReports\Themis.ComplianceReports.exe

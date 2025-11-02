@@ -4,13 +4,13 @@
 
 Themis' Change Data Capture (CDC) implementation provides a minimal, append-only event log that tracks all data mutations (PUT/DELETE) in the database. This enables real-time data synchronization, audit trails, and stream processing use cases.
 
-**Key Features:**
-- **Sequence-based ordering**: Monotonically increasing sequence numbers guarantee event order
-- **Automatic tracking**: All entity PUT/DELETE operations automatically generate CDC events
-- **Incremental consumption**: Consumers can resume from any sequence number (checkpointing)
-- **Event filtering**: Filter by key prefix or event type
-- **Metadata enrichment**: Each event includes table, primary key, and timestamp
-- **Long-poll support**: Optional long-polling for near-real-time updates
+**Key Features (MVP, Stand jetzt):**
+- Sequence-basiertes Ordering (monoton steigende `sequence`)
+- Automatische Erfassung für Entity-Operationen PUT/DELETE
+- Inkrementeller Abruf mit Checkpointing (`from_seq`)
+- Filterung per `key_prefix`; optionaler Event-Typ-Filter auf API-Ebene
+- Ereignisse mit Timestamp und frei erweiterbarem `metadata`
+- Long-Polling zur Latenzreduktion; experimentelles SSE-Streaming
 
 ---
 
@@ -33,13 +33,13 @@ Themis' Change Data Capture (CDC) implementation provides a minimal, append-only
 }
 ```
 
-**Field Descriptions:**
-- `sequence`: Unique, monotonically increasing ID (uint64)
-- `type`: Event type - `PUT`, `DELETE`, `TRANSACTION_COMMIT`, `TRANSACTION_ROLLBACK`
-- `key`: Full entity key in format `table:pk`
-- `value`: Entity data (JSON string for PUT, `null` for DELETE)
-- `timestamp_ms`: Event timestamp in milliseconds since epoch
-- `metadata`: Additional context (table name, primary key, user ID, etc.)
+Hinweise zu Feldern:
+- `sequence`: Monoton steigende ID (uint64)
+- `type`: `PUT` oder `DELETE` (Typen `TRANSACTION_COMMIT`/`TRANSACTION_ROLLBACK` sind definiert, werden aktuell aber nicht emittiert)
+- `key`: Vollständiger Schlüssel, z. B. `table:pk`
+- `value`: JSON-String bei PUT, `null` bei DELETE
+- `timestamp_ms`: Millisekunden seit Epoch
+- `metadata`: Freies JSON (z. B. `table`, `pk`)
 
 ### Storage
 
@@ -104,10 +104,10 @@ curl "http://localhost:8765/changefeed?from_seq=100&limit=10&long_poll_ms=5000"
 }
 ```
 
-**Response Fields:**
-- `events`: Array of ChangeEvent objects
-- `count`: Number of events in this response
-- `latest_sequence`: Current latest sequence in the database (for checkpointing)
+Antwortfelder:
+- `events`: Liste von ChangeEvent-Objekten
+- `count`: Anzahl der zurückgegebenen Events
+- `latest_sequence`: Aktuell letzter Sequence-Wert in der DB (für Checkpointing hilfreich)
 
 ---
 
@@ -205,55 +205,30 @@ for (const event of events.events) {
 
 ---
 
-## Performance & Scalability
+## Performance & Skalierung
 
-### Current Implementation (MVP)
+Aktueller Stand (MVP):
+- Einfache, direkte Speicherung in RocksDB (append-only)
+- Sequenzvergabe zentral; ausreichend für moderate Schreibraten
+- Long-Poll als einfaches Warten mit kurzer Sleep-Periode (~50ms)
 
-**Characteristics:**
-- **Latency:** Low (direct RocksDB writes)
-- **Throughput:** Moderate (sequential sequence generation)
-- **Storage:** Linear growth (append-only, no compaction)
-- **Long-poll:** Simple polling with 50ms sleep interval
-
-**Benchmarks:**
-- Event recording: ~0.1ms overhead per mutation
-- Query latency: ~1-5ms for 100 events
-- Sequence generation: Atomic, single-threaded
-
-### Production Enhancements (Future)
-
-For high-throughput systems, consider:
-
-1. **RocksDB WAL Tailing:** Lower latency than polling
-2. **Batch Sequence Allocation:** Reduce contention (allocate blocks of 1000)
-3. **Dedicated Column Family:** Isolate CDC from application data
-4. **Retention Policies:** Automatic cleanup of old events
-5. **Event Notifications:** Push-based updates instead of polling
-6. **Kafka Integration:** Stream events to Kafka for distributed consumption
+Mögliche Erweiterungen (zukünftig):
+1. RocksDB WAL Tailing für geringere Latenz
+2. Batch-Sequenzvergabe (z. B. Blöcke reservieren)
+3. Dedizierte Column Family für CDC
+4. Automatische Retention/TTL
+5. Push-basierte Benachrichtigungen (WebSocket)
+6. Integration in Kafka
 
 ---
 
 ## Retention & Cleanup
 
-### Manual Cleanup (Current)
+### Retention & Cleanup
 
-Use the `deleteOldEvents` method (admin operation):
-```cpp
-// Delete events older than sequence 1000
-size_t deleted = changefeed_->deleteOldEvents(1000);
-```
+Aktuell: Admin-Endpoint `POST /changefeed/retention` mit Body `{ "before_sequence": <uint64> }` löscht Events mit kleinerer Sequence. Statistiken über `GET /changefeed/stats`.
 
-### Automatic Retention (Future Enhancement)
-
-Configure TTL-based retention:
-```json
-{
-  "cdc": {
-    "retention_days": 7,
-    "auto_cleanup_interval_hours": 24
-  }
-}
-```
+Zukünftig möglich: TTL-/Zeit-basierte Retention und automatische Bereinigung.
 
 ---
 
@@ -365,15 +340,23 @@ consumeChangefeed();
 {
   "features": {
     "cdc": true
+  },
+  "sse": {
+    "max_events_per_second": 0
   }
 }
 ```
+
+Bemerkungen:
+- `features.cdc`: Aktiviert Changefeed und SSE-Streaming-Endpunkte
+- `sse.max_events_per_second`: Server-seitiges Rate-Limit pro SSE-Verbindung (0 = unbegrenzt, empfohlen für Produktion: 0 oder 100–1000 je nach Last)
 
 ### Verify CDC Status
 
 Check logs on server startup:
 ```
 [INFO] Changefeed initialized using default CF
+[INFO] SSE Connection Manager initialized
 ```
 
 Query an endpoint to verify feature is enabled:
@@ -386,13 +369,7 @@ curl http://localhost:8765/changefeed?from_seq=0&limit=1
 
 ## Next Steps
 
-### Immediate Enhancements (Sprint B)
-1. **Dedicated Column Family:** Isolate CDC data for better performance
-2. **Batch Sequence Allocation:** Reduce contention on sequence counter
-3. **Retention Policies:** Automatic cleanup of old events
-4. **Admin API:** `DELETE /changefeed?before_seq=N` endpoint
-
-### Long-term Enhancements
+### Geplante Erweiterungen
 1. **RocksDB WAL Tailing:** Real-time event streaming
 2. **Transaction-level Events:** Group mutations by transaction
 3. **Event Notifications:** WebSocket/SSE for push-based updates
@@ -401,21 +378,99 @@ curl http://localhost:8765/changefeed?from_seq=0&limit=1
 
 ---
 
+## SSE-Streaming: Backpressure & Reconnect
+
+Das SSE-Streaming über `GET /changefeed/stream` ermöglicht nahezu Echtzeit-Konsum der CDC-Events mittels Server-Sent Events.
+
+Parameter (Query):
+- `from_seq` (uint64, optional): Start nach dieser Sequence (exklusiv)
+- `key_prefix` (string, optional): Filter nach Schlüsselpräfix (z. B. `user:`)
+- `keep_alive` (bool, default `true`): Streaming mit Heartbeats; bei `false` einmalige Batch-Antwort
+- `max_seconds` (int, default `30`): Dauer des Streaming-Zyklus (Testzwecke, 1..60)
+- `heartbeat_ms` (int, optional): Herzschlag-Intervall (nur Test/Override; min 100ms)
+- `retry_ms` (int, default `3000`): SSE-„retry“-Hinweis für Client-Reconnects
+- `max_events` (int, default `100`): Maximal pro Poll gelesene Events (Backpressure am Endpunkt)
+
+Header (Client → Server):
+- `Last-Event-ID`: Startet das Streaming ab der zuletzt verarbeiteten ID; dank exklusivem `from_seq` werden keine Duplikate erneut gesendet.
+
+Format (Server → Client):
+- Vorangestellter Hinweis: `retry: <ms>`
+- Pro Event:
+  - `id: <sequence>`
+  - `data: <json>`
+- Heartbeats als Kommentar: `: heartbeat`
+
+Backpressure & Pufferung:
+- Jeder Stream hat einen internen Puffer (Standard: 1000 Events). Bei Überlauf gilt Drop-Oldest-Policy (älteste Events werden verworfen).
+- Pro-Poll-Kappung via `max_events` begrenzt die Eventabnahme je Schleifendurchlauf.
+- Metrik: `vccdb_sse_dropped_events_total` zählt verwarfene Events (Prometheus unter `/metrics`).
+- Optional (serverseitig): `max_events_per_second` Rate-Limit pro Verbindung (0 = unbegrenzt).
+
+Client-Reconnect (Beispiel, Browser):
+```javascript
+let es;
+function connect(fromSeq = 0) {
+  const headers = fromSeq ? { 'Last-Event-ID': String(fromSeq) } : {};
+  es = new EventSource('/changefeed/stream?keep_alive=true', { withCredentials: false });
+  let lastId = fromSeq;
+  es.onmessage = (ev) => {
+    const data = JSON.parse(ev.data);
+    lastId = parseInt(ev.lastEventId || lastId, 10);
+    handleEvent(data);
+  };
+  es.onerror = () => {
+    es.close();
+    setTimeout(() => connect(lastId), 3000); // Backoff siehe retry
+  };
+}
+connect();
+```
+
+Proxy-Guidelines (Nginx):
+```nginx
+location /changefeed/stream {
+  proxy_pass http://themis_backend;
+  proxy_http_version 1.1;
+  proxy_set_header Connection '';
+  proxy_buffering off;         # wichtig: keine Pufferung
+  proxy_cache off;
+  gzip off;                    # keine Transformation
+  chunked_transfer_encoding on; # Streaming erlauben
+  proxy_read_timeout 1h;       # lange Timeouts für SSE
+  add_header Cache-Control "no-cache, no-transform";
+}
+```
+
+Proxy-Guidelines (HAProxy):
+```
+frontend fe
+  bind *:443
+  default_backend be
+
+backend be
+  server s1 themis:8080 check
+  http-response add-header Cache-Control "no-cache, no-transform"
+  option http-keep-alive
+  timeout server 1h
+  timeout tunnel 1h
+```
+
+Empfohlene Defaults:
+- `retry_ms=3000`, `heartbeat_ms≈15000`, `max_events=100`
+- Proxy: Buffering aus, `no-transform`, lange Read-Timeouts, keine Gzip-Kompression
+- Client: Last-Event-ID persistieren (z. B. lokal), Exponential Backoff bei Fehlern
+
+Tests/Verifikation:
+- Integrationstests prüfen: Last-Event-ID-Resume (exklusive Fortsetzung), Backpressure (Metrik > 0 unter Last), per-Poll-Kappung bei kurzer Laufzeit.
+
 ## Summary
 
-**Sprint A - Change Data Capture: ✅ PRODUCTION READY**
+Zusammenfassung:
 
-- ✅ Sequence-based append-only log
-- ✅ Automatic PUT/DELETE tracking
-- ✅ GET /changefeed API with filtering & pagination
-- ✅ Checkpointing pattern validated
-- ✅ Metadata enrichment (table, pk, timestamp)
-- ✅ Long-poll support
+- Sequence-basiertes append-only Log
+- Automatisches Tracking für PUT/DELETE
+- GET /changefeed mit Filter/Pagination + Long-Poll
+- SSE-Streaming (`/changefeed/stream`) mit Keep-Alive/Heartbeats, Drop-Oldest-Backpressure, Retry/Resume über Last-Event-ID
 
-**Validation Results:**
-- All 4 test suites passed
-- Event types correctly distinguished
-- Incremental consumption verified
-- Checkpointing pattern functional
-
-**Status:** Ready for production use in real-time sync, audit trails, and event sourcing workflows.
+Einsatz: Echtzeit-Sync, Audit-Trails, Event Sourcing – produktionsnah nutzbar; für sehr hohe Last ggf. Erweiterungen einplanen.

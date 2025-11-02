@@ -81,3 +81,7 @@ jobs:
           context: .
           push: false
           tags: vccdb:ci
+
+# This workflow runs build and tests
+# For code quality checks (static analysis, linting, coverage, secrets), see:
+#   .github/workflows/code-quality.yml

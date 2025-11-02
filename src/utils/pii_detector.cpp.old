@@ -1,0 +1,357 @@
+#include "utils/pii_detector.h"
+#include <algorithm>
+#include <cctype>
+
+namespace themis {
+namespace utils {
+
+PIIDetector::PIIDetector() {
+    // Email: RFC 5322 simplified
+    email_pattern_ = std::regex(
+        R"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})",
+        std::regex::icase
+    );
+    
+    // Phone: International formats (+49-123-456789, (123) 456-7890, etc.)
+    phone_pattern_ = std::regex(
+        R"((?:\+\d{1,3}[\-.\s]?)?(?:\(?\d{2,4}\)?[\-.\s]?)?[\d\-.\s]{7,15})",
+        std::regex::icase
+    );
+    
+    // SSN: US format (123-45-6789 or 123456789)
+    ssn_pattern_ = std::regex(
+        R"(\b\d{3}\-?\d{2}\-?\d{4}\b)"
+    );
+    
+    // Credit Card: 13-19 digits with optional spaces/dashes
+    credit_card_pattern_ = std::regex(
+        R"(\b(?:\d{4}[\-\s]?){3}\d{1,7}\b)"
+    );
+    
+    // IBAN: 2 letters + 2 digits + up to 30 alphanumeric
+    iban_pattern_ = std::regex(
+        R"(\b[A-Z]{2}\d{2}[A-Z0-9]{1,30}\b)",
+        std::regex::icase
+    );
+    
+    // IP Address: IPv4
+    ip_pattern_ = std::regex(
+        R"(\b(?:\d{1,3}\.){3}\d{1,3}\b)"
+    );
+    
+    // URL: http/https
+    url_pattern_ = std::regex(
+        R"(https?://[^\s]+)",
+        std::regex::icase
+    );
+    
+    // Field name heuristics (case-insensitive matching)
+    field_name_hints_ = {
+        {"email", PIIType::EMAIL},
+        {"e-mail", PIIType::EMAIL},
+        {"mail", PIIType::EMAIL},
+        {"phone", PIIType::PHONE},
+        {"telephone", PIIType::PHONE},
+        {"mobile", PIIType::PHONE},
+        {"tel", PIIType::PHONE},
+        {"ssn", PIIType::SSN},
+        {"social_security", PIIType::SSN},
+        {"socialsecurity", PIIType::SSN},
+        {"credit_card", PIIType::CREDIT_CARD},
+        {"creditcard", PIIType::CREDIT_CARD},
+        {"card_number", PIIType::CREDIT_CARD},
+        {"cardnumber", PIIType::CREDIT_CARD},
+        {"cc", PIIType::CREDIT_CARD},
+        {"iban", PIIType::IBAN},
+        {"bank_account", PIIType::IBAN},
+        {"bankaccount", PIIType::IBAN},
+        {"ip", PIIType::IP_ADDRESS},
+        {"ip_address", PIIType::IP_ADDRESS},
+        {"ipaddress", PIIType::IP_ADDRESS},
+        {"url", PIIType::URL},
+        {"link", PIIType::URL},
+        {"website", PIIType::URL}
+    };
+}
+
+std::vector<PIIFinding> PIIDetector::detectInText(const std::string& text) const {
+    std::vector<PIIFinding> findings;
+    
+    // Helper lambda to add findings from regex matches
+    auto addMatches = [&](const std::regex& pattern, PIIType type, double confidence) {
+        std::sregex_iterator it(text.begin(), text.end(), pattern);
+        std::sregex_iterator end;
+        for (; it != end; ++it) {
+            const auto& match = *it;
+            std::string value = match.str();
+            
+            // Special validation for credit cards (Luhn check)
+            if (type == PIIType::CREDIT_CARD) {
+                std::string digits_only;
+                for (char c : value) {
+                    if (std::isdigit(static_cast<unsigned char>(c))) {
+                        digits_only += c;
+                    }
+                }
+                if (digits_only.length() < 13 || digits_only.length() > 19 || !luhnCheck(digits_only)) {
+                    continue; // Skip invalid credit card
+                }
+            }
+            
+            PIIFinding f;
+            f.type = type;
+            f.value = value;
+            f.start_offset = static_cast<size_t>(match.position());
+            f.end_offset = f.start_offset + value.length();
+            f.confidence = confidence;
+            findings.push_back(f);
+        }
+    };
+    
+    // Scan for each PII type
+    addMatches(email_pattern_, PIIType::EMAIL, 0.95);
+    addMatches(ssn_pattern_, PIIType::SSN, 0.90);
+    addMatches(credit_card_pattern_, PIIType::CREDIT_CARD, 0.85);
+    addMatches(iban_pattern_, PIIType::IBAN, 0.80);
+    addMatches(ip_pattern_, PIIType::IP_ADDRESS, 0.70);
+    addMatches(url_pattern_, PIIType::URL, 0.90);
+    addMatches(phone_pattern_, PIIType::PHONE, 0.60); // Lower confidence due to false positives
+    
+    // Sort by start offset
+    std::sort(findings.begin(), findings.end(), 
+        [](const PIIFinding& a, const PIIFinding& b) {
+            return a.start_offset < b.start_offset;
+        });
+    
+    return findings;
+}
+
+std::unordered_map<std::string, std::vector<PIIFinding>> PIIDetector::detectInJson(
+    const nlohmann::json& json_obj) const {
+    std::unordered_map<std::string, std::vector<PIIFinding>> findings;
+    scanJsonRecursive(json_obj, "", findings);
+    return findings;
+}
+
+void PIIDetector::scanJsonRecursive(
+    const nlohmann::json& obj,
+    const std::string& path,
+    std::unordered_map<std::string, std::vector<PIIFinding>>& findings) const {
+    
+    if (obj.is_object()) {
+        for (auto it = obj.begin(); it != obj.end(); ++it) {
+            std::string key = it.key();
+            std::string new_path = path.empty() ? key : path + "." + key;
+            
+            // Check field name for PII hints
+            auto field_type = classifyFieldName(key);
+            if (field_type != PIIType::UNKNOWN && it.value().is_string()) {
+                PIIFinding f;
+                f.type = field_type;
+                f.value = it.value().get<std::string>();
+                f.start_offset = 0;
+                f.end_offset = f.value.length();
+                f.confidence = 0.70; // Field name heuristic
+                findings[new_path].push_back(f);
+            }
+            
+            // Scan value content if string
+            if (it.value().is_string()) {
+                std::string str_value = it.value().get<std::string>();
+                auto text_findings = detectInText(str_value);
+                if (!text_findings.empty()) {
+                    findings[new_path].insert(findings[new_path].end(), 
+                        text_findings.begin(), text_findings.end());
+                }
+            } else {
+                // Recurse into nested objects/arrays
+                scanJsonRecursive(it.value(), new_path, findings);
+            }
+        }
+    } else if (obj.is_array()) {
+        for (size_t i = 0; i < obj.size(); ++i) {
+            std::string new_path = path + "[" + std::to_string(i) + "]";
+            scanJsonRecursive(obj[i], new_path, findings);
+        }
+    } else if (obj.is_string()) {
+        // Scan string value
+        std::string str_value = obj.get<std::string>();
+        auto text_findings = detectInText(str_value);
+        if (!text_findings.empty()) {
+            findings[path].insert(findings[path].end(), 
+                text_findings.begin(), text_findings.end());
+        }
+    }
+}
+
+PIIType PIIDetector::classifyFieldName(const std::string& field_name) const {
+    std::string lower = field_name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), 
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    
+    auto it = field_name_hints_.find(lower);
+    if (it != field_name_hints_.end()) {
+        return it->second;
+    }
+    
+    // Partial matching for common patterns
+    if (lower.find("email") != std::string::npos || lower.find("mail") != std::string::npos) {
+        return PIIType::EMAIL;
+    }
+    if (lower.find("phone") != std::string::npos || lower.find("tel") != std::string::npos) {
+        return PIIType::PHONE;
+    }
+    if (lower.find("card") != std::string::npos && (lower.find("credit") != std::string::npos || lower.find("debit") != std::string::npos)) {
+        return PIIType::CREDIT_CARD;
+    }
+    
+    return PIIType::UNKNOWN;
+}
+
+std::string PIIDetector::getRedactionRecommendation(PIIType type) const {
+    switch (type) {
+        case PIIType::SSN:
+        case PIIType::CREDIT_CARD:
+            return "strict";  // Full redaction or last 4 digits
+        case PIIType::EMAIL:
+        case PIIType::PHONE:
+        case PIIType::IBAN:
+            return "partial"; // Show domain or partial number
+        case PIIType::IP_ADDRESS:
+        case PIIType::URL:
+            return "partial";
+        default:
+            return "none";
+    }
+}
+
+std::string PIIDetector::maskValue(PIIType type, const std::string& value) const {
+    if (value.empty()) return value;
+    
+    switch (type) {
+        case PIIType::EMAIL: {
+            // Show: f***@example.com
+            auto at_pos = value.find('@');
+            if (at_pos != std::string::npos && at_pos > 0) {
+                return std::string(1, value[0]) + "***" + value.substr(at_pos);
+            }
+            return "***@***.***";
+        }
+        
+        case PIIType::PHONE: {
+            // Show last 4 digits: ***-***-1234
+            if (value.length() >= 4) {
+                std::string last_four;
+                int count = 0;
+                for (auto it = value.rbegin(); it != value.rend() && count < 4; ++it) {
+                    if (std::isdigit(static_cast<unsigned char>(*it))) {
+                        last_four = *it + last_four;
+                        ++count;
+                    }
+                }
+                return "***-***-" + last_four;
+            }
+            return "***-***-****";
+        }
+        
+        case PIIType::SSN:
+            // Show: ***-**-6789
+            if (value.length() >= 4) {
+                std::string digits_only;
+                for (char c : value) {
+                    if (std::isdigit(static_cast<unsigned char>(c))) {
+                        digits_only += c;
+                    }
+                }
+                if (digits_only.length() >= 4) {
+                    return "***-**-" + digits_only.substr(digits_only.length() - 4);
+                }
+            }
+            return "***-**-****";
+        
+        case PIIType::CREDIT_CARD: {
+            // Show: **** **** **** 1234
+            std::string digits_only;
+            for (char c : value) {
+                if (std::isdigit(static_cast<unsigned char>(c))) {
+                    digits_only += c;
+                }
+            }
+            if (digits_only.length() >= 4) {
+                return "**** **** **** " + digits_only.substr(digits_only.length() - 4);
+            }
+            return "**** **** **** ****";
+        }
+        
+        case PIIType::IBAN:
+            // Show: DE********************1234
+            if (value.length() >= 6) {
+                return value.substr(0, 2) + std::string(value.length() - 6, '*') + value.substr(value.length() - 4);
+            }
+            return "****";
+        
+        case PIIType::IP_ADDRESS:
+            // Show: 192.168.***.***
+            {
+                auto first_dot = value.find('.');
+                if (first_dot != std::string::npos) {
+                    auto second_dot = value.find('.', first_dot + 1);
+                    if (second_dot != std::string::npos) {
+                        return value.substr(0, second_dot + 1) + "***.***";
+                    }
+                }
+            }
+            return "***.***.***.***";
+        
+        case PIIType::URL:
+            // Show: https://***
+            if (value.find("://") != std::string::npos) {
+                return value.substr(0, value.find("://") + 3) + "***";
+            }
+            return "https://***";
+        
+        default:
+            return "***";
+    }
+}
+
+bool PIIDetector::luhnCheck(const std::string& number) const {
+    int sum = 0;
+    bool alternate = false;
+    
+    for (auto it = number.rbegin(); it != number.rend(); ++it) {
+        if (!std::isdigit(static_cast<unsigned char>(*it))) {
+            return false;
+        }
+        
+        int digit = *it - '0';
+        
+        if (alternate) {
+            digit *= 2;
+            if (digit > 9) {
+                digit -= 9;
+            }
+        }
+        
+        sum += digit;
+        alternate = !alternate;
+    }
+    
+    return (sum % 10) == 0;
+}
+
+std::string PIIDetector::piiTypeToString(PIIType type) {
+    switch (type) {
+        case PIIType::EMAIL: return "EMAIL";
+        case PIIType::PHONE: return "PHONE";
+        case PIIType::SSN: return "SSN";
+        case PIIType::CREDIT_CARD: return "CREDIT_CARD";
+        case PIIType::IBAN: return "IBAN";
+        case PIIType::IP_ADDRESS: return "IP_ADDRESS";
+        case PIIType::URL: return "URL";
+        default: return "UNKNOWN";
+    }
+}
+
+} // namespace utils
+} // namespace themis

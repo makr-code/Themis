@@ -1,0 +1,39 @@
+# systemd Service for ThemisDB Incremental Backups
+# Place in /etc/systemd/system/themisdb-backup.service
+
+[Unit]
+Description=ThemisDB Incremental Backup Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=themis
+Group=themis
+
+# Environment variables
+Environment="DB_PATH=/var/lib/themis"
+Environment="BACKUP_ROOT=/backup/themis"
+Environment="RETENTION_DAYS=7"
+
+# Execute backup script
+ExecStart=/opt/themis/scripts/backup-incremental.sh \
+    --db-path ${DB_PATH} \
+    --backup-root ${BACKUP_ROOT} \
+    --retention-days ${RETENTION_DAYS}
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=themisdb-backup
+
+# Resource limits (prevent backup from consuming too much)
+CPUQuota=50%
+MemoryMax=2G
+IOWeight=50
+
+# Restart policy (on failure, retry once)
+Restart=on-failure
+RestartSec=5min
+
+[Install]
+WantedBy=multi-user.target

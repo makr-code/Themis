@@ -34,6 +34,9 @@ public:
         uint32_t heartbeat_interval_ms = 15000;  // Send heartbeat every 15s
         uint32_t max_buffered_events = 1000;     // Max events per connection buffer
         uint32_t event_poll_interval_ms = 500;   // Poll changefeed every 500ms
+        uint32_t retry_ms = 3000;                // SSE client reconnect delay hint
+        uint32_t max_events_per_second = 0;      // 0 = unlimited (server-side rate control)
+        bool drop_oldest_on_overflow = true;     // Backpressure policy: drop oldest if buffer full
     };
 
     struct ConnectionStats {
@@ -41,6 +44,7 @@ public:
         uint64_t total_events_sent = 0;
         uint64_t total_heartbeats_sent = 0;
         uint64_t total_disconnects = 0;
+        uint64_t total_dropped_events = 0;
     };
 
     explicit SseConnectionManager(
@@ -108,6 +112,11 @@ private:
         std::chrono::steady_clock::time_point last_heartbeat;
         std::vector<std::string> buffered_events;
         std::atomic<bool> active{true};
+        // Backpressure accounting
+        uint64_t dropped_events{0};
+        // Simple rate window (optional)
+        uint32_t sent_in_window{0};
+        std::chrono::steady_clock::time_point window_start{std::chrono::steady_clock::now()};
     };
 
     void backgroundPollTask();
@@ -128,6 +137,7 @@ private:
     std::atomic<uint64_t> total_events_sent_{0};
     std::atomic<uint64_t> total_heartbeats_sent_{0};
     std::atomic<uint64_t> total_disconnects_{0};
+    std::atomic<uint64_t> total_dropped_events_{0};
 };
 
 } // namespace server

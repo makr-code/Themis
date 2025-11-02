@@ -1,0 +1,4892 @@
+
+<!doctype html>
+<html lang="de" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Offizielle Dokumentation für ThemisDB (Architektur, Storage, Query/AQL, Sicherheit, APIs und Betrieb)">
+      
+      
+      
+        <link rel="canonical" href="https://example.local/themisdb/docs/deployment/">
+      
+      
+        <link rel="prev" href="../security/security_compliance_review/">
+      
+      
+        <link rel="next" href="../tracing/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.23">
+    
+    
+      
+        <title>Deployment - ThemisDB Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../css/print-site.css">
+    
+      <link rel="stylesheet" href="../css/print-site-material.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#themis-deployment-guide" class="md-skip">
+          Zum Inhalt
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Kopfzeile">
+    <a href=".." title="ThemisDB Docs" class="md-header__button md-logo" aria-label="ThemisDB Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ThemisDB Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deployment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Suche" placeholder="Suche" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Suche">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Zurücksetzen" aria-label="Zurücksetzen" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Suche wird initialisiert
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/makr-code/ThemisDB" title="Zum Repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    makr-code/ThemisDB
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Hauptnavigation" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Übersicht
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architektur
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../base_entity/" class="md-tabs__link">
+          
+  
+  
+  Basismodell
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../storage/geo_relational_schema/" class="md-tabs__link">
+          
+  
+  
+  Storage & MVCC
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../indexes/" class="md-tabs__link">
+          
+  
+  
+  Indexe & Statistiken
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../query_engine_aql/" class="md-tabs__link">
+          
+  
+  
+  Query & AQL
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../content_pipeline/" class="md-tabs__link">
+          
+  
+  
+  Content Pipeline
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../search/hybrid_search_design/" class="md-tabs__link">
+          
+  
+  
+  Suche
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../performance_benchmarks/" class="md-tabs__link">
+          
+  
+  
+  Performance & Benchmarks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quality_assurance/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Qualitätssicherung
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../vector_ops/" class="md-tabs__link">
+          
+  
+  
+  Vektor & GNN
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../security/overview/" class="md-tabs__link">
+          
+  
+  
+  Sicherheit & Governance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Deployment & Betrieb
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../publishing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Publikation & Ablage
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../admin_tools_admin_guide/" class="md-tabs__link">
+          
+  
+  
+  Admin-Tools
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../apis/openapi/" class="md-tabs__link">
+          
+  
+  
+  APIs
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../styleguide/" class="md-tabs__link">
+          
+  
+  
+  Styleguide & Glossar
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../print_page/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Gesamte Dokumentation (Druckansicht)
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ThemisDB Docs" class="md-nav__button md-logo" aria-label="ThemisDB Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ThemisDB Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/makr-code/ThemisDB" title="Zum Repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    makr-code/ThemisDB
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Übersicht
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architektur
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Basismodell
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Basismodell
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../base_entity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Base Entity & Keys
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path_constraints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pfad-Constraints
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../property_graph_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Property Graph Modell
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Storage & MVCC
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Storage & MVCC
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/geo_relational_schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Storage-Layout (Geo/Relational)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/rocksdb_layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    RocksDB Storage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mvcc_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    MVCC-Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Transaktionen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../time_series/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time-Series Überblick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory_tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Memory Tuning
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Indexe & Statistiken
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Indexe & Statistiken
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../indexes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Indexe
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index_stats_maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Index-Statistiken & Wartung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursor_pagination/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cursor/Pagination
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Query & AQL
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Query & AQL
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query_engine_aql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Query Engine & AQL
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aql_syntax/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    AQL Syntax
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aql_explain_profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Explain & Profile
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recursive_path_queries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Rekursive Pfadabfragen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../temporal_graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Temporale Graphen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../temporal_time_range_queries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Zeitbereichs-Abfragen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../semantic_cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Semantischer Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Content Pipeline
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Content Pipeline
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content_pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Content Pipeline
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architektur-Details
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content/ingestion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ingestion
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ingestion/json_ingestion_spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    JSON Ingestion Spec
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content/geo_processor_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Geo-Processor Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content/image_processor_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Image-Processor Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Suche
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Suche
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../search/hybrid_search_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Hybrid Search Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../search/pagination_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pagination Benchmarks
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Performance & Benchmarks
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Performance & Benchmarks
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Überblick & Tuning
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compression_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Kompression
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../search/pagination_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pagination Benchmarks
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality_assurance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Qualitätssicherung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Vektor & GNN
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Vektor & GNN
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vector_ops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Vektor-Operationen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gnn_embeddings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    GNN Embeddings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hnsw_persistence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    HNSW Persistenz & Warmstart
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Sicherheit & Governance
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Sicherheit & Governance
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Überblick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rbac_authorization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    RBAC & Authorization
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/key_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Schlüsselverwaltung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encryption_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Verschlüsselungsstrategie
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encryption_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Verschlüsselungsdeployment
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../column_encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Spaltenverschlüsselung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/pii_detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PII-Detection (Überblick)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pii_detection_engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PII-Detection Engines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pii_engine_signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PII Engine Signing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/audit_and_retention/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Audit & Retention
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/threat_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Threat Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security_hardening_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security Hardening Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security_audit_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security Audit Checklist
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compliance_audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Compliance Audit
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compliance_governance_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Governance-Strategie
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compliance_integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Compliance-Integration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../governance_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Governance Usage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/security_compliance_review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security/Compliance Review
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment & Betrieb
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment & Betrieb
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Inhaltsverzeichnis">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Inhaltsverzeichnis
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      Table of Contents
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      System Requirements
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="System Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minimum-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Minimum Requirements
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommended-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recommended Requirements
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation Methods
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#method-1-binary-release-recommended-for-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      Method 1: Binary Release (Recommended for Production)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-2-docker-recommended-for-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Method 2: Docker (Recommended for Containers)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-3-build-from-source-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      Method 3: Build from Source (Development)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-configuration-configjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Configuration (config.json)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment Variables
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Validation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-configuration-hot-reload" class="md-nav__link">
+    <span class="md-ellipsis">
+      Runtime Configuration (Hot-Reload)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime Configuration (Hot-Reload)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-hot-reload-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supported Hot-Reload Settings
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hot-reload-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Hot-Reload Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify-current-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Verify Current Configuration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Production Deployment
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Production Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#systemd-service-linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      Systemd Service (Linux)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-compose-container-orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker Compose (Container Orchestration)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kubernetes-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kubernetes Deployment
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring &amp; Observability
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring &amp; Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reverse-proxy-und-ssekeep-alive-hinweise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reverse Proxy und SSE/Keep-Alive Hinweise
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prometheus Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cdc-quick-start-ops" class="md-nav__link">
+    <span class="md-ellipsis">
+      CDC Quick Start (Ops)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grafana-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Grafana Dashboard
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#alerting-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Alerting Rules
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backup &amp; Recovery
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Backup &amp; Recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#snapshot-backup-rocksdb-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      Snapshot Backup (RocksDB Checkpoint)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#continuous-backup-wal-archival" class="md-nav__link">
+    <span class="md-ellipsis">
+      Continuous Backup (WAL Archival)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disaster-recovery-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Disaster Recovery Procedure
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Tuning
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Tuning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rocksdb-tuning-for-workload-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      RocksDB Tuning for Workload Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-engine-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Query Engine Tuning
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#network-tuning-linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      Network Tuning (Linux)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#authentication-api-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      Authentication (API Key)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tlsssl-encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      TLS/SSL Encryption
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#firewall-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Firewall Configuration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Troubleshooting
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common Issues
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Debug Logging
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-profiling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Profiling
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      Migration Guide
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-standalone-to-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      From Standalone to Docker
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-v0x-to-v10" class="md-nav__link">
+    <span class="md-ellipsis">
+      From v0.x to v1.0
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#support" class="md-nav__link">
+    <span class="md-ellipsis">
+      Support
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracing & Observability
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../change_data_capture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Change Data Capture (CDC)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations_runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Operations Runbook
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Publikation & Ablage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Admin-Tools
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            Admin-Tools
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_admin_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Admin Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    User Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_feature_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature Matrix
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_search_sort_filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Suche/Sortierung/Filter
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_demo_script/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Demo-Script
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    APIs
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_16">
+            <span class="md-nav__icon md-icon"></span>
+            APIs
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    OpenAPI & Endpunkte
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/openapi.md#sse-streaming-changefeed" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    SSE-Streaming (Changefeed)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Styleguide & Glossar
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            Styleguide & Glossar
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../styleguide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Styleguide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossar
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Roadmap
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Changelog
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../print_page/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Gesamte Dokumentation (Druckansicht)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Inhaltsverzeichnis">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Inhaltsverzeichnis
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      Table of Contents
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      System Requirements
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="System Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minimum-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Minimum Requirements
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommended-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recommended Requirements
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation Methods
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#method-1-binary-release-recommended-for-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      Method 1: Binary Release (Recommended for Production)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-2-docker-recommended-for-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Method 2: Docker (Recommended for Containers)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-3-build-from-source-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      Method 3: Build from Source (Development)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-configuration-configjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Configuration (config.json)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment Variables
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Validation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-configuration-hot-reload" class="md-nav__link">
+    <span class="md-ellipsis">
+      Runtime Configuration (Hot-Reload)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime Configuration (Hot-Reload)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-hot-reload-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supported Hot-Reload Settings
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hot-reload-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Hot-Reload Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify-current-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Verify Current Configuration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Production Deployment
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Production Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#systemd-service-linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      Systemd Service (Linux)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-compose-container-orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker Compose (Container Orchestration)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kubernetes-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kubernetes Deployment
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring &amp; Observability
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring &amp; Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reverse-proxy-und-ssekeep-alive-hinweise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reverse Proxy und SSE/Keep-Alive Hinweise
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prometheus Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cdc-quick-start-ops" class="md-nav__link">
+    <span class="md-ellipsis">
+      CDC Quick Start (Ops)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grafana-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Grafana Dashboard
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#alerting-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Alerting Rules
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backup &amp; Recovery
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Backup &amp; Recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#snapshot-backup-rocksdb-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      Snapshot Backup (RocksDB Checkpoint)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#continuous-backup-wal-archival" class="md-nav__link">
+    <span class="md-ellipsis">
+      Continuous Backup (WAL Archival)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disaster-recovery-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Disaster Recovery Procedure
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Tuning
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Tuning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rocksdb-tuning-for-workload-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      RocksDB Tuning for Workload Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-engine-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Query Engine Tuning
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#network-tuning-linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      Network Tuning (Linux)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#authentication-api-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      Authentication (API Key)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tlsssl-encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      TLS/SSL Encryption
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#firewall-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Firewall Configuration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Troubleshooting
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common Issues
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Debug Logging
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-profiling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Profiling
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      Migration Guide
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-standalone-to-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      From Standalone to Docker
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-v0x-to-v10" class="md-nav__link">
+    <span class="md-ellipsis">
+      From v0.x to v1.0
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#support" class="md-nav__link">
+    <span class="md-ellipsis">
+      Support
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="themis-deployment-guide">THEMIS Deployment Guide<a class="headerlink" href="#themis-deployment-guide" title="Permanent link">&para;</a></h1>
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#system-requirements">System Requirements</a></li>
+<li><a href="#installation-methods">Installation Methods</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#production-deployment">Production Deployment</a></li>
+<li><a href="#monitoring--observability">Monitoring &amp; Observability</a></li>
+<li><a href="#backup--recovery">Backup &amp; Recovery</a></li>
+<li><a href="#performance-tuning">Performance Tuning</a></li>
+<li><a href="#security">Security</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+</ol>
+<h2 id="system-requirements">System Requirements<a class="headerlink" href="#system-requirements" title="Permanent link">&para;</a></h2>
+<h3 id="minimum-requirements">Minimum Requirements<a class="headerlink" href="#minimum-requirements" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>CPU</strong>: 4 cores (x86_64 or ARM64)</li>
+<li><strong>RAM</strong>: 2 GB (1 GB for RocksDB, 1 GB for system/buffers)</li>
+<li><strong>Disk</strong>: 20 GB SSD (NVMe recommended)</li>
+<li><strong>OS</strong>: Windows 10/11, Linux (Ubuntu 20.04+, RHEL 8+), macOS 12+</li>
+<li><strong>Network</strong>: 1 Gbps (for distributed deployments)</li>
+</ul>
+<h3 id="recommended-requirements">Recommended Requirements<a class="headerlink" href="#recommended-requirements" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>CPU</strong>: 8+ cores (Intel Xeon, AMD EPYC, or Apple Silicon M-series)</li>
+<li><strong>RAM</strong>: 8 GB (4 GB block cache, 1 GB memtable, 3 GB system)</li>
+<li><strong>Disk</strong>: 100 GB+ NVMe SSD (read: 3000 MB/s, write: 1500 MB/s)</li>
+<li><strong>OS</strong>: Linux (kernel 5.10+) for production workloads</li>
+<li><strong>Network</strong>: 10 Gbps (low-latency network for replication)</li>
+</ul>
+<h2 id="installation-methods">Installation Methods<a class="headerlink" href="#installation-methods" title="Permanent link">&para;</a></h2>
+<h3 id="method-1-binary-release-recommended-for-production">Method 1: Binary Release (Recommended for Production)<a class="headerlink" href="#method-1-binary-release-recommended-for-production" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># Download latest release
+wget https://github.com/&lt;org&gt;/vccdb/releases/download/v1.0.0/vccdb-linux-x64.tar.gz
+
+# Extract
+tar -xzf vccdb-linux-x64.tar.gz
+cd vccdb
+
+# Verify installation
+./themis_server --version
+# Output: THEMIS v1.0.0 (build: 2025-10-28, commit: abc1234)
+</code></pre>
+<h3 id="method-2-docker-recommended-for-containers">Method 2: Docker (Recommended for Containers)<a class="headerlink" href="#method-2-docker-recommended-for-containers" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># Pull image
+docker pull vccdb/vccdb:latest
+
+# Run with persistent storage
+docker run -d \
+  --name vccdb \
+  -p 8765:8765 \
+  -v $(pwd)/data:/data \
+  -v $(pwd)/config.json:/etc/vccdb/config.json \
+  vccdb/vccdb:latest
+
+# Check logs
+docker logs -f vccdb
+</code></pre>
+<h3 id="method-3-build-from-source-development">Method 3: Build from Source (Development)<a class="headerlink" href="#method-3-build-from-source-development" title="Permanent link">&para;</a></h3>
+<pre><code class="language-powershell"># Windows (PowerShell)
+git clone https://github.com/&lt;org&gt;/vccdb.git
+cd vccdb
+.\setup.ps1      # Install vcpkg dependencies
+.\build.ps1      # Build Release binaries
+</code></pre>
+<pre><code class="language-bash"># Linux/macOS (Bash)
+git clone https://github.com/&lt;org&gt;/vccdb.git
+cd vccdb
+./setup.sh       # Install dependencies
+./build.sh       # Build Release binaries
+</code></pre>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<h3 id="basic-configuration-configjson">Basic Configuration (<code>config.json</code>)<a class="headerlink" href="#basic-configuration-configjson" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;storage&quot;: {
+    &quot;rocksdb_path&quot;: &quot;/var/lib/vccdb/data&quot;,
+    &quot;memtable_size_mb&quot;: 256,
+    &quot;block_cache_size_mb&quot;: 1024,
+    &quot;max_open_files&quot;: 10000,
+    &quot;enable_statistics&quot;: true,
+    &quot;compression&quot;: {
+      &quot;default&quot;: &quot;lz4&quot;,
+      &quot;bottommost&quot;: &quot;zstd&quot;
+    }
+  },
+  &quot;server&quot;: {
+    &quot;host&quot;: &quot;0.0.0.0&quot;,
+    &quot;port&quot;: 8765,
+    &quot;worker_threads&quot;: 8,
+    &quot;request_timeout_ms&quot;: 30000,
+    &quot;max_request_size_mb&quot;: 10
+  },
+  &quot;logging&quot;: {
+    &quot;level&quot;: &quot;info&quot;,
+    &quot;file&quot;: &quot;/var/log/vccdb/server.log&quot;,
+    &quot;rotation_size_mb&quot;: 100,
+    &quot;max_files&quot;: 10
+  },
+  &quot;vector_index&quot;: {
+    &quot;engine&quot;: &quot;hnsw&quot;,
+    &quot;hnsw_m&quot;: 16,
+    &quot;hnsw_ef_construction&quot;: 200,
+    &quot;use_gpu&quot;: false
+  }
+}
+</code></pre>
+<h3 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h3>
+<p>Override config values with environment variables:</p>
+<pre><code class="language-bash">export THEMIS_SERVER_PORT=9000
+export THEMIS_STORAGE_PATH=/mnt/nvme/vccdb
+export THEMIS_LOG_LEVEL=debug
+export THEMIS_WORKER_THREADS=16
+
+./themis_server --config config.json
+# Port 9000, custom storage path, debug logging, 16 threads
+</code></pre>
+<h3 id="configuration-validation">Configuration Validation<a class="headerlink" href="#configuration-validation" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># Validate config before starting server
+./themis_server --config config.json --validate
+
+# Output:
+# ✓ Config file valid
+# ✓ Storage path accessible: /var/lib/vccdb/data
+# ✓ Port 8765 available
+# ✓ Memory limits: memtable (256 MB) + block_cache (1024 MB) = 1280 MB
+# ✓ Worker threads: 8 (optimal for 8-core CPU)
+</code></pre>
+<h3 id="runtime-configuration-hot-reload">Runtime Configuration (Hot-Reload)<a class="headerlink" href="#runtime-configuration-hot-reload" title="Permanent link">&para;</a></h3>
+<p>THEMIS supports <strong>hot-reload</strong> for specific configuration values without requiring a server restart.</p>
+<h4 id="supported-hot-reload-settings">Supported Hot-Reload Settings<a class="headerlink" href="#supported-hot-reload-settings" title="Permanent link">&para;</a></h4>
+<p>The following settings can be updated at runtime via <code>POST /config</code>:</p>
+<ol>
+<li><strong>Logging Configuration</strong></li>
+<li><code>logging.level</code>: "trace", "debug", "info", "warn", "error"</li>
+<li>
+<p><code>logging.format</code>: "text" (human-readable), "json" (structured logs for aggregation)</p>
+</li>
+<li>
+<p><strong>Request Timeout</strong></p>
+</li>
+<li>
+<p><code>request_timeout_ms</code>: 1000-300000 (1 second to 5 minutes)</p>
+</li>
+<li>
+<p><strong>Feature Flags</strong> (Beta features)</p>
+</li>
+<li><code>features.semantic_cache</code>: Enable/disable semantic query caching</li>
+<li><code>features.llm_store</code>: Enable/disable LLM interaction storage</li>
+<li><code>features.cdc</code>: Enable/disable Change Data Capture streaming</li>
+<li>
+<p><code>features.timeseries</code>: Enable/disable time-series data store</p>
+</li>
+<li>
+<p><strong>CDC Retention Policy</strong> (Logging only - requires manual cleanup)</p>
+</li>
+<li><code>cdc_retention_hours</code>: 1-8760 (1 hour to 1 year)</li>
+</ol>
+<h4 id="hot-reload-examples">Hot-Reload Examples<a class="headerlink" href="#hot-reload-examples" title="Permanent link">&para;</a></h4>
+<p><strong>Example 1: Enable JSON Logging</strong></p>
+<pre><code class="language-bash">curl -X POST http://localhost:8765/config \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;logging&quot;: {
+      &quot;level&quot;: &quot;info&quot;,
+      &quot;format&quot;: &quot;json&quot;
+    }
+  }'
+
+# Response: Updated config with all current settings
+# Server logs now output structured JSON
+</code></pre>
+<p><strong>Example 2: Update Request Timeout</strong></p>
+<pre><code class="language-bash">curl -X POST http://localhost:8765/config \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;request_timeout_ms&quot;: 60000
+  }'
+
+# Timeout increased to 60 seconds for long-running queries
+</code></pre>
+<p><strong>Example 3: Enable CDC Feature</strong></p>
+<pre><code class="language-bash">curl -X POST http://localhost:8765/config \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;features&quot;: {
+      &quot;cdc&quot;: true
+    }
+  }'
+
+# CDC streaming endpoints now accessible: /changefeed/stream
+</code></pre>
+<p><strong>Example 4: Multiple Settings at Once</strong></p>
+<pre><code class="language-bash">curl -X POST http://localhost:8765/config \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;logging&quot;: {
+      &quot;level&quot;: &quot;debug&quot;,
+      &quot;format&quot;: &quot;json&quot;
+    },
+    &quot;request_timeout_ms&quot;: 45000,
+    &quot;features&quot;: {
+      &quot;semantic_cache&quot;: true,
+      &quot;cdc&quot;: true
+    }
+  }'
+</code></pre>
+<h4 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h4>
+<p><strong>Cannot be changed at runtime (requires restart):</strong></p>
+<ul>
+<li><code>server.port</code>: HTTP server port</li>
+<li><code>server.threads</code>: Number of worker threads (thread pool is fixed at startup)</li>
+<li><code>rocksdb.*</code>: All RocksDB storage settings (memtable size, block cache, compression, etc.)</li>
+<li><code>vector.dimension</code>: Vector index dimensionality</li>
+<li>Data directory paths</li>
+</ul>
+<p><strong>Validation Rules:</strong></p>
+<ul>
+<li><code>request_timeout_ms</code>: Must be between 1000 and 300000 (1s-5min)</li>
+<li><code>cdc_retention_hours</code>: Must be between 1 and 8760 (1h-1yr)</li>
+<li>Feature flags: Boolean values only</li>
+</ul>
+<h4 id="verify-current-configuration">Verify Current Configuration<a class="headerlink" href="#verify-current-configuration" title="Permanent link">&para;</a></h4>
+<pre><code class="language-bash"># GET current config
+curl http://localhost:8765/config | jq .
+
+# Output includes all settings (read-only + hot-reload capable)
+{
+  &quot;server&quot;: {
+    &quot;port&quot;: 8765,
+    &quot;threads&quot;: 8,
+    &quot;request_timeout_ms&quot;: 30000
+  },
+  &quot;features&quot;: {
+    &quot;semantic_cache&quot;: false,
+    &quot;llm_store&quot;: false,
+    &quot;cdc&quot;: true,
+    &quot;timeseries&quot;: false
+  },
+  &quot;rocksdb&quot;: {
+    &quot;db_path&quot;: &quot;/var/lib/vccdb/data&quot;,
+    &quot;memtable_size_mb&quot;: 256,
+    ...
+  }
+}
+</code></pre>
+<h2 id="production-deployment">Production Deployment<a class="headerlink" href="#production-deployment" title="Permanent link">&para;</a></h2>
+<h3 id="systemd-service-linux">Systemd Service (Linux)<a class="headerlink" href="#systemd-service-linux" title="Permanent link">&para;</a></h3>
+<p>Create <code>/etc/systemd/system/vccdb.service</code>:</p>
+<pre><code class="language-ini">[Unit]
+Description=THEMIS Multi-Model Database Server
+After=network.target
+
+[Service]
+Type=simple
+User=vccdb
+Group=vccdb
+WorkingDirectory=/opt/vccdb
+ExecStart=/opt/vccdb/themis_server --config /etc/vccdb/config.json
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vccdb /var/log/vccdb
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=8G
+CPUQuota=800%
+
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<pre><code class="language-bash"># Enable and start service
+sudo systemctl daemon-reload
+sudo systemctl enable vccdb
+sudo systemctl start vccdb
+
+# Check status
+sudo systemctl status vccdb
+sudo journalctl -u vccdb -f
+</code></pre>
+<h3 id="docker-compose-container-orchestration">Docker Compose (Container Orchestration)<a class="headerlink" href="#docker-compose-container-orchestration" title="Permanent link">&para;</a></h3>
+<p>Hinweis zu Ports:
+- Der mitgelieferte <code>docker-compose.yml</code> im Repository nutzt standardmäßig Port <code>8080</code> (Mapping <code>8080:8080</code>).
+- In den Beispielen dieses Guides wird Port <code>8765</code> verwendet. Passe den Port in Compose entsprechend an (oder setze <code>THEMIS_PORT</code>).</p>
+<p>Create <code>docker-compose.yml</code>:</p>
+<pre><code class="language-yaml">version: '3.8'
+
+services:
+  vccdb:
+    image: vccdb/vccdb:latest
+    container_name: vccdb
+    ports:
+  - &quot;8765:8765&quot;  # ggf. zu &quot;8080:8080&quot; anpassen, wenn Image/Entrypoint 8080 nutzt
+    volumes:
+      - vccdb-data:/data
+      - ./config.json:/etc/vccdb/config.json:ro
+    environment:
+      - THEMIS_LOG_LEVEL=info
+      - THEMIS_WORKER_THREADS=8
+    restart: unless-stopped
+    healthcheck:
+      test: [&quot;CMD&quot;, &quot;curl&quot;, &quot;-f&quot;, &quot;http://localhost:8765/health&quot;]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 8G
+        reservations:
+          cpus: '4'
+          memory: 4G
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - &quot;9090:9090&quot;
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - &quot;3000:3000&quot;
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+
+volumes:
+  vccdb-data:
+  prometheus-data:
+  grafana-data:
+</code></pre>
+<pre><code class="language-bash"># Start stack
+docker-compose up -d
+
+# View logs
+docker-compose logs -f vccdb
+
+# Scale (if using load balancer)
+docker-compose up -d --scale vccdb=3
+</code></pre>
+<h3 id="kubernetes-deployment">Kubernetes Deployment<a class="headerlink" href="#kubernetes-deployment" title="Permanent link">&para;</a></h3>
+<p>Create <code>k8s/deployment.yaml</code>:</p>
+<pre><code class="language-yaml">apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vccdb-config
+data:
+  config.json: |
+    {
+      &quot;storage&quot;: {
+        &quot;rocksdb_path&quot;: &quot;/data/vccdb&quot;,
+        &quot;memtable_size_mb&quot;: 512,
+        &quot;block_cache_size_mb&quot;: 2048
+      },
+      &quot;server&quot;: {
+        &quot;host&quot;: &quot;0.0.0.0&quot;,
+        &quot;port&quot;: 8765,
+        &quot;worker_threads&quot;: 16
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vccdb-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vccdb
+  labels:
+    app: vccdb
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vccdb
+  template:
+    metadata:
+      labels:
+        app: vccdb
+      annotations:
+        prometheus.io/scrape: &quot;true&quot;
+        prometheus.io/port: &quot;8765&quot;
+        prometheus.io/path: &quot;/metrics&quot;
+    spec:
+      containers:
+      - name: vccdb
+        image: vccdb/vccdb:latest
+        ports:
+        - containerPort: 8765
+          name: http
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /etc/vccdb
+          readOnly: true
+        resources:
+          requests:
+            cpu: 4000m
+            memory: 8Gi
+          limits:
+            cpu: 8000m
+            memory: 16Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8765
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8765
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: vccdb-data
+      - name: config
+        configMap:
+          name: vccdb-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vccdb
+  labels:
+    app: vccdb
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    targetPort: 8765
+    protocol: TCP
+    name: http
+  selector:
+    app: vccdb
+</code></pre>
+<pre><code class="language-bash"># Deploy to Kubernetes
+kubectl apply -f k8s/deployment.yaml
+
+# Check status
+kubectl get pods -l app=vccdb
+kubectl logs -l app=vccdb -f
+
+# Expose externally (LoadBalancer)
+kubectl expose deployment vccdb --type=LoadBalancer --port=8765
+</code></pre>
+<h2 id="monitoring-observability">Monitoring &amp; Observability<a class="headerlink" href="#monitoring-observability" title="Permanent link">&para;</a></h2>
+<h3 id="reverse-proxy-und-ssekeep-alive-hinweise">Reverse Proxy und SSE/Keep-Alive Hinweise<a class="headerlink" href="#reverse-proxy-und-ssekeep-alive-hinweise" title="Permanent link">&para;</a></h3>
+<p>Server‑Sent Events (SSE) nutzen eine langlebige HTTP/1.1‑Verbindung mit kontinuierlichen Datenflüssen. Für stabile Streams sollten Reverse Proxies und Load Balancer speziell konfiguriert werden:</p>
+<ul>
+<li>HTTP/1.1 erzwingen und Keep‑Alive aktiv halten</li>
+<li>Timeouts großzügig setzen (Lese‑/Idle‑Timeout ≥ 60s)</li>
+<li>Pufferung und Komprimierung für SSE deaktivieren</li>
+<li>Sticky Sessions/Session Affinity aktivieren, wenn mehrere Backend‑Instanzen genutzt werden</li>
+</ul>
+<p>Beispiele:</p>
+<p>1) Nginx</p>
+<pre><code>location /changefeed/stream {
+  proxy_http_version 1.1;
+  proxy_set_header Connection &quot;&quot;;           # Keep-Alive nicht explizit schließen
+  proxy_set_header Cache-Control no-cache;
+  proxy_buffering off;                       # wichtig für SSE
+  gzip off;                                  # keine Komprimierung für SSE
+  chunked_transfer_encoding on;
+  proxy_read_timeout 120s;                   # ausreichend hoch
+  proxy_send_timeout 120s;
+}
+</code></pre>
+<p>2) HAProxy</p>
+<pre><code>frontend http
+  bind *:80
+  default_backend app
+
+backend app
+  option http-keep-alive
+  option http-server-close          # optional je nach Setup
+  timeout server  120s
+  timeout client  120s
+  timeout http-keep-alive 120s
+  http-response set-header Cache-Control no-cache
+</code></pre>
+<p>3) Windows/IIS (Beispielauszug web.config)</p>
+<pre><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;configuration&gt;
+  &lt;system.webServer&gt;
+    &lt;httpProtocol&gt;
+      &lt;customHeaders&gt;
+        &lt;add name=&quot;Cache-Control&quot; value=&quot;no-cache&quot; /&gt;
+      &lt;/customHeaders&gt;
+    &lt;/httpProtocol&gt;
+    &lt;serverRuntime frequentHitThreshold=&quot;1&quot; frequentHitTimePeriod=&quot;00:00:10&quot; /&gt;
+    &lt;httpCompression directory=&quot;%SystemDrive%\\inetpub\\temp\\IIS Temporary Compressed Files&quot;&gt;
+      &lt;dynamicTypes&gt;
+        &lt;add enabled=&quot;false&quot; mimeType=&quot;text/event-stream&quot; /&gt;
+      &lt;/dynamicTypes&gt;
+    &lt;/httpCompression&gt;
+    &lt;handlers&gt;
+      &lt;add name=&quot;SSE&quot; path=&quot;changefeed/stream&quot; verb=&quot;GET&quot; modules=&quot;IsapiModule&quot; scriptProcessor=&quot;%windir%\\system32\\inetsrv\\asp.dll&quot; resourceType=&quot;Unspecified&quot; requireAccess=&quot;Read&quot; /&gt;
+    &lt;/handlers&gt;
+  &lt;/system.webServer&gt;
+&lt;/configuration&gt;
+</code></pre>
+<p>Zusätzlich in der Anwendungspool‑Konfiguration Idle‑Timeout ≥ 2 Minuten setzen und ggf. Request Filtering Limits (z. B. responseBufferLimit) erhöhen/abschalten.</p>
+<p>Hinweis: Detaillierte Betriebsaspekte zum CDC‑Stream siehe <code>docs/change_data_capture.md</code>.</p>
+<h3 id="prometheus-configuration">Prometheus Configuration<a class="headerlink" href="#prometheus-configuration" title="Permanent link">&para;</a></h3>
+<p>Create <code>prometheus.yml</code>:</p>
+<pre><code class="language-yaml">global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'vccdb'
+    static_configs:
+      - targets: ['vccdb:8765']
+    metrics_path: /metrics
+</code></pre>
+<p>Zusätzliche, themis-spezifische Metriken (Auszug):
+- <code>themis_index_rebuild_count</code>, <code>themis_index_rebuild_duration_ms_total</code>, <code>themis_index_rebuild_entities_processed_total</code>
+- <code>themis_index_cursor_anchor_hits_total</code>, <code>themis_index_range_scan_steps_total</code>
+Siehe auch: <code>docs/index_stats_maintenance.md</code>.</p>
+<h3 id="cdc-quick-start-ops">CDC Quick Start (Ops)<a class="headerlink" href="#cdc-quick-start-ops" title="Permanent link">&para;</a></h3>
+<p>1) Feature aktivieren (config/config.json):</p>
+<pre><code class="language-json">{
+  &quot;features&quot;: { &quot;cdc&quot;: true }
+}
+</code></pre>
+<p>2) Endpoint prüfen:</p>
+<pre><code class="language-bash">curl &quot;http://localhost:8765/changefeed?from_seq=0&amp;limit=1&quot;
+</code></pre>
+<p>3) Reverse Proxy für SSE konfigurieren, falls <code>/changefeed/stream</code> genutzt wird (siehe Hinweise oben) und Details in <code>docs/change_data_capture.md</code>.</p>
+<h3 id="grafana-dashboard">Grafana Dashboard<a class="headerlink" href="#grafana-dashboard" title="Permanent link">&para;</a></h3>
+<p>Key metrics to monitor:</p>
+<p><strong>Server Metrics:</strong>
+- <code>vccdb_requests_total</code> (counter): Total requests
+- <code>vccdb_errors_total</code> (counter): Total errors
+- <code>vccdb_qps</code> (gauge): Queries per second
+- <code>process_uptime_seconds</code> (gauge): Server uptime</p>
+<p><strong>RocksDB Metrics:</strong>
+- <code>rocksdb_block_cache_usage_bytes</code> / <code>rocksdb_block_cache_capacity_bytes</code>: Cache utilization
+- <code>rocksdb_estimate_num_keys</code>: Total entities in database
+- <code>rocksdb_pending_compaction_bytes</code>: Compaction backlog
+- <code>rocksdb_memtable_size_bytes</code>: Write buffer usage
+- <code>rocksdb_files_level{level="L0...L6"}</code>: SST files per level</p>
+<p><strong>Query Metrics:</strong>
+- Request latency (p50, p95, p99)
+- Index hit rate
+- Full scan fallback rate</p>
+<h3 id="alerting-rules">Alerting Rules<a class="headerlink" href="#alerting-rules" title="Permanent link">&para;</a></h3>
+<p>Create <code>alerts.yml</code>:</p>
+<pre><code class="language-yaml">groups:
+  - name: vccdb_alerts
+    interval: 30s
+    rules:
+      - alert: THEMISHighErrorRate
+        expr: rate(vccdb_errors_total[5m]) &gt; 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: &quot;High error rate detected&quot;
+          description: &quot;Error rate is {{ $value }} errors/sec&quot;
+
+      - alert: THEMISLowCacheHitRate
+        expr: |
+          rocksdb_block_cache_hit / 
+          (rocksdb_block_cache_hit + rocksdb_block_cache_miss) &lt; 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: &quot;Low block cache hit rate&quot;
+          description: &quot;Cache hit rate is {{ $value | humanizePercentage }}&quot;
+
+      - alert: THEMISHighCompactionBacklog
+        expr: rocksdb_pending_compaction_bytes &gt; 10737418240  # 10 GB
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: &quot;High compaction backlog&quot;
+          description: &quot;Pending compaction: {{ $value | humanize1024 }}B&quot;
+
+      - alert: THEMISDown
+        expr: up{job=&quot;themis&quot;} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: &quot;THEMIS server is down&quot;
+          description: &quot;THEMIS instance {{ $labels.instance }} is unreachable&quot;
+</code></pre>
+<h2 id="backup-recovery">Backup &amp; Recovery<a class="headerlink" href="#backup-recovery" title="Permanent link">&para;</a></h2>
+<h3 id="snapshot-backup-rocksdb-checkpoint">Snapshot Backup (RocksDB Checkpoint)<a class="headerlink" href="#snapshot-backup-rocksdb-checkpoint" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># Create snapshot
+curl -X POST http://localhost:8765/admin/snapshot \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;path&quot;:&quot;/backups/vccdb-snapshot-2025-10-28&quot;}'
+
+# Verify snapshot
+ls -lh /backups/vccdb-snapshot-2025-10-28/
+# Output: CURRENT, MANIFEST, *.sst files
+
+# Restore from snapshot
+./themis_server --restore /backups/vccdb-snapshot-2025-10-28 \
+               --target /var/lib/vccdb/data
+</code></pre>
+<h3 id="continuous-backup-wal-archival">Continuous Backup (WAL Archival)<a class="headerlink" href="#continuous-backup-wal-archival" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;storage&quot;: {
+    &quot;wal_archive_path&quot;: &quot;/backups/wal&quot;,
+    &quot;wal_ttl_seconds&quot;: 86400,  // Keep WAL for 24 hours
+    &quot;enable_wal_archival&quot;: true
+  }
+}
+</code></pre>
+<pre><code class="language-bash"># Backup script (cron job: 0 */6 * * *)
+#!/bin/bash
+BACKUP_DIR=&quot;/backups/$(date +%Y%m%d-%H%M%S)&quot;
+cp -r /var/lib/vccdb/data &quot;$BACKUP_DIR&quot;
+tar -czf &quot;$BACKUP_DIR.tar.gz&quot; &quot;$BACKUP_DIR&quot;
+rm -rf &quot;$BACKUP_DIR&quot;
+
+# Retention: keep last 7 days
+find /backups -name &quot;*.tar.gz&quot; -mtime +7 -delete
+</code></pre>
+<h3 id="disaster-recovery-procedure">Disaster Recovery Procedure<a class="headerlink" href="#disaster-recovery-procedure" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># 1. Stop server
+sudo systemctl stop vccdb
+
+# 2. Restore data directory
+tar -xzf /backups/20251028-120000.tar.gz -C /var/lib/vccdb/
+
+# 3. Verify data integrity
+./themis_server --config config.json --verify
+
+# 4. Restart server
+sudo systemctl start vccdb
+
+# 5. Verify health
+curl http://localhost:8765/health
+curl http://localhost:8765/stats | jq .storage.rocksdb.estimate_num_keys
+</code></pre>
+<h2 id="performance-tuning">Performance Tuning<a class="headerlink" href="#performance-tuning" title="Permanent link">&para;</a></h2>
+<h3 id="rocksdb-tuning-for-workload-types">RocksDB Tuning for Workload Types<a class="headerlink" href="#rocksdb-tuning-for-workload-types" title="Permanent link">&para;</a></h3>
+<p><strong>Write-Heavy (High Ingestion Rate):</strong></p>
+<pre><code class="language-json">{
+  &quot;storage&quot;: {
+    &quot;memtable_size_mb&quot;: 512,
+    &quot;max_write_buffer_number&quot;: 4,
+    &quot;min_write_buffer_number_to_merge&quot;: 2,
+    &quot;level0_file_num_compaction_trigger&quot;: 4,
+    &quot;level0_slowdown_writes_trigger&quot;: 20,
+    &quot;level0_stop_writes_trigger&quot;: 36,
+    &quot;compression&quot;: &quot;lz4&quot;
+  }
+}
+</code></pre>
+<p><strong>Read-Heavy (Analytics Workload):</strong></p>
+<pre><code class="language-json">{
+  &quot;storage&quot;: {
+    &quot;memtable_size_mb&quot;: 128,
+    &quot;block_cache_size_mb&quot;: 4096,
+    &quot;enable_bloom_filters&quot;: true,
+    &quot;bloom_bits_per_key&quot;: 10,
+    &quot;compression&quot;: &quot;zstd&quot;
+  }
+}
+</code></pre>
+<p><strong>Balanced (Mixed Workload):</strong></p>
+<pre><code class="language-json">{
+  &quot;storage&quot;: {
+    &quot;memtable_size_mb&quot;: 256,
+    &quot;block_cache_size_mb&quot;: 2048,
+    &quot;compression&quot;: {
+      &quot;default&quot;: &quot;lz4&quot;,
+      &quot;bottommost&quot;: &quot;zstd&quot;
+    }
+  }
+}
+</code></pre>
+<h3 id="query-engine-tuning">Query Engine Tuning<a class="headerlink" href="#query-engine-tuning" title="Permanent link">&para;</a></h3>
+<p>Edit <code>src/query/query_engine.cpp</code>:</p>
+<pre><code class="language-cpp">// Low-latency tuning (reduce parallelization overhead)
+constexpr size_t PARALLEL_THRESHOLD = 50;   // Start parallel at 50 entities
+constexpr size_t BATCH_SIZE = 25;           // Smaller batches
+
+// High-throughput tuning (maximize CPU utilization)
+constexpr size_t PARALLEL_THRESHOLD = 200;  // Less overhead
+constexpr size_t BATCH_SIZE = 100;          // Larger batches
+</code></pre>
+<h3 id="network-tuning-linux">Network Tuning (Linux)<a class="headerlink" href="#network-tuning-linux" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># Increase TCP buffer sizes
+sudo sysctl -w net.core.rmem_max=16777216
+sudo sysctl -w net.core.wmem_max=16777216
+sudo sysctl -w net.ipv4.tcp_rmem=&quot;4096 87380 16777216&quot;
+sudo sysctl -w net.ipv4.tcp_wmem=&quot;4096 65536 16777216&quot;
+
+# Enable TCP Fast Open
+sudo sysctl -w net.ipv4.tcp_fastopen=3
+
+# Increase connection queue
+sudo sysctl -w net.core.somaxconn=4096
+</code></pre>
+<h2 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h2>
+<h3 id="authentication-api-key">Authentication (API Key)<a class="headerlink" href="#authentication-api-key" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;server&quot;: {
+    &quot;enable_auth&quot;: true,
+    &quot;api_keys&quot;: [
+      {&quot;key&quot;: &quot;sk-prod-abc123...&quot;, &quot;role&quot;: &quot;admin&quot;},
+      {&quot;key&quot;: &quot;sk-readonly-xyz789...&quot;, &quot;role&quot;: &quot;readonly&quot;}
+    ]
+  }
+}
+</code></pre>
+<pre><code class="language-bash"># Authenticated request
+curl -H &quot;Authorization: Bearer sk-prod-abc123...&quot; \
+     http://localhost:8765/entities/users:alice
+</code></pre>
+<h3 id="tlsssl-encryption">TLS/SSL Encryption<a class="headerlink" href="#tlsssl-encryption" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;server&quot;: {
+    &quot;enable_tls&quot;: true,
+    &quot;tls_cert&quot;: &quot;/etc/vccdb/certs/server.crt&quot;,
+    &quot;tls_key&quot;: &quot;/etc/vccdb/certs/server.key&quot;,
+    &quot;tls_ca&quot;: &quot;/etc/vccdb/certs/ca.crt&quot;
+  }
+}
+</code></pre>
+<pre><code class="language-bash"># Generate self-signed certificate (testing only)
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt \
+        -days 365 -nodes -subj &quot;/CN=localhost&quot;
+
+# HTTPS request
+curl --cacert ca.crt https://localhost:8765/health
+</code></pre>
+<h3 id="firewall-configuration">Firewall Configuration<a class="headerlink" href="#firewall-configuration" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># Allow THEMIS port (Linux - ufw)
+sudo ufw allow 8765/tcp
+sudo ufw enable
+
+# Allow from specific IP only
+sudo ufw allow from 10.0.1.0/24 to any port 8765
+
+# Windows Firewall
+netsh advfirewall firewall add rule name=&quot;THEMIS Server&quot; dir=in action=allow protocol=TCP localport=8765
+</code></pre>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="common-issues">Common Issues<a class="headerlink" href="#common-issues" title="Permanent link">&para;</a></h3>
+<p><strong>Issue 1: Server fails to start - "Database not open"</strong></p>
+<pre><code class="language-bash"># Check storage path permissions
+ls -ld /var/lib/vccdb/data
+# Fix: sudo chown -R vccdb:vccdb /var/lib/vccdb/data
+
+# Check disk space
+df -h /var/lib/vccdb
+# Fix: Clean up old data or resize volume
+</code></pre>
+<p><strong>Issue 2: High memory usage</strong></p>
+<pre><code class="language-bash"># Check RocksDB memory usage
+curl http://localhost:8765/stats | jq '.storage.rocksdb | {
+  block_cache: .block_cache_usage_bytes,
+  memtable: .memtable_size_bytes,
+  total_mem_tables: .cur_size_all_mem_tables_bytes
+}'
+
+# Fix: Reduce block_cache_size_mb or memtable_size_mb in config.json
+</code></pre>
+<p><strong>Issue 3: Slow queries</strong></p>
+<pre><code class="language-bash"># Check index usage
+curl -X POST http://localhost:8765/query \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;table&quot;:&quot;users&quot;,&quot;predicates&quot;:[{&quot;column&quot;:&quot;city&quot;,&quot;value&quot;:&quot;Berlin&quot;}],&quot;explain&quot;:true}'
+
+# Output: {&quot;plan&quot;: {&quot;mode&quot;: &quot;full_scan_fallback&quot;}}
+# Fix: Create index on 'city' column
+curl -X POST http://localhost:8765/index/create \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;table&quot;:&quot;users&quot;,&quot;column&quot;:&quot;city&quot;}'
+</code></pre>
+<p><strong>Issue 4: Compaction backlog</strong></p>
+<pre><code class="language-bash"># Check compaction stats
+curl http://localhost:8765/stats | jq '.storage.rocksdb | {
+  pending: .estimate_pending_compaction_bytes,
+  running: .num_running_compactions
+}'
+
+# Fix: Increase compaction threads
+# config.json: &quot;max_background_compactions&quot;: 8
+</code></pre>
+<h3 id="debug-logging">Debug Logging<a class="headerlink" href="#debug-logging" title="Permanent link">&para;</a></h3>
+<p>Enable debug logging:</p>
+<pre><code class="language-json">{
+  &quot;logging&quot;: {
+    &quot;level&quot;: &quot;debug&quot;,
+    &quot;file&quot;: &quot;/var/log/vccdb/debug.log&quot;
+  }
+}
+</code></pre>
+<pre><code class="language-bash"># Tail debug log
+tail -f /var/log/vccdb/debug.log
+
+# Filter specific component
+grep &quot;QueryEngine&quot; /var/log/vccdb/debug.log
+grep &quot;RocksDBWrapper&quot; /var/log/vccdb/debug.log
+</code></pre>
+<h3 id="performance-profiling">Performance Profiling<a class="headerlink" href="#performance-profiling" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># CPU profiling (Linux - perf)
+sudo perf record -F 99 -p $(pgrep themis_server) -g -- sleep 60
+sudo perf report
+
+# Memory profiling (valgrind)
+valgrind --tool=massif ./themis_server --config config.json
+ms_print massif.out.12345
+
+# Network profiling (tcpdump)
+sudo tcpdump -i any port 8765 -w vccdb-traffic.pcap
+wireshark vccdb-traffic.pcap
+</code></pre>
+<h2 id="migration-guide">Migration Guide<a class="headerlink" href="#migration-guide" title="Permanent link">&para;</a></h2>
+<h3 id="from-standalone-to-docker">From Standalone to Docker<a class="headerlink" href="#from-standalone-to-docker" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># 1. Stop standalone server
+sudo systemctl stop vccdb
+
+# 2. Copy data directory
+sudo cp -r /var/lib/vccdb/data ./docker-data/
+
+# 3. Start Docker container
+docker run -d \
+  --name vccdb \
+  -p 8765:8765 \
+  -v $(pwd)/docker-data:/data \
+  vccdb/vccdb:latest
+
+# 4. Verify data
+curl http://localhost:8765/stats | jq .storage.rocksdb.estimate_num_keys
+</code></pre>
+<h3 id="from-v0x-to-v10">From v0.x to v1.0<a class="headerlink" href="#from-v0x-to-v10" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash"># 1. Backup current data
+./themis_server --backup /backups/pre-upgrade-$(date +%Y%m%d)
+
+# 2. Download v1.0 binary
+wget https://github.com/&lt;org&gt;/vccdb/releases/download/v1.0.0/vccdb-linux-x64.tar.gz
+tar -xzf vccdb-linux-x64.tar.gz
+
+# 3. Run migration tool
+./vccdb-migrate --from /var/lib/vccdb/data \
+                --to /var/lib/vccdb/data-v1 \
+                --version 0.9 --target 1.0
+
+# 4. Update config.json (new format)
+# See: https://github.com/&lt;org&gt;/vccdb/wiki/v1.0-Migration-Guide
+
+# 5. Start v1.0 server
+./themis_server --config config-v1.json
+</code></pre>
+<h2 id="support">Support<a class="headerlink" href="#support" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Documentation</strong>: https://docs.vccdb.io</li>
+<li><strong>GitHub Issues</strong>: https://github.com/<org>/vccdb/issues</li>
+<li><strong>Community Chat</strong>: https://discord.gg/vccdb</li>
+<li><strong>Email</strong>: support@vccdb.io</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.instant", "content.code.copy"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "In Zwischenablage kopiert", "clipboard.copy": "In Zwischenablage kopieren", "search.result.more.one": "1 weiteres Suchergebnis auf dieser Seite", "search.result.more.other": "# weitere Suchergebnisse auf dieser Seite", "search.result.none": "Keine Suchergebnisse", "search.result.one": "1 Suchergebnis", "search.result.other": "# Suchergebnisse", "search.result.placeholder": "Suchbegriff eingeben", "search.result.term.missing": "Es fehlt", "select.version": "Version ausw\u00e4hlen"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+        <script src="../js/print-site.js"></script>
+      
+    
+  </body>
+</html>

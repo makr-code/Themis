@@ -3,6 +3,7 @@
 #include "content/content_processor.h"
 #include "utils/logger.h"
 #include "storage/key_schema.h"
+#include "utils/zstd_codec.h"
 
 #include <algorithm>
 #include <chrono>
@@ -201,6 +202,10 @@ json ContentMeta::toJson() const {
         {"category", static_cast<int>(category)},
         {"original_filename", original_filename},
         {"size_bytes", size_bytes},
+        {"compressed", compressed},
+        {"compression_type", compression_type},
+        {"encrypted", encrypted},
+        {"encryption_type", encryption_type},
         {"created_at", created_at},
         {"modified_at", modified_at},
         {"hash_sha256", hash_sha256},
@@ -224,6 +229,10 @@ ContentMeta ContentMeta::fromJson(const json& j) {
     m.category = j.contains("category") ? static_cast<ContentCategory>(j["category"].get<int>()) : ContentCategory::UNKNOWN;
     m.original_filename = j.value("original_filename", "");
     m.size_bytes = j.value("size_bytes", 0LL);
+    m.compressed = j.value("compressed", false);
+    m.compression_type = j.value("compression_type", "");
+    m.encrypted = j.value("encrypted", false);
+    m.encryption_type = j.value("encryption_type", "");
     m.created_at = j.value("created_at", 0LL);
     m.modified_at = j.value("modified_at", 0LL);
     m.hash_sha256 = j.value("hash_sha256", "");
@@ -363,7 +372,62 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
         if (blob.has_value()) {
             std::string bkey = std::string("content_blob:") + meta.id;
             const std::string& bb = *blob;
-            if (!storage_->put(bkey, std::vector<uint8_t>(bb.begin(), bb.end()))) {
+            // Load content config from DB: key config:content
+            bool compress = false;
+            int zstd_level = 19;
+            std::vector<std::string> skip_mimes = {"image/", "video/", "application/zip", "application/gzip"};
+            try {
+                if (auto cfgv = storage_->get("config:content")) {
+                    std::string s(cfgv->begin(), cfgv->end());
+                    json cj = json::parse(s);
+                    compress = cj.value("compress_blobs", false);
+                    zstd_level = cj.value("compression_level", 19);
+                    if (cj.contains("skip_compressed_mimes") && cj["skip_compressed_mimes"].is_array()) {
+                        skip_mimes.clear();
+                        for (const auto& mv : cj["skip_compressed_mimes"]) if (mv.is_string()) skip_mimes.push_back(mv.get<std::string>());
+                    }
+                }
+            } catch (...) {}
+
+            auto should_compress = [&](const std::string& mime, size_t size) -> bool {
+                if (!compress) return false;
+                // Skip if MIME starts with any of the skip prefixes
+                for (const auto& p : skip_mimes) {
+                    if (!p.empty()) {
+                        if (p.back()=='/' && mime.rfind(p, 0) == 0) return false; // prefix like image/
+                        if (mime == p) return false; // exact
+                    }
+                }
+                return size > 4096; // only >4KB
+            };
+
+            std::vector<uint8_t> to_store;
+            if (should_compress(meta.mime_type, bb.size())) {
+#ifdef THEMIS_HAS_ZSTD
+                auto comp = utils::zstd_compress(reinterpret_cast<const uint8_t*>(bb.data()), bb.size(), zstd_level);
+                if (!comp.empty()) {
+                    to_store = std::move(comp);
+                    meta.compressed = true;
+                    meta.compression_type = "zstd";
+                } else {
+                    // Fallback to raw
+                    to_store.assign(bb.begin(), bb.end());
+                    meta.compressed = false;
+                    meta.compression_type.clear();
+                }
+#else
+                // ZSTD not available at build time → store raw
+                to_store.assign(bb.begin(), bb.end());
+                meta.compressed = false;
+                meta.compression_type.clear();
+#endif
+            } else {
+                to_store.assign(bb.begin(), bb.end());
+                meta.compressed = false;
+                meta.compression_type.clear();
+            }
+
+            if (!storage_->put(bkey, to_store)) {
                 return Status::Error("failed to store blob");
             }
             meta.size_bytes = static_cast<int64_t>(bb.size());
@@ -461,6 +525,19 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
     std::string key = std::string("content_blob:") + id;
     auto v = storage_->get(key);
     if (!v) return std::nullopt;
+    // Inspect meta for compression
+    auto m = getContentMeta(id);
+    if (m && m->compressed && m->compression_type == "zstd") {
+#ifdef THEMIS_HAS_ZSTD
+        auto decomp = utils::zstd_decompress(*v);
+        if (!decomp.empty()) return std::string(decomp.begin(), decomp.end());
+        // Fallback on failure: return raw
+        return std::string(v->begin(), v->end());
+#else
+        // Build without ZSTD: return raw bytes (client may handle)
+        return std::string(v->begin(), v->end());
+#endif
+    }
     return std::string(v->begin(), v->end());
 }
 

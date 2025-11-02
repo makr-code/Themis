@@ -1,0 +1,159 @@
+# Gitleaks configuration for ThemisDB
+# Detects secrets, API keys, passwords, and sensitive data
+
+title = "ThemisDB Gitleaks Configuration"
+
+# Extend default gitleaks config
+[extend]
+useDefault = true
+
+# Custom rules for ThemisDB-specific patterns
+[[rules]]
+id = "themis-api-key"
+description = "ThemisDB API Key"
+regex = '''(?i)(themis|vccdb)[-_]?(api)?[-_]?key\s*[:=]\s*['"]?([a-zA-Z0-9]{32,})['"]?'''
+tags = ["api-key", "themis"]
+[rules.allowlist]
+paths = [
+  '''tests/.*''',
+  '''docs/.*\.md$''',
+  '''README\.md$'''
+]
+
+[[rules]]
+id = "themis-admin-token"
+description = "ThemisDB Admin Token"
+regex = '''(?i)(admin|root)[-_]?token\s*[:=]\s*['"]?([a-zA-Z0-9]{40,})['"]?'''
+tags = ["token", "admin"]
+
+[[rules]]
+id = "database-connection-string"
+description = "Database Connection String with embedded credentials"
+regex = '''(?i)(mongodb|postgres|mysql|redis)://[a-zA-Z0-9._-]+:[^@\s]+@[a-zA-Z0-9._-]+'''
+tags = ["connection-string", "database"]
+[rules.allowlist]
+paths = [
+  '''tests/.*''',
+  '''docs/examples/.*'''
+]
+
+[[rules]]
+id = "jwt-secret"
+description = "JWT Secret Key"
+regex = '''(?i)jwt[-_]?secret\s*[:=]\s*['"]?([a-zA-Z0-9+/]{32,})['"]?'''
+tags = ["jwt", "secret"]
+
+[[rules]]
+id = "encryption-key"
+description = "Encryption Key"
+regex = '''(?i)(encryption|cipher)[-_]?key\s*[:=]\s*['"]?([a-fA-F0-9]{32,})['"]?'''
+tags = ["encryption", "key"]
+
+[[rules]]
+id = "private-key-file"
+description = "Private Key File Content"
+regex = '''-----BEGIN\s+(RSA\s+)?PRIVATE KEY-----'''
+tags = ["private-key", "pem"]
+[rules.allowlist]
+paths = [
+  '''tests/fixtures/.*\.pem$''',
+  '''docs/.*'''
+]
+
+# AWS-specific rules (high severity)
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["aws", "access-key"]
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)aws[-_]?secret[-_]?access[-_]?key\s*[:=]\s*['"]?([a-zA-Z0-9/+=]{40})['"]?'''
+tags = ["aws", "secret"]
+
+# Generic patterns
+[[rules]]
+id = "generic-password"
+description = "Generic Password in Code"
+regex = '''(?i)(password|passwd|pwd)\s*[:=]\s*['"][^'"]{8,}['"]'''
+tags = ["password", "generic"]
+[rules.allowlist]
+paths = [
+  '''tests/.*''',
+  '''benchmarks/.*''',
+  '''docs/.*'''
+]
+regexes = [
+  '''(test|dummy|example|placeholder|changeme|password123)''',
+  '''^\*+$'''  # All asterisks
+]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)api[-_]?key\s*[:=]\s*['"]?([a-zA-Z0-9]{20,})['"]?'''
+tags = ["api-key", "generic"]
+[rules.allowlist]
+paths = [
+  '''tests/.*''',
+  '''docs/.*\.md$'''
+]
+
+# GitHub tokens
+[[rules]]
+id = "github-token"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[a-zA-Z0-9]{36}'''
+tags = ["github", "token"]
+
+[[rules]]
+id = "github-oauth"
+description = "GitHub OAuth Token"
+regex = '''gho_[a-zA-Z0-9]{36}'''
+tags = ["github", "oauth"]
+
+# Slack tokens
+[[rules]]
+id = "slack-token"
+description = "Slack Token"
+regex = '''xox[baprs]-[0-9]{10,13}-[a-zA-Z0-9-]{24,}'''
+tags = ["slack", "token"]
+
+# Global allowlist (paths to always ignore)
+[allowlist]
+description = "Global allowlist for test/example files"
+paths = [
+  '''\.git/.*''',
+  '''node_modules/.*''',
+  '''vcpkg_installed/.*''',
+  '''build/.*''',
+  '''dist/.*''',
+  '''\.vscode/.*''',
+  '''\.idea/.*''',
+  '''.*\.test\..*''',
+  '''.*\.spec\..*''',
+  '''gitleaks-report\.json'''
+]
+
+# Specific files that are safe
+files = [
+  '''\.env\.example$''',
+  '''\.env\.template$''',
+  '''config\.example\.json$''',
+  '''config\.template\.json$'''
+]
+
+# Regexes to ignore (common false positives)
+regexes = [
+  '''(?i)(example|sample|test|demo|placeholder|dummy)''',
+  '''12345678''',
+  '''00000000-0000-0000-0000-000000000000''',  # UUID placeholder
+  '''xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'''   # UUID placeholder
+]
+
+# Commits to ignore (initial commits, merges, etc.)
+commits = [
+  # Add specific commit SHAs here if needed
+]

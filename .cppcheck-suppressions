@@ -1,0 +1,42 @@
+# Cppcheck suppressions for ThemisDB
+# Format: [error_id]:[file_pattern]:[line]
+# Use * for wildcard matching
+
+# Suppress system/library headers
+missingIncludeSystem
+unmatchedSuppression
+
+# Suppress unused function warnings (may be used by external modules)
+unusedFunction
+
+# Known false positives in third-party code
+*:vcpkg_installed/*
+*:build/*
+*:*/crow/*
+*:*/nlohmann/*
+*:*/rocksdb/*
+
+# Test files - allow more flexible patterns
+unusedFunction:tests/*
+unusedVariable:tests/*
+knownConditionTrueFalse:tests/*
+
+# Benchmark files - performance-critical, intentional patterns
+*:benchmarks/bench_*.cpp
+
+# JSON parsing - intentional null checks
+nullPointer:*/json_utils.cpp
+nullPointerRedundantCheck:*/json_utils.cpp
+
+# RocksDB integration - complex pointer usage
+cstyleCast:*/storage_engine.cpp
+cstyleCast:*/index_manager.cpp
+
+# HTTP server - Crow framework patterns
+shadowVariable:*/http_server.cpp
+shadowVariable:*/http_handlers.cpp
+variableScope:*/http_server.cpp
+
+# Vector search - SIMD/performance-critical code
+useStlAlgorithm:*/vector_index.cpp
+cstyleCast:*/vector_index.cpp

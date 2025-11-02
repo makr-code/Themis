@@ -506,6 +506,87 @@ void VaultKeyProvider::deleteKey(const std::string& key_id, uint32_t version) {
     }
 }
 
+bool VaultKeyProvider::hasKey(const std::string& key_id, uint32_t version) {
+    try {
+        getKeyMetadata(key_id, version);
+        return true;
+    } catch (const KeyNotFoundException&) {
+        return false;
+    }
+}
+
+uint32_t VaultKeyProvider::createKeyFromBytes(
+    const std::string& key_id,
+    const std::vector<uint8_t>& key_bytes,
+    const KeyMetadata& metadata) {
+    
+    if (key_bytes.size() != 32) {
+        throw KeyOperationException("Key must be exactly 32 bytes (256 bits)");
+    }
+    
+    // In Vault, we store the key as base64 and metadata as JSON
+    // For KV v2: PUT /v1/{mount}/data/{key_id}
+    std::string path = "/v1/" + impl_->config.kv_mount_path;
+    if (impl_->config.kv_version == "v2") {
+        path += "/data/keys/" + key_id;
+    } else {
+        path += "/keys/" + key_id;
+    }
+    
+    // Base64 encode the key
+    std::string key_b64 = base64_encode(key_bytes);
+    
+    // Create JSON payload
+    nlohmann::json payload;
+    if (impl_->config.kv_version == "v2") {
+        payload["data"]["key"] = key_b64;
+    payload["data"]["created_at_ms"] = metadata.created_at_ms;
+        payload["data"]["algorithm"] = metadata.algorithm;
+        payload["data"]["status"] = static_cast<int>(metadata.status);
+    } else {
+        payload["key"] = key_b64;
+    payload["created_at_ms"] = metadata.created_at_ms;
+        payload["algorithm"] = metadata.algorithm;
+        payload["status"] = static_cast<int>(metadata.status);
+    }
+    
+    std::string payload_str = payload.dump();
+    
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    
+    std::string url = impl_->config.vault_addr + path;
+    curl_easy_setopt(impl_->curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(impl_->curl, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_easy_setopt(impl_->curl, CURLOPT_POSTFIELDS, payload_str.c_str());
+    
+    std::string response;
+    curl_easy_setopt(impl_->curl, CURLOPT_WRITEDATA, &response);
+    
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, ("X-Vault-Token: " + impl_->config.vault_token).c_str());
+    curl_easy_setopt(impl_->curl, CURLOPT_HTTPHEADER, headers);
+    
+    CURLcode res = curl_easy_perform(impl_->curl);
+    curl_slist_free_all(headers);
+    
+    if (res != CURLE_OK) {
+        throw KeyOperationException(std::string("Failed to create key: ") + curl_easy_strerror(res));
+    }
+    
+    // Parse response to get version
+    try {
+        nlohmann::json resp_json = nlohmann::json::parse(response);
+        if (impl_->config.kv_version == "v2" && resp_json.contains("data") && resp_json["data"].contains("version")) {
+            return resp_json["data"]["version"].get<uint32_t>();
+        }
+    } catch (...) {
+        // If parsing fails, return version 1 as default
+    }
+    
+    return 1;
+}
+
 void VaultKeyProvider::clearCache() {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->cache.clear();

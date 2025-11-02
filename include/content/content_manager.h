@@ -31,6 +31,11 @@ struct ContentMeta {
     ContentCategory category;        // Category
     std::string original_filename;   // Original filename
     int64_t size_bytes;              // Original size
+    // Compression/Encryption flags for stored blob
+    bool compressed = false;         // True if original blob stored compressed
+    std::string compression_type;    // e.g., "zstd"
+    bool encrypted = false;          // True if blob stored encrypted
+    std::string encryption_type;     // e.g., "aes-256-gcm"
     int64_t created_at;              // Upload timestamp
     int64_t modified_at;             // Last modification
     std::string hash_sha256;         // Content hash (for deduplication)

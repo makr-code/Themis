@@ -5,6 +5,9 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
+#include <future>
+#include <regex>
+#include <sstream>
 
 #include "server/http_server.h"
 #include "storage/rocksdb_wrapper.h"
@@ -80,6 +83,31 @@ protected:
         return res.body();
     }
 
+    // GET with one custom header (e.g., Last-Event-ID)
+    std::string httpGetRawWithHeader(const std::string& target, const std::string& name, const std::string& value) {
+        net::io_context ioc;
+        tcp::resolver resolver(ioc);
+        beast::tcp_stream stream(ioc);
+
+        auto const results = resolver.resolve("127.0.0.1", std::to_string(18087));
+        stream.connect(results);
+
+        http::request<http::string_body> req{http::verb::get, target, 11};
+        req.set(http::field::host, "127.0.0.1");
+        req.set(name, value);
+
+        http::write(stream, req);
+
+        beast::flat_buffer buffer;
+        http::response<http::string_body> res;
+        http::read(stream, buffer, res);
+
+        beast::error_code ec;
+        stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+
+        return res.body();
+    }
+
     json httpPost(const std::string& target, const json& body) {
         net::io_context ioc;
         tcp::resolver resolver(ioc);
@@ -104,6 +132,20 @@ protected:
         stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
         return json::parse(res.body());
+    }
+
+    static std::vector<uint64_t> parseSseIds(const std::string& body) {
+        std::vector<uint64_t> ids;
+        std::regex idre("^id: ([0-9]+)\r?$");
+        std::istringstream iss(body);
+        std::string line;
+        while (std::getline(iss, line)) {
+            std::smatch m;
+            if (std::regex_match(line, m, idre)) {
+                ids.push_back(static_cast<uint64_t>(std::stoull(m[1].str())));
+            }
+        }
+        return ids;
     }
 
     std::shared_ptr<themis::RocksDBWrapper> storage_;

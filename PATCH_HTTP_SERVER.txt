@@ -1,0 +1,30 @@
+// HTTP Server Patch: Add PIIDetector initialization
+//
+// MANUAL STEPS REQUIRED:
+//
+// 1. Add include after line 56 (after "security/encryption.h"):
+//    #include "utils/pii_detector.h"
+//
+// 2. Replace lines 239-244 in src/server/http_server.cpp:
+//
+//    OLD CODE:
+//    // Initialize Classification API Handler (Skeleton)
+//    classification_api_ = std::make_unique<themis::server::ClassificationApiHandler>();
+//    THEMIS_INFO("Classification API Handler initialized (skeleton)");
+//    
+//    // Initialize Reports API Handler (Skeleton)
+//    reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
+//    THEMIS_INFO("Reports API Handler initialized (skeleton)");
+//
+//    NEW CODE:
+//    // Initialize PII Detector for Classification API
+//    auto pii_detector = std::make_shared<themis::utils::PIIDetector>("config/pii_patterns.yaml", pki_client);
+//    THEMIS_INFO("PII Detector initialized with config/pii_patterns.yaml");
+//    
+//    // Initialize Classification API Handler with PIIDetector
+//    classification_api_ = std::make_unique<themis::server::ClassificationApiHandler>(pii_detector);
+//    THEMIS_INFO("Classification API Handler initialized");
+//    
+//    // Initialize Reports API Handler
+//    reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
+//    THEMIS_INFO("Reports API Handler initialized");

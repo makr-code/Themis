@@ -1,0 +1,4 @@
+C:\VCC\themis\dist\Themis.AuditLogViewer\Themis.AuditLogViewer.pdb
+C:\VCC\themis\dist\Themis.AuditLogViewer\appsettings.json
+C:\VCC\themis\dist\Themis.AuditLogViewer\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\dist\Themis.AuditLogViewer\Themis.AuditLogViewer.exe

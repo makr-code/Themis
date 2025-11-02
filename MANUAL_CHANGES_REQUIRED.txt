@@ -1,0 +1,47 @@
+Die Datei http_server.cpp wurde durch git checkout zurückgesetzt.
+
+Folgende manuelle Änderungen sind notwendig:
+
+1. INCLUDES HINZUFÜGEN (nach #include "utils/logger_impl.h"):
+```cpp
+#include "utils/pii_detector.h"
+#include "security/key_provider.h"
+#include "security/encryption.h"
+#include "security/audit_logger.h"
+#include "server/keys_api_handler.h"
+#include "server/classification_api_handler.h"
+#include "server/reports_api_handler.h"
+```
+
+2. INITIALISIERUNG IM KONSTRUKTOR (vor der letzten THEMIS_INFO Zeile):
+```cpp
+    // Initialize security components
+    auto pki_client = std::make_shared<themis::security::VCCPKIClient>(
+        "config/keys/ca-cert.pem",
+        "config/keys/server-cert.pem",
+        "config/keys/server-key.pem"
+    );
+    
+    auto key_provider = std::make_shared<themis::security::KeyProvider>(pki_client);
+    key_provider->initialize();
+    THEMIS_INFO("KeyProvider initialized");
+    
+    // Initialize Keys API Handler with KeyProvider
+    keys_api_ = std::make_unique<themis::server::KeysApiHandler>(key_provider);
+    THEMIS_INFO("Keys API Handler initialized");
+    
+    // Initialize PII Detector for Classification API
+    auto pii_detector = std::make_shared<themis::utils::PIIDetector>("config/pii_patterns.yaml", pki_client);
+    THEMIS_INFO("PII Detector initialized with config/pii_patterns.yaml");
+    
+    // Initialize Classification API Handler with PIIDetector
+    classification_api_ = std::make_unique<themis::server::ClassificationApiHandler>(pii_detector);
+    THEMIS_INFO("Classification API Handler initialized");
+    
+    // Initialize Reports API Handler
+    reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
+    THEMIS_INFO("Reports API Handler initialized");
+```
+
+Diese Änderungen müssen MANUELL in Visual Studio Code vorgenommen werden, da die
+PowerShell-Automatisierung zu fehleranfällig ist.

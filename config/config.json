@@ -37,6 +37,14 @@
     "semantic_cache": true,
     "llm_store": true,
     "cdc": true,
-    "timeseries": true
+    "timeseries": true,
+    "retention": {
+      "enabled": true,
+      "interval_hours": 24,
+      "policies_path": "./config/retention_policies.yaml"
+    }
+  },
+  "sse": {
+    "max_events_per_second": 0
   }
 }

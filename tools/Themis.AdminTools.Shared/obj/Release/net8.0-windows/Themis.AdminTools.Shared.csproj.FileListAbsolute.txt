@@ -1,0 +1,13 @@
+C:\VCC\themis\tools\Themis.AdminTools.Shared\bin\Release\net8.0-windows\Themis.AdminTools.Shared.deps.json
+C:\VCC\themis\tools\Themis.AdminTools.Shared\bin\Release\net8.0-windows\Themis.AdminTools.Shared.dll
+C:\VCC\themis\tools\Themis.AdminTools.Shared\bin\Release\net8.0-windows\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.csproj.AssemblyReference.cache
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.GeneratedMSBuildEditorConfig.editorconfig
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.AssemblyInfoInputs.cache
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.AssemblyInfo.cs
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.csproj.CoreCompileInputs.cache
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.sourcelink.json
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.dll
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\refint\Themis.AdminTools.Shared.dll
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\tools\Themis.AdminTools.Shared\obj\Release\net8.0-windows\ref\Themis.AdminTools.Shared.dll

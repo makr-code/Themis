@@ -1,0 +1,186 @@
+<Window x:Class="Themis.KeyRotationDashboard.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="ThemisDB - Key Rotation Dashboard" 
+        Height="700" Width="1400"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="MinWidth" Value="100"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#2C3E50" Padding="15">
+            <StackPanel>
+                <TextBlock Text="Key Rotation Dashboard" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="Überwachung und Verwaltung der Verschlüsselungsschlüssel" 
+                          FontSize="12" Foreground="#BDC3C7" Margin="0,5,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="1" Background="#ECF0F1" BorderBrush="#BDC3C7" BorderThickness="0,0,0,1" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" Grid.Column="0">
+                    <ToggleButton x:Name="HamburgerToggle" Content="☰" Width="36" Height="30" Margin="0,0,10,0"
+                                  ToolTip="Sidebar ein/ausblenden" Click="HamburgerToggle_Click"/>
+                    <Button Content="Aktualisieren" Width="110" Height="30" Margin="0,0,10,0"
+                            Command="{Binding RefreshCommand}" Background="#4CAF50" Foreground="White" FontWeight="Bold"/>
+                    <Button Content="Rotieren" Width="100" Height="30" Margin="0,0,10,0"
+                            Command="{Binding RotateKeyCommand}"/>
+                    <Rectangle Width="1" Fill="#BDC3C7" Margin="10,0"/>
+                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0">
+                        <Run Text="Status: "/>
+                        <Run Text="{Binding StatusMessage}" FontWeight="Bold"/>
+                    </TextBlock>
+                </StackPanel>
+
+                <Button Grid.Column="2" Content="Themis" Click="AboutButton_Click"
+                        Background="Transparent" BorderBrush="Transparent"
+                        Foreground="#64B5F6" FontSize="22" FontWeight="Bold"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        ToolTip="Über Themis" Padding="10,0"/>
+            </Grid>
+        </Border>
+
+        <!-- Main Content: Sidebar | Content -->
+        <Grid Grid.Row="2" Margin="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Sidebar -->
+            <Border x:Name="SidebarPanel" Grid.Column="0" Background="#F7F9FC" BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
+                <StackPanel>
+                    <TextBlock Text="Aktionen" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <Button Content="Status laden" Command="{Binding RefreshCommand}"/>
+                    <Button Content="LEK rotieren" Command="{Binding RotateLEKCommand}"/>
+                    <Button Content="KEK rotieren" Command="{Binding RotateKEKCommand}"/>
+                    <Button Content="DEK rotieren" Command="{Binding RotateDEKCommand}"/>
+                    <Separator Margin="0,10,0,10"/>
+
+                    <TextBlock Text="Filter" FontWeight="Bold" Margin="0,10,0,10"/>
+                    <TextBlock Text="Schlüsseltyp:" Margin="0,5,0,2"/>
+                    <ComboBox SelectedIndex="{Binding KeyTypeFilterIndex}" Margin="0,0,0,5">
+                        <ComboBoxItem Content="Alle"/>
+                        <ComboBoxItem Content="LEK"/>
+                        <ComboBoxItem Content="KEK"/>
+                        <ComboBoxItem Content="DEK"/>
+                    </ComboBox>
+
+                    <CheckBox Content="Nur abgelaufene Keys" IsChecked="{Binding ShowExpiredOnly}" Margin="0,5,0,5"/>
+
+                    <Separator Margin="0,10,0,10"/>
+                    <TextBlock Text="Navigation" FontWeight="Bold"/>
+                    <Button Content="Dashboard"/>
+                    <Button Content="Einstellungen"/>
+                    <Button Content="Hilfe" Click="AboutButton_Click"/>
+                </StackPanel>
+            </Border>
+
+            <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#BDC3C7"/>
+
+            <!-- Content -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Search -->
+                <TextBox Grid.Row="0" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                        Margin="0,0,0,5" Padding="5"
+                        ToolTip="Durchsucht Schlüssel-ID und Typ">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Setter Property="Background" Value="White"/>
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <VisualBrush Stretch="None" AlignmentX="Left">
+                                                <VisualBrush.Visual>
+                                                    <TextBlock Text="🔍 Suche nach Schlüssel-ID oder Typ..." Foreground="Gray" Margin="5,0,0,0"/>
+                                                </VisualBrush.Visual>
+                                            </VisualBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- Data Grid -->
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding Keys}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          SelectionMode="Extended"
+                          AlternatingRowBackground="#F5F5F5"
+                          GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column"
+                          CanUserSortColumns="True"
+                          CanUserReorderColumns="True"
+                          CanUserResizeColumns="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Schlüssel-ID" Binding="{Binding KeyId}" Width="280"/>
+                        <DataGridTextColumn Header="Typ" Binding="{Binding KeyType}" Width="80"/>
+                        <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="80"/>
+                        <DataGridTextColumn Header="Erstellt am" Binding="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Width="160"/>
+                        <DataGridTextColumn Header="Letzte Rotation" Binding="{Binding LastRotation, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Width="160"/>
+                        <DataGridTextColumn Header="Nächste Rotation" Binding="{Binding NextRotation, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Width="160"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                        <DataGridTextColumn Header="Rotation-Intervall" Binding="{Binding RotationInterval}" Width="140"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="#34495E" BorderBrush="#2C3E50" BorderThickness="0,1,0,0" Padding="10,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Foreground="White" VerticalAlignment="Center">
+                    <Run Text="Schlüssel: "/>
+                    <Run Text="{Binding Keys.Count, Mode=OneWay}" FontWeight="Bold"/>
+                    <Run Text=" | Abgelaufen: "/>
+                    <Run Text="{Binding ExpiredCount, Mode=OneWay}" FontWeight="Bold" Foreground="#E74C3C"/>
+                </TextBlock>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ProgressBar Width="120" Height="15" IsIndeterminate="True" Margin="10,0,0,0"
+                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

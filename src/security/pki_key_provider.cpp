@@ -1,0 +1,302 @@
+#include "security/pki_key_provider.h"
+#include "storage/rocksdb_wrapper.h"
+#include "utils/hkdf_helper.h"
+
+#include <openssl/rand.h>
+#include <openssl/evp.h>
+#include <stdexcept>
+
+namespace themis {
+namespace security {
+
+PKIKeyProvider::PKIKeyProvider(std::shared_ptr<utils::VCCPKIClient> pki,
+                               std::shared_ptr<themis::RocksDBWrapper> db,
+                               const std::string& service_id)
+    : pki_(std::move(pki))
+    , db_(std::move(db))
+    , service_id_(service_id) {
+    
+    // Derive KEK from PKI certificate
+    kek_ = deriveKEK();
+    
+    // Load or create initial DEK
+    loadOrCreateDEK(current_dek_version_);
+}
+
+std::vector<uint8_t> PKIKeyProvider::deriveKEK() {
+    // Derive KEK from PKI service certificate using HKDF
+    // In production: Extract public key from certificate and use as IKM
+    
+    std::string ikm_base = service_id_ + "_cert_pubkey";
+    std::string info = "KEK for " + service_id_;
+    
+    return utils::HKDFHelper::deriveFromString(ikm_base, info, 32);
+}
+
+std::string PKIKeyProvider::dekDbKey(uint32_t version) const {
+    return "dek:encrypted:v" + std::to_string(version);
+}
+
+std::vector<uint8_t> PKIKeyProvider::loadOrCreateDEK(uint32_t version) {
+    // Check cache
+    auto it = dek_cache_.find(version);
+    if (it != dek_cache_.end()) {
+        return it->second;
+    }
+    
+    // Try load from DB
+    auto db_key_str = dekDbKey(version);
+    auto encrypted_dek_opt = db_->get(db_key_str);
+    
+    if (encrypted_dek_opt) {
+        // Decrypt DEK with KEK using AES-GCM
+        try {
+            auto encrypted_json = nlohmann::json::parse(*encrypted_dek_opt);
+            
+            // Manual AES-GCM decrypt (KEK → DEK)
+            std::string iv_b64 = encrypted_json["iv"].get<std::string>();
+            std::string ciphertext_b64 = encrypted_json["ciphertext"].get<std::string>();
+            std::string tag_b64 = encrypted_json["tag"].get<std::string>();
+            
+            // Decode base64 (reuse EncryptedBlob helper)
+            nlohmann::json tmp = {
+                {"iv", iv_b64},
+                {"ciphertext", ciphertext_b64},
+                {"tag", tag_b64}
+            };
+            auto blob = themis::EncryptedBlob::fromJson(tmp);
+            
+            // Decrypt manually with KEK
+            EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+            if (!ctx) throw std::runtime_error("Failed to create cipher context");
+            
+            if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, kek_.data(), blob.iv.data()) != 1) {
+                EVP_CIPHER_CTX_free(ctx);
+                throw std::runtime_error("DecryptInit failed");
+            }
+            
+            std::vector<uint8_t> dek(blob.ciphertext.size());
+            int len = 0;
+            
+            if (EVP_DecryptUpdate(ctx, dek.data(), &len, blob.ciphertext.data(), blob.ciphertext.size()) != 1) {
+                EVP_CIPHER_CTX_free(ctx);
+                throw std::runtime_error("DecryptUpdate failed");
+            }
+            
+            if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, blob.tag.size(), blob.tag.data()) != 1) {
+                EVP_CIPHER_CTX_free(ctx);
+                throw std::runtime_error("Set tag failed");
+            }
+            
+            int final_len = 0;
+            if (EVP_DecryptFinal_ex(ctx, dek.data() + len, &final_len) != 1) {
+                EVP_CIPHER_CTX_free(ctx);
+                throw std::runtime_error("DecryptFinal failed (tag mismatch)");
+            }
+            
+            EVP_CIPHER_CTX_free(ctx);
+            dek.resize(len + final_len);
+            
+            dek_cache_[version] = dek;
+            return dek;
+            
+        } catch (const std::exception& e) {
+            throw std::runtime_error("Failed to decrypt DEK v" + std::to_string(version) + ": " + e.what());
+        }
+    } else {
+        // Generate new DEK
+        std::vector<uint8_t> dek(32); // 256-bit
+        if (RAND_bytes(dek.data(), dek.size()) != 1) {
+            throw std::runtime_error("Failed to generate random DEK");
+        }
+        
+        // Encrypt DEK with KEK using AES-GCM
+        std::vector<uint8_t> iv(12);
+        if (RAND_bytes(iv.data(), iv.size()) != 1) {
+            throw std::runtime_error("Failed to generate IV for DEK encryption");
+        }
+        
+        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+        if (!ctx) throw std::runtime_error("Failed to create cipher context");
+        
+        if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, kek_.data(), iv.data()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("EncryptInit failed");
+        }
+        
+        std::vector<uint8_t> ciphertext(dek.size() + 16);
+        int len = 0;
+        
+        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, dek.data(), dek.size()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("EncryptUpdate failed");
+        }
+        
+        int final_len = 0;
+        if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &final_len) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("EncryptFinal failed");
+        }
+        
+        ciphertext.resize(len + final_len);
+        
+        std::vector<uint8_t> tag(16);
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, tag.size(), tag.data()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Get tag failed");
+        }
+        
+        EVP_CIPHER_CTX_free(ctx);
+        
+        // Store encrypted DEK
+        themis::EncryptedBlob blob;
+        blob.iv = iv;
+        blob.ciphertext = ciphertext;
+        blob.tag = tag;
+        
+        auto encrypted_json = blob.toJson();
+        std::string json_str = encrypted_json.dump();
+        std::vector<uint8_t> json_bytes(json_str.begin(), json_str.end());
+        db_->put(db_key_str, json_bytes);
+        
+        dek_cache_[version] = dek;
+        return dek;
+    }
+}
+
+std::vector<uint8_t> PKIKeyProvider::deriveFieldKey(const std::string& field_context) {
+    // Check cache
+    auto it = field_key_cache_.find(field_context);
+    if (it != field_key_cache_.end()) {
+        return it->second;
+    }
+    
+    // Derive from current DEK using HKDF
+    auto dek = loadOrCreateDEK(current_dek_version_);
+    
+    std::string info = "field:" + field_context;
+    std::vector<uint8_t> salt;  // Empty salt
+    auto field_key = utils::HKDFHelper::derive(dek, salt, info, 32);
+    
+    field_key_cache_[field_context] = field_key;
+    return field_key;
+}
+
+std::vector<uint8_t> PKIKeyProvider::getKey(const std::string& key_id) {
+    return getKey(key_id, 0);
+}
+
+std::vector<uint8_t> PKIKeyProvider::getKey(const std::string& key_id, uint32_t version) {
+    std::scoped_lock lk(mu_);
+    
+    // Special handling for DEK
+    if (key_id == "dek" || key_id.rfind("dek_v", 0) == 0) {
+        uint32_t v = version > 0 ? version : current_dek_version_;
+        return loadOrCreateDEK(v);
+    }
+    
+    // Otherwise derive field key
+    return deriveFieldKey(key_id);
+}
+
+uint32_t PKIKeyProvider::rotateKey(const std::string& key_id) {
+    if (key_id == "dek") {
+        return rotateDEK();
+    }
+    
+    // For field keys, just regenerate
+    std::scoped_lock lk(mu_);
+    field_key_cache_.erase(key_id);
+    return 1;
+}
+
+std::vector<KeyMetadata> PKIKeyProvider::listKeys() {
+    std::scoped_lock lk(mu_);
+    
+    std::vector<KeyMetadata> keys;
+    
+    // Add DEK
+    KeyMetadata dek_meta;
+    dek_meta.key_id = "dek";
+    dek_meta.version = current_dek_version_;
+    dek_meta.algorithm = "AES-256-GCM";
+    dek_meta.status = KeyStatus::ACTIVE;
+    keys.push_back(dek_meta);
+    
+    // Add cached field keys
+    for (const auto& [key_id, _] : field_key_cache_) {
+        KeyMetadata meta;
+        meta.key_id = key_id;
+        meta.version = 1;
+        meta.algorithm = "AES-256-GCM";
+        meta.status = KeyStatus::ACTIVE;
+        keys.push_back(meta);
+    }
+    
+    return keys;
+}
+
+KeyMetadata PKIKeyProvider::getKeyMetadata(const std::string& key_id, uint32_t version) {
+    std::scoped_lock lk(mu_);
+    
+    KeyMetadata meta;
+    meta.key_id = key_id;
+    meta.version = version > 0 ? version : (key_id == "dek" ? current_dek_version_ : 1);
+    meta.algorithm = "AES-256-GCM";
+    meta.status = KeyStatus::ACTIVE;
+    
+    return meta;
+}
+
+void PKIKeyProvider::deleteKey(const std::string& key_id, uint32_t version) {
+    std::scoped_lock lk(mu_);
+    
+    if (key_id == "dek") {
+        throw std::runtime_error("Cannot delete DEK");
+    }
+    
+    field_key_cache_.erase(key_id);
+}
+
+bool PKIKeyProvider::hasKey(const std::string& key_id, uint32_t version) {
+    std::scoped_lock lk(mu_);
+    
+    if (key_id == "dek") return true; // DEK always available
+    
+    if (version == 0) {
+        return field_key_cache_.find(key_id) != field_key_cache_.end();
+    }
+    
+    // For specific version, check if it exists
+    return field_key_cache_.find(key_id) != field_key_cache_.end();
+}
+
+uint32_t PKIKeyProvider::createKeyFromBytes(
+    const std::string& key_id,
+    const std::vector<uint8_t>& key_bytes,
+    const KeyMetadata& metadata) {
+    
+    std::scoped_lock lk(mu_);
+    field_key_cache_[key_id] = key_bytes;
+    return 1;
+}
+
+uint32_t PKIKeyProvider::rotateDEK() {
+    std::scoped_lock lk(mu_);
+    
+    ++current_dek_version_;
+    loadOrCreateDEK(current_dek_version_);
+    
+    // Clear field key cache (will be re-derived with new DEK)
+    field_key_cache_.clear();
+    
+    return current_dek_version_;
+}
+
+uint32_t PKIKeyProvider::getCurrentDEKVersion() const {
+    std::scoped_lock lk(mu_);
+    return current_dek_version_;
+}
+
+} // namespace security
+} // namespace themis

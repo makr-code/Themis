@@ -12,16 +12,28 @@
 #include <boost/beast.hpp>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 #include <functional>
 #include <atomic>
 #include <chrono>
+#include <optional>
 
 #include "content/content_manager.h"
 #include "content/content_processor.h"
 #include "cache/semantic_cache.h"
 #include "server/sse_connection_manager.h"
+#include "server/audit_api_handler.h"
+#include "server/saga_api_handler.h"
+#include "server/pii_api_handler.h"
+#include "server/retention_api_handler.h"
+#include "server/keys_api_handler.h"
+#include "server/classification_api_handler.h"
+#include "server/reports_api_handler.h"
+#include "server/auth_middleware.h"
+#include "server/policy_engine.h"
+#include "server/ranger_adapter.h"
 
 namespace themis {
 // Forward declarations
@@ -32,7 +44,8 @@ class VectorIndexManager;
 class TransactionManager;
 class LLMInteractionStore;
 class Changefeed;
-class TimeSeriesStore;
+class TSStore;
+class ContinuousAggregateManager;
 class AdaptiveIndexManager;
 
 namespace server {
@@ -71,6 +84,8 @@ public:
         bool feature_llm_store = false;
         bool feature_cdc = false;
         bool feature_timeseries = false;
+        // SSE/CDC streaming config
+        uint32_t sse_max_events_per_second = 0; // 0 = unlimited; server-side rate limit per connection
         
         Config() = default;
         Config(std::string h, uint16_t p, size_t threads = 0) 
@@ -191,11 +206,23 @@ private:
     // CDC admin endpoints
     http::response<http::string_body> handleChangefeedStats(const http::request<http::string_body>& req);
     http::response<http::string_body> handleChangefeedRetention(const http::request<http::string_body>& req);
+
+    // Policies: Ranger import/export
+    http::response<http::string_body> handlePoliciesImportRanger(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePoliciesExportRanger(const http::request<http::string_body>& req);
     
     // Sprint B: Time-Series endpoints
     http::response<http::string_body> handleTimeSeriesPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTimeSeriesQuery(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTimeSeriesAggregate(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesAggregatesPost(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesAggregatesGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesAggregatesDelete(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesConfigGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesConfigPut(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesRetentionPost(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesRetentionGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleTimeSeriesRetentionDelete(const http::request<http::string_body>& req);
     
     // Sprint C: Adaptive Indexing endpoints
     http::response<http::string_body> handleIndexSuggestions(const http::request<http::string_body>& req);
@@ -208,6 +235,39 @@ private:
     http::response<http::string_body> handleTransactionCommit(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTransactionRollback(const http::request<http::string_body>& req);
     http::response<http::string_body> handleTransactionStats(const http::request<http::string_body>& req);
+    
+    // Audit API endpoints
+    http::response<http::string_body> handleAuditQuery(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleAuditExportCsv(const http::request<http::string_body>& req);
+    
+    // SAGA API endpoints
+    http::response<http::string_body> handleSagaListBatches(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSagaBatchDetail(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSagaVerifyBatch(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSagaFlush(const http::request<http::string_body>& req);
+
+    // PII API endpoints
+    http::response<http::string_body> handlePiiListMappings(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePiiExportCsv(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePiiDeleteByUuid(const http::request<http::string_body>& req);
+
+    // Retention API endpoints
+    http::response<http::string_body> handleRetentionListPolicies(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleRetentionCreatePolicy(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleRetentionDeletePolicy(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleRetentionGetHistory(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleRetentionGetPolicyStats(const http::request<http::string_body>& req);
+
+    // Keys API endpoints (Skeleton)
+    http::response<http::string_body> handleKeysListKeys(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleKeysRotateKey(const http::request<http::string_body>& req);
+
+    // Classification API endpoints (Skeleton)
+    http::response<http::string_body> handleClassificationListRules(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleClassificationTest(const http::request<http::string_body>& req);
+
+    // Reports API endpoints (Skeleton)
+    http::response<http::string_body> handleReportsCompliance(const http::request<http::string_body>& req);
 
     // Utility methods
     http::response<http::string_body> makeResponse(
@@ -220,6 +280,20 @@ private:
         http::status status,
         const std::string& message,
         const http::request<http::string_body>& req
+    );
+
+    // Authorization helper: returns optional error response if unauthorized
+    std::optional<http::response<http::string_body>> requireScope(
+        const http::request<http::string_body>& req,
+        std::string_view scope
+    );
+
+    // Combined scope + policy authorization; resource_path is e.g. request target path
+    std::optional<http::response<http::string_body>> requireAccess(
+        const http::request<http::string_body>& req,
+        std::string_view required_scope,
+        std::string_view action,
+        std::string_view resource_path
     );
 
     std::string extractPathParam(const std::string& path, const std::string& prefix);
@@ -258,11 +332,45 @@ private:
     std::unique_ptr<SseConnectionManager> sse_manager_;
     
     // Time-Series Store (Sprint B)
-    std::unique_ptr<TimeSeriesStore> timeseries_;
+    std::unique_ptr<TSStore> timeseries_;
     rocksdb::ColumnFamilyHandle* ts_cf_handle_ = nullptr;
+    std::unique_ptr<ContinuousAggregateManager> ts_agg_manager_;
+    // Governance Policy Engine
+    std::unique_ptr<themis::PolicyEngine> policy_engine_;
+    std::unique_ptr<themis::server::RangerClient> ranger_client_;
+    
+    // Audit Logger
+    std::shared_ptr<themis::utils::AuditLogger> audit_logger_;
+    
+    // SAGA Logger
+    std::shared_ptr<themis::utils::SAGALogger> saga_logger_;
+    
+    // Audit API Handler
+    std::unique_ptr<themis::server::AuditApiHandler> audit_api_;
+    
+    // SAGA API Handler
+    std::unique_ptr<themis::server::SAGAApiHandler> saga_api_;
+
+    // PII API Handler
+    std::unique_ptr<themis::server::PIIApiHandler> pii_api_;
+    
+    // Retention API Handler
+    std::unique_ptr<themis::server::RetentionApiHandler> retention_api_;
+    
+    // Keys API Handler (Skeleton)
+    std::unique_ptr<themis::server::KeysApiHandler> keys_api_;
+    
+    // Classification API Handler (Skeleton)
+    std::unique_ptr<themis::server::ClassificationApiHandler> classification_api_;
+    
+    // Reports API Handler (Skeleton)
+    std::unique_ptr<themis::server::ReportsApiHandler> reports_api_;
     
     // Adaptive Index Manager (Sprint C)
     std::unique_ptr<AdaptiveIndexManager> adaptive_index_;
+
+    // Authorization middleware
+    std::unique_ptr<themis::AuthMiddleware> auth_;
 
     // Networking
     net::io_context ioc_;

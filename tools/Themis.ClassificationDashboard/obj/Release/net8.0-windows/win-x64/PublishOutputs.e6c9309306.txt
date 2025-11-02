@@ -1,0 +1,3 @@
+C:\VCC\themis\dist\Themis.ClassificationDashboard\Themis.ClassificationDashboard.pdb
+C:\VCC\themis\dist\Themis.ClassificationDashboard\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\dist\Themis.ClassificationDashboard\Themis.ClassificationDashboard.exe

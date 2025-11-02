@@ -1,0 +1,89 @@
+# Clang-Tidy configuration for ThemisDB
+# Modern C++17 best practices with pragmatic exceptions
+
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  concurrency-*,
+  -modernize-use-trailing-return-type,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays,
+  -readability-identifier-length,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -readability-function-cognitive-complexity,
+  -bugprone-easily-swappable-parameters
+
+# Treat warnings as errors in CI (disabled for local dev)
+WarningsAsErrors: ''
+
+# Apply checks to project headers only
+HeaderFilterRegex: '(include|src)/.*\.(h|hpp)$'
+
+# Use project's clang-format style
+FormatStyle: 'file'
+
+# Check options for specific checks
+CheckOptions:
+  # Readability
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelCase
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+  
+  # Function size limits
+  - key: readability-function-size.LineThreshold
+    value: '150'
+  - key: readability-function-size.StatementThreshold
+    value: '100'
+  - key: readability-function-size.BranchThreshold
+    value: '30'
+  - key: readability-function-size.ParameterThreshold
+    value: '8'
+  
+  # Performance
+  - key: performance-move-const-arg.CheckTriviallyCopyableMove
+    value: 'true'
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'shared_ptr;unique_ptr;function'
+  
+  # Modernize
+  - key: modernize-use-auto.MinTypeNameLength
+    value: '10'
+  - key: modernize-use-override.AllowOverrideAndFinal
+    value: 'false'
+  
+  # Cppcoreguidelines
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
+  - key: cppcoreguidelines-explicit-virtual-functions.IgnoreDestructors
+    value: 'true'

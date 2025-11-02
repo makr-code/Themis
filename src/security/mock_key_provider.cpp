@@ -192,6 +192,49 @@ void MockKeyProvider::deleteKey(const std::string& key_id, uint32_t version) {
     entry.key.clear();  // Erase key material
 }
 
+bool MockKeyProvider::hasKey(const std::string& key_id, uint32_t version) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    if (version == 0) {
+        // Check if any version exists
+        return keys_.count(key_id) > 0 && !keys_[key_id].empty();
+    }
+    
+    // Check specific version
+    return keys_.count(key_id) > 0 && keys_[key_id].count(version) > 0;
+}
+
+uint32_t MockKeyProvider::createKeyFromBytes(
+    const std::string& key_id,
+    const std::vector<uint8_t>& key_bytes,
+    const KeyMetadata& metadata) {
+    
+    if (key_bytes.size() != 32) {
+        throw std::invalid_argument("Key must be 32 bytes for AES-256");
+    }
+    
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    uint32_t new_version = getLatestVersion(key_id) + 1;
+    
+    KeyEntry entry;
+    entry.key = key_bytes;
+    entry.metadata = metadata;
+    entry.metadata.key_id = key_id;
+    entry.metadata.version = new_version;
+    
+    if (entry.metadata.algorithm.empty()) {
+        entry.metadata.algorithm = "AES-256-GCM";
+    }
+    if (entry.metadata.created_at_ms == 0) {
+        entry.metadata.created_at_ms = getCurrentTimeMs();
+    }
+    
+    keys_[key_id][new_version] = entry;
+    
+    return new_version;
+}
+
 uint32_t MockKeyProvider::getLatestVersion(const std::string& key_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     

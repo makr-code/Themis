@@ -1,0 +1,28 @@
+<Window x:Class="Themis.PIIManager.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Themis – PII Manager" Height="260" Width="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Themis" FontSize="26" FontWeight="Bold" Foreground="#64B5F6"/>
+
+        <StackPanel Grid.Row="1" Margin="0,10,0,10">
+            <TextBlock Text="PII Manager" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Version 1.0.0"/>
+            <TextBlock Text="Build: net8.0-windows"/>
+            <TextBlock Text="© 2025 ThemisDB"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,10,0,0"
+                       Text="Verwaltet Pseudonymisierungen (UUID ↔ Pseudonym), Export und DSGVO Art.17-Löschungen."/>
+        </StackPanel>
+
+        <Button Grid.Row="2" Content="OK" Width="80" Height="30"
+                HorizontalAlignment="Right" IsDefault="True" Click="Ok_Click"/>
+    </Grid>
+</Window>

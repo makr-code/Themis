@@ -1,0 +1,226 @@
+# PII Detection Configuration
+# Plugin-based architecture with multiple detection engines
+# Supports runtime reload with validation and fallback to safe defaults
+
+version: "1.0"
+
+# Detection engines configuration
+detection_engines:
+  # Regex-based pattern detection (default, always available)
+  - type: "regex"
+    enabled: true
+    version: "1.0.0"
+    description: "Fast pattern-based detection for structured PII"
+    
+    # PKI Signature (computed over entire engine config excluding this signature block)
+    signature:
+      config_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"  # SHA-256 of config
+      signature: "BASE64_ENCODED_SIGNATURE_PLACEHOLDER"  # PKI signature of config_hash
+      signature_id: "pii-regex-engine-v1.0.0"
+      cert_serial: "VCC-PKI-001"
+      signed_at: "2025-11-01T00:00:00Z"
+      signer: "VCC Security Team"
+      # Note: In production, this is generated via: pki_sign_tool --config regex_config.json --output signature.json
+    
+    # Regex-specific configuration
+    settings:
+      min_confidence: 0.75
+      enable_field_hints: true
+      default_redaction_mode: "strict"
+      max_regex_length: 500
+      enable_caching: true
+      log_reloads: true
+    
+    patterns:
+      - name: EMAIL
+        description: "Email address (RFC 5322 simplified)"
+        regex: '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}'
+        flags: ["icase"]
+        confidence: 0.95
+        redaction_mode: "partial"  # show first char: a***@example.com
+        field_hints:
+          - "email"
+          - "e_mail"
+          - "mail"
+          - "email_address"
+          - "user_email"
+        enabled: true
+
+      - name: PHONE
+        description: "Phone number (international formats)"
+        regex: '(?:\+\d{1,3}[\-.\s]?)?(?:\(\d{2,4}\)?[\-.\s]?)?[\d\-.\s]{7,15}'
+        flags: ["icase"]
+        confidence: 0.85
+        redaction_mode: "partial"  # show last 4: ***-***-1234
+        field_hints:
+          - "phone"
+          - "telephone"
+          - "phone_number"
+          - "tel"
+          - "mobile"
+          - "cell"
+        enabled: true
+
+      - name: SSN
+        description: "US Social Security Number (123-45-6789)"
+        regex: '\b\d{3}\-?\d{2}\-?\d{4}\b'
+        flags: []
+        confidence: 0.98
+        redaction_mode: "strict"  # full redaction: ***-**-****
+        field_hints:
+          - "ssn"
+          - "social_security"
+          - "social_security_number"
+        validation: "none"
+        enabled: true
+
+      - name: CREDIT_CARD
+        description: "Credit card number (13-19 digits with Luhn validation)"
+        regex: '(?:\b|^)[3456][0-9]{3}(?:-[0-9]{4}){3}(?:\b|$)'
+        flags: []
+        confidence: 0.90
+        redaction_mode: "strict"  # show last 4: **** **** **** 1234
+        field_hints:
+          - "card"
+          - "credit_card"
+          - "card_number"
+          - "cc"
+          - "payment_card"
+        validation: "luhn"  # Apply Luhn checksum validation
+        enabled: true
+
+      - name: IBAN
+        description: "International Bank Account Number"
+        regex: '\b[A-Z]{2}\d{2}[A-Z0-9]{1,30}\b'
+        flags: ["icase"]
+        confidence: 0.92
+        redaction_mode: "partial"  # show first 4: DE89***...
+        field_hints:
+          - "iban"
+          - "bank_account"
+          - "account_number"
+        enabled: true
+
+      - name: IP_ADDRESS
+        description: "IPv4 address"
+        regex: '\b(?:\d{1,3}\.){3}\d{1,3}\b'
+        flags: []
+        confidence: 0.80
+        redaction_mode: "partial"  # show first octet: 192.*.*.*
+        field_hints:
+          - "ip"
+          - "ip_address"
+          - "ipv4"
+          - "host_ip"
+        enabled: true
+
+      - name: URL
+        description: "HTTP/HTTPS URL"
+        regex: 'https?://[^\s]+'
+        flags: ["icase"]
+        confidence: 0.90
+        redaction_mode: "partial"  # show domain: https://example.com/***
+        field_hints:
+          - "url"
+          - "link"
+          - "website"
+          - "uri"
+        enabled: true
+
+  # NER-based Named Entity Recognition (optional, requires MITIE or ONNX Runtime)
+  - type: "ner"
+    enabled: false
+    description: "Named Entity Recognition for person names, locations, organizations"
+    
+    # NER-specific configuration
+    settings:
+      model_path: "models/pii_ner.dat"  # Path to MITIE .dat file or ONNX .onnx file
+      model_type: "mitie"  # Options: "mitie", "onnx_bert", "onnx_roberta"
+      confidence_threshold: 0.85
+      enable_caching: true
+      batch_size: 32  # For ONNX models
+    
+    # Entity types to detect
+    entity_types:
+      - name: "PERSON"
+        pii_type: "PERSON_NAME"
+        redaction_mode: "strict"
+        enabled: true
+      
+      - name: "LOCATION"
+        pii_type: "LOCATION"
+        redaction_mode: "partial"
+        enabled: false  # Often not PII, configurable
+      
+      - name: "ORGANIZATION"
+        pii_type: "ORGANIZATION"
+        redaction_mode: "none"
+        enabled: false
+  
+  # Embedding-based semantic detection (optional, requires fastText or word2vec)
+  - type: "embedding"
+    enabled: false
+    description: "Semantic similarity for context-based PII detection"
+    
+    # Embedding-specific configuration
+    settings:
+      model_path: "models/cc.de.300.bin"  # fastText model for German
+      model_type: "fasttext"  # Options: "fasttext", "word2vec", "glove"
+      similarity_threshold: 0.80
+      context_window: 5  # Words before/after to consider
+    
+    # Sensitive keywords and their similarity thresholds
+    sensitive_keywords:
+      - keyword: "gehalt"
+        pii_type: "SALARY"
+        similarity_threshold: 0.85
+        redaction_mode: "strict"
+      
+      - keyword: "krankheit"
+        pii_type: "HEALTH_INFO"
+        similarity_threshold: 0.85
+        redaction_mode: "strict"
+
+# Global settings (applies to all engines)
+global_settings:
+  # Minimum confidence threshold for detection (0.0-1.0)
+  min_confidence: 0.75
+  
+  # Enable deduplication of overlapping findings
+  enable_deduplication: true
+  
+  # Maximum findings per text (prevent DoS on malicious input)
+  max_findings_per_scan: 1000
+  
+  # Log engine reload events
+  log_reloads: true
+  
+  # Fail-safe: If all engines fail to load, fallback to embedded regex defaults
+  fallback_to_defaults: true
+
+# Runtime Configuration
+runtime:
+  pki_verification:
+    enabled: true  # Require PKI signatures for all plugins
+    require_valid_signature: true  # Reject unsigned/tampered engines
+    allow_embedded_fallback: true  # Allow unsigned embedded defaults as fallback
+    log_verification_failures: true  # Audit log all signature verification failures
+    trusted_signers:
+      - "VCC Security Team"
+      - "VCC Engineering"
+    # Signature age limit (reject signatures older than this)
+    max_signature_age_days: 365
+
+# Classification recommendations by redaction mode
+redaction_policies:
+  strict:
+    description: "Full redaction for highly sensitive PII"
+    min_classification: "geheim"
+    
+  partial:
+    description: "Partial masking for moderately sensitive PII"
+    min_classification: "vs-nfd"
+    
+  none:
+    description: "No redaction required"
+    min_classification: "offen"

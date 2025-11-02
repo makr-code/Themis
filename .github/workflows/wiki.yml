@@ -1,0 +1,47 @@
+name: Sync Docs to GitHub Wiki
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  publish-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Build wiki export
+        run: |
+          python tools/publish_wiki.py
+
+      - name: Push to Wiki repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git" wiki
+          rm -rf wiki/*
+          cp -R wiki_out/* wiki/
+          cd wiki
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs(wiki): sync from mkdocs on ${GITHUB_SHA}"
+            git push origin HEAD:master || git push origin HEAD:main || git push
+          fi

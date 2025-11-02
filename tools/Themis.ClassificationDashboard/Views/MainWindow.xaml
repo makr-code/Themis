@@ -1,0 +1,301 @@
+<Window x:Class="Themis.ClassificationDashboard.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Themis – Classification Dashboard" Height="700" Width="1300"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFFFFF">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#ECF0F1"/>
+            <Setter Property="BorderBrush" Value="#BDC3C7"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#2C3E50" Padding="15,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Classification Dashboard" FontSize="20" FontWeight="Bold" Foreground="White"/>
+                    <TextBlock Text="Datenklassifizierung und Compliance-Überwachung" FontSize="12" Foreground="#BDC3C7" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="1" Background="#ECF0F1" BorderBrush="#BDC3C7" BorderThickness="0,1">
+            <Grid Height="45">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="10,0">
+                    <ToggleButton x:Name="HamburgerToggle" Content="☰" Width="36" Height="30" 
+                                  FontSize="18" Click="HamburgerToggle_Click"
+                                  Background="Transparent" BorderThickness="0"/>
+                    <Button Content="Aktualisieren" Command="{Binding RefreshCommand}" 
+                            Style="{StaticResource ActionButtonStyle}" Background="#4CAF50" Foreground="White"/>
+                    <Button Content="Exportieren" Command="{Binding ExportCommand}" 
+                            Style="{StaticResource ActionButtonStyle}" Background="#2196F3" Foreground="White"/>
+                    <Button Content="Compliance-Check" Command="{Binding ComplianceCheckCommand}" 
+                            Style="{StaticResource ActionButtonStyle}" Background="#FF9800" Foreground="White"/>
+                    <Separator Width="1" Margin="5,5" Background="#BDC3C7"/>
+                    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,0" Foreground="#34495E"/>
+                </StackPanel>
+
+                <Button Grid.Column="2" Content="Themis" FontSize="22" FontWeight="Bold" 
+                        Foreground="#64B5F6" Background="Transparent" BorderThickness="0"
+                        Margin="0,0,15,0" Cursor="Hand" Click="AboutButton_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Content Area with Sidebar -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Sidebar -->
+            <Border x:Name="SidebarPanel" Grid.Column="0" Background="#F7F9FC" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <!-- Actions Section -->
+                        <TextBlock Text="Aktionen" FontWeight="Bold" FontSize="12" Foreground="#7F8C8D" Margin="5,10,5,5"/>
+                        <Button Content="📊 Daten laden" Command="{Binding RefreshCommand}" 
+                                HorizontalAlignment="Stretch" Margin="5" Padding="8"/>
+                        <Button Content="📤 Export CSV" Command="{Binding ExportCommand}" 
+                                HorizontalAlignment="Stretch" Margin="5" Padding="8"/>
+                        <Button Content="🔍 Compliance-Check" Command="{Binding ComplianceCheckCommand}" 
+                                HorizontalAlignment="Stretch" Margin="5" Padding="8" Background="#FFA726" Foreground="White"/>
+
+                        <Separator Margin="5,10"/>
+
+                        <!-- Filter Section -->
+                        <TextBlock Text="Filter" FontWeight="Bold" FontSize="12" Foreground="#7F8C8D" Margin="5,10,5,5"/>
+                        
+                        <TextBlock Text="Klassifizierung:" FontSize="11" Margin="5,5,5,2"/>
+                        <ComboBox Margin="5" SelectedIndex="{Binding ClassificationFilterIndex}">
+                            <ComboBoxItem Content="Alle"/>
+                            <ComboBoxItem Content="PUBLIC"/>
+                            <ComboBoxItem Content="INTERNAL"/>
+                            <ComboBoxItem Content="CONFIDENTIAL"/>
+                            <ComboBoxItem Content="RESTRICTED"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Verschlüsselung:" FontSize="11" Margin="5,10,5,2"/>
+                        <ComboBox Margin="5" SelectedIndex="{Binding EncryptionFilterIndex}">
+                            <ComboBoxItem Content="Alle"/>
+                            <ComboBoxItem Content="Verschlüsselt"/>
+                            <ComboBoxItem Content="Unverschlüsselt"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Compliance-Status:" FontSize="11" Margin="5,10,5,2"/>
+                        <ComboBox Margin="5" SelectedIndex="{Binding ComplianceFilterIndex}">
+                            <ComboBoxItem Content="Alle"/>
+                            <ComboBoxItem Content="Compliant"/>
+                            <ComboBoxItem Content="Non-Compliant"/>
+                            <ComboBoxItem Content="Review Required"/>
+                        </ComboBox>
+
+                        <CheckBox Content="Nur Compliance-Gaps" Margin="5,10" IsChecked="{Binding ShowGapsOnly}"/>
+
+                        <Separator Margin="5,10"/>
+
+                        <!-- Statistics Section -->
+                        <TextBlock Text="Statistik" FontWeight="Bold" FontSize="12" Foreground="#7F8C8D" Margin="5,10,5,5"/>
+                        <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" Margin="5" Padding="8">
+                            <StackPanel>
+                                <TextBlock FontSize="11" Foreground="#34495E">
+                                    <Run Text="PUBLIC: " FontWeight="SemiBold"/>
+                                    <Run Text="{Binding PublicCount, Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="11" Foreground="#34495E" Margin="0,3,0,0">
+                                    <Run Text="INTERNAL: " FontWeight="SemiBold"/>
+                                    <Run Text="{Binding InternalCount, Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="11" Foreground="#34495E" Margin="0,3,0,0">
+                                    <Run Text="CONFIDENTIAL: " FontWeight="SemiBold"/>
+                                    <Run Text="{Binding ConfidentialCount, Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="11" Foreground="#E74C3C" Margin="0,3,0,0">
+                                    <Run Text="RESTRICTED: " FontWeight="SemiBold"/>
+                                    <Run Text="{Binding RestrictedCount, Mode=OneWay}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <Separator Margin="5,10"/>
+
+                        <!-- Navigation Section -->
+                        <TextBlock Text="Navigation" FontWeight="Bold" FontSize="12" Foreground="#7F8C8D" Margin="5,10,5,5"/>
+                        <Button Content="🏠 Dashboard" HorizontalAlignment="Stretch" Margin="5" Padding="8"/>
+                        <Button Content="⚙️ Einstellungen" HorizontalAlignment="Stretch" Margin="5" Padding="8"/>
+                        <Button Content="❓ Hilfe" HorizontalAlignment="Stretch" Margin="5" Padding="8" Click="AboutButton_Click"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" 
+                          Background="#E0E0E0" ShowsPreview="False"/>
+
+            <!-- Main Content -->
+            <Grid Grid.Column="2" Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Search Bar -->
+                <TextBox Grid.Row="0" Height="35" Margin="0,0,0,10" Padding="10,8" FontSize="13"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderBrush" Value="#BDC3C7"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <VisualBrush Stretch="None" AlignmentX="Left">
+                                                <VisualBrush.Visual>
+                                                    <TextBlock Text="🔍 Suche nach Entitäts-ID, Typ oder Owner..." 
+                                                               Foreground="#95A5A6" Margin="5,0,0,0"/>
+                                                </VisualBrush.Visual>
+                                            </VisualBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- DataGrid -->
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Classifications}" AutoGenerateColumns="False"
+                          IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False"
+                          GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                          AlternatingRowBackground="#F9F9F9" Background="White"
+                          BorderBrush="#BDC3C7" BorderThickness="1">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Entitäts-ID" Binding="{Binding EntityId}" Width="200"/>
+                        <DataGridTextColumn Header="Entitätstyp" Binding="{Binding EntityType}" Width="120"/>
+                        <DataGridTextColumn Header="Klassifizierung" Binding="{Binding ClassificationLevel}" Width="130">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="PUBLIC">
+                                            <Setter Property="Foreground" Value="#4CAF50"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="INTERNAL">
+                                            <Setter Property="Foreground" Value="#2196F3"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="CONFIDENTIAL">
+                                            <Setter Property="Foreground" Value="#FF9800"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="RESTRICTED">
+                                            <Setter Property="Foreground" Value="#E74C3C"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Verschlüsselt" Binding="{Binding IsEncrypted}" Width="110">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="Ja">
+                                            <Setter Property="Foreground" Value="#4CAF50"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="Nein">
+                                            <Setter Property="Foreground" Value="#E74C3C"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Owner" Binding="{Binding Owner}" Width="150"/>
+                        <DataGridTextColumn Header="Erstellt am" Binding="{Binding CreatedAt, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}" Width="140"/>
+                        <DataGridTextColumn Header="Letzte Prüfung" Binding="{Binding LastReview, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}" Width="140"/>
+                        <DataGridTextColumn Header="Compliance-Status" Binding="{Binding ComplianceStatus}" Width="150">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="Compliant">
+                                            <Setter Property="Foreground" Value="#4CAF50"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="Non-Compliant">
+                                            <Setter Property="Foreground" Value="#E74C3C"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="Review Required">
+                                            <Setter Property="Foreground" Value="#FF9800"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Hinweise" Binding="{Binding Notes}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="#34495E" BorderBrush="#2C3E50" BorderThickness="0,1,0,0" Height="30">
+            <Grid Margin="10,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Foreground="White" VerticalAlignment="Center">
+                        <Run Text="Datensätze: "/>
+                        <Run Text="{Binding Classifications.Count, Mode=OneWay}" FontWeight="Bold"/>
+                        <Run Text=" | Non-Compliant: "/>
+                        <Run Text="{Binding NonCompliantCount, Mode=OneWay}" FontWeight="Bold" Foreground="#E74C3C"/>
+                        <Run Text=" | Unverschlüsselt: "/>
+                        <Run Text="{Binding UnencryptedCount, Mode=OneWay}" FontWeight="Bold" Foreground="#FF9800"/>
+                    </TextBlock>
+                </StackPanel>
+
+                <ProgressBar Grid.Column="1" Width="150" Height="18" 
+                             IsIndeterminate="True" 
+                             Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

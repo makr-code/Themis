@@ -1,0 +1,4 @@
+C:\VCC\themis\dist\Themis.SAGAVerifier\Themis.SAGAVerifier.pdb
+C:\VCC\themis\dist\Themis.SAGAVerifier\appsettings.json
+C:\VCC\themis\dist\Themis.SAGAVerifier\Themis.AdminTools.Shared.pdb
+C:\VCC\themis\dist\Themis.SAGAVerifier\Themis.SAGAVerifier.exe

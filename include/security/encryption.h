@@ -230,6 +230,27 @@ public:
      */
     std::string decryptWithKey(const EncryptedBlob& blob,
                                 const std::vector<uint8_t>& key);
+    
+    /**
+     * @brief Decrypt an encrypted blob to string (alias for decryptToString)
+     * 
+     * @param blob Encrypted blob to decrypt
+     * @return Decrypted plaintext
+     * @throws DecryptionException if decryption fails or authentication fails
+     * @throws KeyNotFoundException if key version does not exist
+     */
+    std::string decrypt(const EncryptedBlob& blob) { 
+        return decryptToString(blob); 
+    }
+    
+    /**
+     * @brief Get the underlying key provider
+     * 
+     * @return Shared pointer to key provider
+     */
+    std::shared_ptr<KeyProvider> getKeyProvider() const { 
+        return key_provider_; 
+    }
 
 private:
     std::shared_ptr<KeyProvider> key_provider_;

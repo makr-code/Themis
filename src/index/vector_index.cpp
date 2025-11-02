@@ -16,6 +16,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace themis {
 
@@ -194,8 +195,23 @@ VectorIndexManager::Status VectorIndexManager::rebuildFromStorage() {
 		try {
 			BaseEntity e = BaseEntity::deserialize(pk, bytes);
 			auto vecOpt = e.extractVector("embedding");
-			if (!vecOpt || vecOpt->size() != static_cast<size_t>(dim_)) return true;
-			std::vector<float> v = *vecOpt;
+			std::vector<float> v;
+			if (vecOpt && vecOpt->size() == static_cast<size_t>(dim_)) {
+				v = *vecOpt;
+			} else {
+				// Try SQ8-coded embedding
+				auto qbufOpt = e.getField("embedding_q");
+				auto scaleOpt = e.getFieldAsDouble("embedding_scale");
+				if (!qbufOpt || !scaleOpt) return true;
+				const auto* qv = std::get_if<std::vector<uint8_t>>(&(*qbufOpt));
+				if (!qv || qv->size() != static_cast<size_t>(dim_)) return true;
+				v.resize(dim_);
+				float s = static_cast<float>(*scaleOpt);
+				for (size_t i = 0; i < qv->size(); ++i) {
+					int8_t code = static_cast<int8_t>((*qv)[i]);
+					v[i] = static_cast<float>(code) * s;
+				}
+			}
 			// Normalize only for COSINE (not for DOT or L2)
 			if (metric_ == Metric::COSINE) normalizeL2(v);
 			cache_[pk] = v;
@@ -225,11 +241,44 @@ VectorIndexManager::Status VectorIndexManager::addEntity(const BaseEntity& e, st
 	const std::string& pk = e.getPrimaryKey();
 	auto v = e.extractVector(vectorField);
 	if (!v) return Status::Error("addEntity: Vektor-Feld fehlt oder hat falsches Format");
-	if (v->size() != static_cast<size_t>(dim_)) return Status::Error("addEntity: Vektordimension passt nicht");
+	// Decide on SQ8 quantization based on config in DB
+	auto shouldQuantize = [&]() -> bool {
+		std::string mode = "auto"; int64_t threshold = 1000000;
+		try {
+			if (auto cfg = db_.get("config:vector")) {
+				std::string s(cfg->begin(), cfg->end());
+				nlohmann::json j = nlohmann::json::parse(s);
+				mode = j.value("quantization", std::string("auto"));
+				threshold = j.value("auto_threshold", 1000000);
+			}
+		} catch (...) {}
+		if (mode == "none") return false;
+		if (mode == "sq8") return true;
+		return static_cast<int64_t>(getVectorCount()) >= threshold;
+	}();
 
-	// Persistenz in RocksDB
+
+	// Persistenz in RocksDB (optional: SQ8-Quantisierung)
 	std::string key = makeObjectKey(pk);
-	std::vector<uint8_t> serialized = e.serialize();
+	std::vector<uint8_t> serialized;
+	if (shouldQuantize) {
+		float amax = 0.0f; for (float x : *v) amax = std::max(amax, std::fabs(x));
+		float scale = (amax > 0.f) ? (amax / 127.0f) : 1.0f;
+		std::vector<uint8_t> codes(v->size());
+		for (size_t i = 0; i < v->size(); ++i) {
+			int q = static_cast<int>(std::round((*v)[i] / scale));
+			q = std::max(-127, std::min(127, q));
+			codes[i] = static_cast<uint8_t>(static_cast<int8_t>(q));
+		}
+		auto fields = e.getAllFields();
+		fields.erase("embedding");
+		fields["embedding_q"] = codes;
+		fields["embedding_scale"] = static_cast<double>(scale);
+		BaseEntity eq = BaseEntity::fromFields(pk, fields);
+		serialized = eq.serialize();
+	} else {
+		serialized = e.serialize();
+	}
 	if (!db_.put(key, serialized)) {
 		return Status::Error("addEntity: RocksDB put fehlgeschlagen");
 	}
@@ -265,8 +314,39 @@ VectorIndexManager::Status VectorIndexManager::addEntity(const BaseEntity& e, Ro
 	if (v->size() != static_cast<size_t>(dim_)) return Status::Error("addEntity: Vektordimension passt nicht");
 
 	// Persistenz via WriteBatch (für Transaktionen)
+	auto shouldQuantize = [&]() -> bool {
+		std::string mode = "auto"; int64_t threshold = 1000000;
+		try {
+			if (auto cfg = db_.get("config:vector")) {
+				std::string s(cfg->begin(), cfg->end());
+				nlohmann::json j = nlohmann::json::parse(s);
+				mode = j.value("quantization", std::string("auto"));
+				threshold = j.value("auto_threshold", 1000000);
+			}
+		} catch (...) {}
+		if (mode == "none") return false; if (mode == "sq8") return true;
+		return static_cast<int64_t>(getVectorCount()) >= threshold;
+	}();
 	std::string key = makeObjectKey(pk);
-	std::vector<uint8_t> serialized = e.serialize();
+	std::vector<uint8_t> serialized;
+	if (shouldQuantize) {
+		float amax = 0.0f; for (float x : *v) amax = std::max(amax, std::fabs(x));
+		float scale = (amax > 0.f) ? (amax / 127.0f) : 1.0f;
+		std::vector<uint8_t> codes(v->size());
+		for (size_t i = 0; i < v->size(); ++i) {
+			int q = static_cast<int>(std::round((*v)[i] / scale));
+			q = std::max(-127, std::min(127, q));
+			codes[i] = static_cast<uint8_t>(static_cast<int8_t>(q));
+		}
+		auto fields = e.getAllFields();
+		fields.erase("embedding");
+		fields["embedding_q"] = codes;
+		fields["embedding_scale"] = static_cast<double>(scale);
+		BaseEntity eq = BaseEntity::fromFields(pk, fields);
+		serialized = eq.serialize();
+	} else {
+		serialized = e.serialize();
+	}
 	batch.put(key, serialized);
 
 	// In-Memory Cache aktualisieren (nur COSINE normalisiert; DOT/L2 bleiben raw)
@@ -379,6 +459,21 @@ VectorIndexManager::bruteForceSearch_(const std::vector<float>& query, size_t k,
 					auto vec = e.extractVector("embedding");
 					if (vec && vec->size() == static_cast<size_t>(dim_)) {
 						consider(pk, *vec);
+					} else {
+						auto qbufOpt = e.getField("embedding_q");
+						auto scaleOpt = e.getFieldAsDouble("embedding_scale");
+						if (qbufOpt && scaleOpt) {
+							const auto* by = std::get_if<std::vector<uint8_t>>(&(*qbufOpt));
+							if (by && by->size() == static_cast<size_t>(dim_)) {
+								std::vector<float> v(dim_);
+								float s = static_cast<float>(*scaleOpt);
+								for (size_t i = 0; i < by->size(); ++i) {
+									int8_t code = static_cast<int8_t>((*by)[i]);
+									v[i] = static_cast<float>(code) * s;
+								}
+								consider(pk, v);
+							}
+						}
 					}
 				} catch (...) {}
 			}
@@ -532,9 +627,41 @@ VectorIndexManager::Status VectorIndexManager::addEntity(const BaseEntity& e, Ro
 	if (!v) return Status::Error("addEntity(mvcc): Vektor-Feld fehlt oder hat falsches Format");
 	if (v->size() != static_cast<size_t>(dim_)) return Status::Error("addEntity(mvcc): Vektordimension passt nicht");
 
-	// Persistenz via MVCC Transaction
+	// Persistenz via MVCC Transaction (optional: SQ8-Quantisierung)
 	std::string key = makeObjectKey(pk);
-	std::vector<uint8_t> serialized = e.serialize();
+	// Decide on SQ8
+	auto shouldQuantize = [&]() -> bool {
+		std::string mode = "auto"; int64_t threshold = 1000000;
+		try {
+			if (auto cfg = db_.get("config:vector")) {
+				std::string s(cfg->begin(), cfg->end());
+				nlohmann::json j = nlohmann::json::parse(s);
+				mode = j.value("quantization", std::string("auto"));
+				threshold = j.value("auto_threshold", 1000000);
+			}
+		} catch (...) {}
+		if (mode == "none") return false; if (mode == "sq8") return true;
+		return static_cast<int64_t>(getVectorCount()) >= threshold;
+	}();
+	std::vector<uint8_t> serialized;
+	if (shouldQuantize) {
+		float amax = 0.0f; for (float x : *v) amax = std::max(amax, std::fabs(x));
+		float scale = (amax > 0.f) ? (amax / 127.0f) : 1.0f;
+		std::vector<uint8_t> codes(v->size());
+		for (size_t i = 0; i < v->size(); ++i) {
+			int q = static_cast<int>(std::round((*v)[i] / scale));
+			q = std::max(-127, std::min(127, q));
+			codes[i] = static_cast<uint8_t>(static_cast<int8_t>(q));
+		}
+		auto fields = e.getAllFields();
+		fields.erase("embedding");
+		fields["embedding_q"] = codes;
+		fields["embedding_scale"] = static_cast<double>(scale);
+		BaseEntity eq = BaseEntity::fromFields(pk, fields);
+		serialized = eq.serialize();
+	} else {
+		serialized = e.serialize();
+	}
 	txn.put(key, serialized);
 
 	// In-Memory Cache aktualisieren (nur COSINE normalisiert; DOT/L2 bleiben raw)

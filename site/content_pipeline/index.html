@@ -1,0 +1,5463 @@
+
+<!doctype html>
+<html lang="de" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Offizielle Dokumentation für ThemisDB (Architektur, Storage, Query/AQL, Sicherheit, APIs und Betrieb)">
+      
+      
+      
+        <link rel="canonical" href="https://example.local/themisdb/docs/content_pipeline/">
+      
+      
+        <link rel="prev" href="../semantic_cache/">
+      
+      
+        <link rel="next" href="../content_architecture/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.23">
+    
+    
+      
+        <title>Content Pipeline - ThemisDB Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../css/print-site.css">
+    
+      <link rel="stylesheet" href="../css/print-site-material.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#content-pipeline" class="md-skip">
+          Zum Inhalt
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Kopfzeile">
+    <a href=".." title="ThemisDB Docs" class="md-header__button md-logo" aria-label="ThemisDB Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ThemisDB Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Content Pipeline
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Suche" placeholder="Suche" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Suche">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Zurücksetzen" aria-label="Zurücksetzen" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Suche wird initialisiert
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/makr-code/ThemisDB" title="Zum Repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    makr-code/ThemisDB
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Hauptnavigation" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Übersicht
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architektur
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../base_entity/" class="md-tabs__link">
+          
+  
+  
+  Basismodell
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../storage/geo_relational_schema/" class="md-tabs__link">
+          
+  
+  
+  Storage & MVCC
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../indexes/" class="md-tabs__link">
+          
+  
+  
+  Indexe & Statistiken
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../query_engine_aql/" class="md-tabs__link">
+          
+  
+  
+  Query & AQL
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Content Pipeline
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../search/hybrid_search_design/" class="md-tabs__link">
+          
+  
+  
+  Suche
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../performance_benchmarks/" class="md-tabs__link">
+          
+  
+  
+  Performance & Benchmarks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quality_assurance/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Qualitätssicherung
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../vector_ops/" class="md-tabs__link">
+          
+  
+  
+  Vektor & GNN
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../security/overview/" class="md-tabs__link">
+          
+  
+  
+  Sicherheit & Governance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../deployment/" class="md-tabs__link">
+          
+  
+  
+  Deployment & Betrieb
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../publishing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Publikation & Ablage
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../admin_tools_admin_guide/" class="md-tabs__link">
+          
+  
+  
+  Admin-Tools
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../apis/openapi/" class="md-tabs__link">
+          
+  
+  
+  APIs
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../styleguide/" class="md-tabs__link">
+          
+  
+  
+  Styleguide & Glossar
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../print_page/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Gesamte Dokumentation (Druckansicht)
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ThemisDB Docs" class="md-nav__button md-logo" aria-label="ThemisDB Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ThemisDB Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/makr-code/ThemisDB" title="Zum Repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    makr-code/ThemisDB
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Übersicht
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architektur
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Basismodell
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Basismodell
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../base_entity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Base Entity & Keys
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path_constraints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pfad-Constraints
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../property_graph_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Property Graph Modell
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Storage & MVCC
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Storage & MVCC
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/geo_relational_schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Storage-Layout (Geo/Relational)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/rocksdb_layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    RocksDB Storage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mvcc_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    MVCC-Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Transaktionen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../time_series/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time-Series Überblick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory_tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Memory Tuning
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Indexe & Statistiken
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Indexe & Statistiken
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../indexes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Indexe
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index_stats_maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Index-Statistiken & Wartung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursor_pagination/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cursor/Pagination
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Query & AQL
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Query & AQL
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query_engine_aql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Query Engine & AQL
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aql_syntax/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    AQL Syntax
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aql_explain_profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Explain & Profile
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recursive_path_queries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Rekursive Pfadabfragen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../temporal_graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Temporale Graphen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../temporal_time_range_queries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Zeitbereichs-Abfragen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../semantic_cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Semantischer Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Content Pipeline
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Content Pipeline
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Content Pipeline
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Content Pipeline
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Inhaltsverzeichnis">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Inhaltsverzeichnis
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#uberblick" class="md-nav__link">
+    <span class="md-ellipsis">
+      Überblick
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-content-type-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Content-Type-System
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Content-Type-System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-contentcategory" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.1 ContentCategory
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-contenttyperegistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.2 ContentTypeRegistry
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-content-prozessoren" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Content-Prozessoren
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Content-Prozessoren">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-icontentprocessor-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 IContentProcessor Interface
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-textprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 TextProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-imageprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 ImageProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-geoprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 GeoProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-cadprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5 CADProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-audioprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.6 AudioProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-structuredprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.7 StructuredProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#28-binaryprocessor-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.8 BinaryProcessor (Fallback)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-import-pipeline-post-contentimport" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Import-Pipeline (POST /content/import)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Import-Pipeline (POST /content/import)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-import-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 Import-Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-server-seitige-import-verarbeitung" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Server-seitige Import-Verarbeitung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-http-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 HTTP-Endpoint
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-batching-bulk-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Batching &amp; Bulk-Import
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Batching &amp; Bulk-Import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 Motivation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-batch-import-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 Batch-Import-Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-server-implementierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3 Server-Implementierung
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Error Handling
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-fehler-kategorien" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 Fehler-Kategorien
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-status-objekt" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Status-Objekt
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-deduplication" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Deduplication
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-graph-konstruktion" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Graph-Konstruktion
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Graph-Konstruktion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-edge-typen" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1 Edge-Typen
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-automatische-edge-generierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2 Automatische Edge-Generierung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-graph-expansion-rag" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.3 Graph-Expansion (RAG)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-embedding-strategien" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Embedding-Strategien
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Embedding-Strategien">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-embedding-modelle-pro-modalitat" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1 Embedding-Modelle pro Modalität
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-externe-embedding-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.2 Externe Embedding-Services
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.3 Hybrid-Search
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-http-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. HTTP API
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. HTTP API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.1 Endpoints
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-beispiele" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.2 Beispiele
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Best Practices
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-chunking-richtlinien" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.1 Chunking-Richtlinien
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-embedding-optimierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.2 Embedding-Optimierung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-storage-optimierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.3 Storage-Optimierung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-modalitats-spezifische-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.4 Modalitäts-spezifische Guidelines
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-performance-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Performance &amp; Benchmarks
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Performance &amp; Benchmarks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-ingestion-throughput" class="md-nav__link">
+    <span class="md-ellipsis">
+      10.1 Ingestion-Throughput
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-search-latenz" class="md-nav__link">
+    <span class="md-ellipsis">
+      10.2 Search-Latenz
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#103-storage-groe" class="md-nav__link">
+    <span class="md-ellipsis">
+      10.3 Storage-Größe
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Testing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Testing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-unit-tests-pro-processor" class="md-nav__link">
+    <span class="md-ellipsis">
+      11.1 Unit-Tests (pro Processor)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-integration-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      11.2 Integration-Tests
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-performance-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      11.3 Performance-Benchmarks
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. Roadmap
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mvp-10-aktuell" class="md-nav__link">
+    <span class="md-ellipsis">
+      MVP 1.0 (Aktuell)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mvp-20-geplant" class="md-nav__link">
+    <span class="md-ellipsis">
+      MVP 2.0 (Geplant)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#future-post-mvp" class="md-nav__link">
+    <span class="md-ellipsis">
+      Future (Post-MVP)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-fazit" class="md-nav__link">
+    <span class="md-ellipsis">
+      13. Fazit
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architektur-Details
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content/ingestion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ingestion
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ingestion/json_ingestion_spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    JSON Ingestion Spec
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content/geo_processor_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Geo-Processor Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content/image_processor_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Image-Processor Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Suche
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Suche
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../search/hybrid_search_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Hybrid Search Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../search/pagination_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pagination Benchmarks
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Performance & Benchmarks
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Performance & Benchmarks
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Überblick & Tuning
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compression_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Kompression
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../search/pagination_benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pagination Benchmarks
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality_assurance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Qualitätssicherung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Vektor & GNN
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Vektor & GNN
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vector_ops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Vektor-Operationen
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gnn_embeddings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    GNN Embeddings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hnsw_persistence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    HNSW Persistenz & Warmstart
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Sicherheit & Governance
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Sicherheit & Governance
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Überblick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rbac_authorization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    RBAC & Authorization
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/key_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Schlüsselverwaltung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encryption_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Verschlüsselungsstrategie
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encryption_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Verschlüsselungsdeployment
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../column_encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Spaltenverschlüsselung
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/pii_detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PII-Detection (Überblick)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pii_detection_engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PII-Detection Engines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pii_engine_signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PII Engine Signing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/audit_and_retention/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Audit & Retention
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/threat_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Threat Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security_hardening_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security Hardening Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security_audit_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security Audit Checklist
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compliance_audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Compliance Audit
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compliance_governance_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Governance-Strategie
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compliance_integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Compliance-Integration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../governance_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Governance Usage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/security_compliance_review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security/Compliance Review
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment & Betrieb
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment & Betrieb
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracing & Observability
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../change_data_capture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Change Data Capture (CDC)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations_runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Operations Runbook
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Publikation & Ablage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Admin-Tools
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            Admin-Tools
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_admin_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Admin Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    User Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_feature_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature Matrix
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_search_sort_filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Suche/Sortierung/Filter
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin_tools_demo_script/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Demo-Script
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    APIs
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_16">
+            <span class="md-nav__icon md-icon"></span>
+            APIs
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    OpenAPI & Endpunkte
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/openapi.md#sse-streaming-changefeed" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    SSE-Streaming (Changefeed)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Styleguide & Glossar
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            Styleguide & Glossar
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../styleguide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Styleguide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossar
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Roadmap
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Changelog
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../print_page/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Gesamte Dokumentation (Druckansicht)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Inhaltsverzeichnis">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Inhaltsverzeichnis
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#uberblick" class="md-nav__link">
+    <span class="md-ellipsis">
+      Überblick
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-content-type-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Content-Type-System
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Content-Type-System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-contentcategory" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.1 ContentCategory
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-contenttyperegistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.2 ContentTypeRegistry
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-content-prozessoren" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Content-Prozessoren
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Content-Prozessoren">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-icontentprocessor-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 IContentProcessor Interface
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-textprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 TextProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-imageprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 ImageProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-geoprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 GeoProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-cadprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5 CADProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-audioprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.6 AudioProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-structuredprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.7 StructuredProcessor
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#28-binaryprocessor-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.8 BinaryProcessor (Fallback)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-import-pipeline-post-contentimport" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Import-Pipeline (POST /content/import)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Import-Pipeline (POST /content/import)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-import-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 Import-Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-server-seitige-import-verarbeitung" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Server-seitige Import-Verarbeitung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-http-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 HTTP-Endpoint
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-batching-bulk-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Batching &amp; Bulk-Import
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Batching &amp; Bulk-Import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 Motivation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-batch-import-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 Batch-Import-Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-server-implementierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3 Server-Implementierung
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Error Handling
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-fehler-kategorien" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 Fehler-Kategorien
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-status-objekt" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Status-Objekt
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-deduplication" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Deduplication
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-graph-konstruktion" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Graph-Konstruktion
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Graph-Konstruktion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-edge-typen" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1 Edge-Typen
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-automatische-edge-generierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2 Automatische Edge-Generierung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-graph-expansion-rag" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.3 Graph-Expansion (RAG)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-embedding-strategien" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Embedding-Strategien
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Embedding-Strategien">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-embedding-modelle-pro-modalitat" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1 Embedding-Modelle pro Modalität
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-externe-embedding-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.2 Externe Embedding-Services
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.3 Hybrid-Search
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-http-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. HTTP API
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. HTTP API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.1 Endpoints
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-beispiele" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.2 Beispiele
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Best Practices
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-chunking-richtlinien" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.1 Chunking-Richtlinien
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-embedding-optimierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.2 Embedding-Optimierung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-storage-optimierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.3 Storage-Optimierung
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-modalitats-spezifische-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      9.4 Modalitäts-spezifische Guidelines
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-performance-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Performance &amp; Benchmarks
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Performance &amp; Benchmarks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-ingestion-throughput" class="md-nav__link">
+    <span class="md-ellipsis">
+      10.1 Ingestion-Throughput
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-search-latenz" class="md-nav__link">
+    <span class="md-ellipsis">
+      10.2 Search-Latenz
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#103-storage-groe" class="md-nav__link">
+    <span class="md-ellipsis">
+      10.3 Storage-Größe
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Testing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Testing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-unit-tests-pro-processor" class="md-nav__link">
+    <span class="md-ellipsis">
+      11.1 Unit-Tests (pro Processor)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-integration-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      11.2 Integration-Tests
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-performance-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      11.3 Performance-Benchmarks
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. Roadmap
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mvp-10-aktuell" class="md-nav__link">
+    <span class="md-ellipsis">
+      MVP 1.0 (Aktuell)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mvp-20-geplant" class="md-nav__link">
+    <span class="md-ellipsis">
+      MVP 2.0 (Geplant)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#future-post-mvp" class="md-nav__link">
+    <span class="md-ellipsis">
+      Future (Post-MVP)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-fazit" class="md-nav__link">
+    <span class="md-ellipsis">
+      13. Fazit
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="content-pipeline">Content Pipeline<a class="headerlink" href="#content-pipeline" title="Permanent link">&para;</a></h1>
+<h2 id="uberblick">Überblick<a class="headerlink" href="#uberblick" title="Permanent link">&para;</a></h2>
+<p>Die <strong>Content Pipeline</strong> ist das zentrale System für die Verarbeitung heterogener Datentypen in THEMIS. Sie ermöglicht es, beliebige Inhalte (Text, Bilder, Geodaten, CAD, Audio, strukturierte Daten) zu importieren, zu transformieren und für Vektor-, Graph- und Attributsuche bereitzustellen.</p>
+<p><strong>Kernkonzepte:</strong></p>
+<ul>
+<li><strong>Modulare Architektur:</strong> Typ-spezifische Prozessoren (<code>IContentProcessor</code>) für jede Datenkategorie</li>
+<li><strong>Einheitliche API:</strong> Ein Import-Endpoint (<code>POST /content/import</code>) für alle Datentypen</li>
+<li><strong>Wiederverwendbare Komponenten:</strong> Deduplication, Chunking, Graph-Erstellung, Embedding-Generierung</li>
+<li><strong>Kanonisches Schema:</strong> Strukturiertes JSON-Format (Content/Chunks/Edges) für alle Modalitäten</li>
+<li><strong>RAG-Ready:</strong> Automatische Graph-Konstruktion mit <code>parent</code>, <code>next</code>, <code>prev</code>, <code>contains</code>, <code>sibling</code> Edges für kontextuelle Suche</li>
+</ul>
+<p><strong>Architektur-Diagramm:</strong></p>
+<pre><code>Client → POST /content/import
+           ↓
+    ContentManager (Orchestrator)
+           ↓
+    ┌──────────────────────────┐
+    │  ContentTypeRegistry     │  MIME → Category Mapping
+    └──────────────────────────┘
+           ↓
+    ┌──────────────────────────┐
+    │  Processor Routing       │  Category → IContentProcessor
+    └──────────────────────────┘
+           ↓
+    ┌───────────────────────────────────────────────┐
+    │  Prozessoren (TextProcessor, ImageProcessor,  │
+    │  GeoProcessor, CADProcessor, AudioProcessor,  │
+    │  StructuredProcessor, BinaryProcessor)        │
+    └───────────────────────────────────────────────┘
+           ↓
+    ┌──────────────────────────┐
+    │  Storage Layer           │
+    │  • RocksDB (Metadata)    │
+    │  • VectorIndex (HNSW)    │
+    │  • GraphIndex (Edges)    │
+    │  • SecondaryIndex (Tags) │
+    └──────────────────────────┘
+</code></pre>
+<h2 id="1-content-type-system">1. Content-Type-System<a class="headerlink" href="#1-content-type-system" title="Permanent link">&para;</a></h2>
+<h3 id="11-contentcategory">1.1 ContentCategory<a class="headerlink" href="#11-contentcategory" title="Permanent link">&para;</a></h3>
+<p>THEMIS unterstützt 9 Content-Kategorien:</p>
+<table>
+<thead>
+<tr>
+<th>Kategorie</th>
+<th>Beschreibung</th>
+<th>Beispiel-MIME-Types</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TEXT</code></td>
+<td>Textdokumente, Code, Markdown</td>
+<td><code>text/plain</code>, <code>application/json</code>, <code>text/xml</code></td>
+</tr>
+<tr>
+<td><code>IMAGE</code></td>
+<td>Fotos, Diagramme, Screenshots</td>
+<td><code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code></td>
+</tr>
+<tr>
+<td><code>AUDIO</code></td>
+<td>Musik, Podcasts, Sprachchips</td>
+<td><code>audio/mpeg</code>, <code>audio/wav</code>, <code>audio/flac</code></td>
+</tr>
+<tr>
+<td><code>VIDEO</code></td>
+<td>Videos</td>
+<td><code>video/mp4</code>, <code>video/webm</code></td>
+</tr>
+<tr>
+<td><code>GEO</code></td>
+<td>Geodaten, GIS</td>
+<td><code>application/geo+json</code>, <code>application/gpx</code></td>
+</tr>
+<tr>
+<td><code>CAD</code></td>
+<td>3D-Modelle, CAD-Zeichnungen</td>
+<td><code>model/step</code>, <code>model/iges</code>, <code>model/stl</code></td>
+</tr>
+<tr>
+<td><code>STRUCTURED</code></td>
+<td>Tabellarische Daten</td>
+<td><code>text/csv</code>, <code>application/parquet</code></td>
+</tr>
+<tr>
+<td><code>ARCHIVE</code></td>
+<td>Archive, Container</td>
+<td><code>application/zip</code>, <code>application/tar+gzip</code></td>
+</tr>
+<tr>
+<td><code>BINARY</code></td>
+<td>Unbekannte Binärdaten (Fallback)</td>
+<td><code>application/octet-stream</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-contenttyperegistry">1.2 ContentTypeRegistry<a class="headerlink" href="#12-contenttyperegistry" title="Permanent link">&para;</a></h3>
+<p>Die <code>ContentTypeRegistry</code> mappt MIME-Types auf Kategorien und speichert Metadaten über Fähigkeiten:</p>
+<pre><code class="language-cpp">struct ContentType {
+    std::string mime_type;
+    ContentCategory category;
+    std::vector&lt;std::string&gt; extensions;  // z.B. {&quot;.txt&quot;, &quot;.md&quot;}
+    bool supports_text_extraction;        // Kann Text extrahiert werden?
+    bool supports_chunking;               // Kann in Chunks zerlegt werden?
+    bool supports_embedding;              // Kann Embedding generiert werden?
+
+    struct Features {
+        bool hierarchical;   // Hat Hierarchie (CAD Assembly, Archive)
+        bool spatial;        // Hat räumliche Koordinaten (Geo, GeoTIFF)
+        bool temporal;       // Hat zeitliche Dimension (Audio, Video)
+        bool multimodal;     // Mehrere Modalitäten (Video = Audio + Frames)
+    };
+    Features features;
+};
+</code></pre>
+<p><strong>Beispiel-Registrierung:</strong></p>
+<pre><code class="language-cpp">ContentType text_plain;
+text_plain.mime_type = &quot;text/plain&quot;;
+text_plain.category = ContentCategory::TEXT;
+text_plain.extensions = {&quot;.txt&quot;, &quot;.log&quot;, &quot;.md&quot;};
+text_plain.supports_text_extraction = true;
+text_plain.supports_chunking = true;
+text_plain.supports_embedding = true;
+text_plain.features.hierarchical = false;
+
+ContentTypeRegistry::instance().registerType(text_plain);
+</code></pre>
+<h2 id="2-content-prozessoren">2. Content-Prozessoren<a class="headerlink" href="#2-content-prozessoren" title="Permanent link">&para;</a></h2>
+<h3 id="21-icontentprocessor-interface">2.1 IContentProcessor Interface<a class="headerlink" href="#21-icontentprocessor-interface" title="Permanent link">&para;</a></h3>
+<p>Jeder Prozessor implementiert 3 Kernmethoden:</p>
+<pre><code class="language-cpp">class IContentProcessor {
+public:
+    // 1. Extraktion: Blob → Strukturierte Daten
+    virtual ExtractionResult extract(
+        const std::string&amp; blob,
+        const ContentType&amp; content_type
+    ) = 0;
+
+    // 2. Chunking: Extraktion → Viele kleine Chunks
+    virtual std::vector&lt;json&gt; chunk(
+        const ExtractionResult&amp; extraction_result,
+        int chunk_size,
+        int overlap
+    ) = 0;
+
+    // 3. Embedding: Chunk → Vektorrepräsentation
+    virtual std::vector&lt;float&gt; generateEmbedding(
+        const std::string&amp; chunk_data
+    ) = 0;
+};
+</code></pre>
+<p><strong>ExtractionResult-Struktur:</strong></p>
+<pre><code class="language-cpp">struct ExtractionResult {
+    bool ok;
+    std::string text;              // Extrahierter Plain-Text
+    json metadata;                 // EXIF, ID3, CAD-Properties, etc.
+    std::vector&lt;float&gt; embedding;  // Optional: Pre-computed Embedding
+    std::string error_message;
+
+    // Typ-spezifische Daten
+    std::optional&lt;GeoData&gt; geo_data;      // Koordinaten, Projektion, Properties
+    std::optional&lt;MediaData&gt; media_data;  // Duration, Width, Height, Codec
+    std::optional&lt;CADData&gt; cad_data;      // Parts, BOM, Dimensionen
+};
+</code></pre>
+<h3 id="22-textprocessor">2.2 TextProcessor<a class="headerlink" href="#22-textprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>Verantwortlichkeiten:</strong></p>
+<ul>
+<li>Text-Normalisierung (Whitespace, Newlines)</li>
+<li>Sentenz-basiertes Chunking mit Overlap</li>
+<li>Embedding via Sentence-Transformers (768D)</li>
+</ul>
+<p><strong>Chunking-Strategie:</strong></p>
+<pre><code class="language-cpp">std::vector&lt;json&gt; TextProcessor::chunk(
+    const ExtractionResult&amp; extraction,
+    int chunk_size,      // z.B. 512 Tokens
+    int overlap          // z.B. 50 Tokens
+) {
+    std::string text = normalizeText(extraction.text);
+    std::vector&lt;std::string&gt; sentences = splitIntoSentences(text);
+
+    std::vector&lt;json&gt; chunks;
+    std::string current_chunk;
+    int current_tokens = 0;
+
+    for (const auto&amp; sentence : sentences) {
+        int tokens = countTokens(sentence);
+
+        if (current_tokens + tokens &gt; chunk_size &amp;&amp; !current_chunk.empty()) {
+            // Save chunk
+            chunks.push_back({
+                {&quot;type&quot;, &quot;text&quot;},
+                {&quot;text&quot;, current_chunk},
+                {&quot;tokens&quot;, current_tokens}
+            });
+
+            // Overlap: Behalte letzte N Tokens
+            current_chunk = getLastNTokens(current_chunk, overlap) + &quot; &quot; + sentence;
+            current_tokens = overlap + tokens;
+        } else {
+            current_chunk += &quot; &quot; + sentence;
+            current_tokens += tokens;
+        }
+    }
+
+    return chunks;
+}
+</code></pre>
+<p><strong>Embedding:</strong></p>
+<pre><code class="language-cpp">std::vector&lt;float&gt; TextProcessor::generateEmbedding(const std::string&amp; chunk_data) {
+    json chunk = json::parse(chunk_data);
+    std::string text = chunk[&quot;text&quot;];
+
+    // Aufruf an externes Embedding-Service (z.B. FastAPI mit Sentence-Transformers)
+    json request = {{&quot;text&quot;, text}};
+    auto response = http_client_-&gt;post(&quot;http://localhost:5000/embed&quot;, request);
+    return response[&quot;embedding&quot;].get&lt;std::vector&lt;float&gt;&gt;(); // 768D
+}
+</code></pre>
+<h3 id="23-imageprocessor">2.3 ImageProcessor<a class="headerlink" href="#23-imageprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>Verantwortlichkeiten:</strong></p>
+<ul>
+<li>EXIF-Metadaten extrahieren (GPS, DateTime, Camera Model)</li>
+<li>Bild-Dimensionen, Format, Kompression erkennen</li>
+<li>Embedding via CLIP (512D)</li>
+</ul>
+<p><strong>Extraktion:</strong></p>
+<pre><code class="language-cpp">ExtractionResult ImageProcessor::extract(const std::string&amp; blob, const ContentType&amp; type) {
+    ExtractionResult result;
+
+    // EXIF-Tags parsen
+    result.metadata = extractEXIF(blob);
+
+    // Dimensionen
+    auto [width, height] = getImageDimensions(blob);
+    result.media_data = MediaData{
+        .duration_seconds = 0,
+        .width = width,
+        .height = height,
+        .codec = type.mime_type
+    };
+
+    // OCR (optional, falls Text im Bild)
+    if (config.enable_ocr) {
+        result.text = performOCR(blob);
+    }
+
+    result.ok = true;
+    return result;
+}
+</code></pre>
+<p><strong>Chunking:</strong> Bilder werden i.d.R. als ein Chunk gespeichert. Bei großen Bildern könnte Tiling erfolgen:</p>
+<pre><code class="language-cpp">std::vector&lt;json&gt; ImageProcessor::chunk(const ExtractionResult&amp; extraction, int chunk_size, int overlap) {
+    // Für MVP: Ein Chunk pro Bild
+    json chunk = {
+        {&quot;type&quot;, &quot;image&quot;},
+        {&quot;width&quot;, extraction.media_data-&gt;width},
+        {&quot;height&quot;, extraction.media_data-&gt;height},
+        {&quot;exif&quot;, extraction.metadata}
+    };
+
+    // Falls OCR-Text vorhanden, separater Text-Chunk
+    std::vector&lt;json&gt; chunks = {chunk};
+    if (!extraction.text.empty()) {
+        chunks.push_back({
+            {&quot;type&quot;, &quot;ocr_text&quot;},
+            {&quot;text&quot;, extraction.text}
+        });
+    }
+
+    return chunks;
+}
+</code></pre>
+<p><strong>Embedding:</strong></p>
+<pre><code class="language-cpp">std::vector&lt;float&gt; ImageProcessor::generateEmbedding(const std::string&amp; chunk_data) {
+    // CLIP: Bild → 512D Vektor
+    // blob muss als Base64 oder Dateipfad übermittelt werden
+    json request = {{&quot;image_base64&quot;, base64Encode(blob)}};
+    auto response = http_client_-&gt;post(&quot;http://localhost:5000/embed/image&quot;, request);
+    return response[&quot;embedding&quot;].get&lt;std::vector&lt;float&gt;&gt;(); // 512D
+}
+</code></pre>
+<h3 id="24-geoprocessor">2.4 GeoProcessor<a class="headerlink" href="#24-geoprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>Verantwortlichkeiten:</strong></p>
+<ul>
+<li>GeoJSON, GPX, GeoTIFF parsen</li>
+<li>Koordinaten-Extraktion, Projektion (EPSG/SRID), Bounding Box</li>
+<li>Spatial Embeddings via Geo2Vec oder TileDB</li>
+</ul>
+<p><strong>Extraktion:</strong></p>
+<pre><code class="language-cpp">ExtractionResult GeoProcessor::extract(const std::string&amp; blob, const ContentType&amp; type) {
+    ExtractionResult result;
+
+    if (type.mime_type == &quot;application/geo+json&quot;) {
+        result.geo_data = parseGeoJSON(blob);
+    } else if (type.mime_type.find(&quot;gpx&quot;) != std::string::npos) {
+        result.geo_data = parseGPX(blob);
+    }
+
+    // Metadata: SRID, Feature-Count, BBox
+    result.metadata = {
+        {&quot;srid&quot;, result.geo_data-&gt;projection},
+        {&quot;feature_count&quot;, result.geo_data-&gt;coordinates.size()},
+        {&quot;bbox&quot;, computeBBox(result.geo_data-&gt;coordinates)}
+    };
+
+    result.ok = true;
+    return result;
+}
+</code></pre>
+<p><strong>Chunking:</strong> Ein Chunk pro Feature (bei FeatureCollection):</p>
+<pre><code class="language-cpp">std::vector&lt;json&gt; GeoProcessor::chunk(const ExtractionResult&amp; extraction, int chunk_size, int overlap) {
+    std::vector&lt;json&gt; chunks;
+
+    for (size_t i = 0; i &lt; extraction.geo_data-&gt;coordinates.size(); ++i) {
+        auto [lat, lon] = extraction.geo_data-&gt;coordinates[i];
+        json properties = extraction.geo_data-&gt;properties[i]; // Annahme: properties pro Feature
+
+        chunks.push_back({
+            {&quot;type&quot;, &quot;geo_feature&quot;},
+            {&quot;geometry&quot;, {{&quot;type&quot;, &quot;Point&quot;}, {&quot;coordinates&quot;, {lon, lat}}}},
+            {&quot;srid&quot;, extraction.geo_data-&gt;projection},
+            {&quot;properties&quot;, properties}
+        });
+    }
+
+    return chunks;
+}
+</code></pre>
+<p><strong>Embedding:</strong></p>
+<pre><code class="language-cpp">std::vector&lt;float&gt; GeoProcessor::generateEmbedding(const std::string&amp; chunk_data) {
+    json chunk = json::parse(chunk_data);
+    auto coords = chunk[&quot;geometry&quot;][&quot;coordinates&quot;];
+    double lon = coords[0], lat = coords[1];
+
+    // Geo2Vec: [lon, lat] → 128D Vektor
+    json request = {{&quot;lon&quot;, lon}, {&quot;lat&quot;, lat}};
+    auto response = http_client_-&gt;post(&quot;http://localhost:5000/embed/geo&quot;, request);
+    return response[&quot;embedding&quot;].get&lt;std::vector&lt;float&gt;&gt;();
+}
+</code></pre>
+<h3 id="25-cadprocessor">2.5 CADProcessor<a class="headerlink" href="#25-cadprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>Verantwortlichkeiten:</strong></p>
+<ul>
+<li>STEP, IGES, STL, DXF parsen</li>
+<li>Assembly-Hierarchie extrahieren (Parent-Child-Beziehungen)</li>
+<li>Bill of Materials (BOM), Dimensionen, Constraints</li>
+</ul>
+<p><strong>Extraktion:</strong></p>
+<pre><code class="language-cpp">ExtractionResult CADProcessor::extract(const std::string&amp; blob, const ContentType&amp; type) {
+    ExtractionResult result;
+
+    if (type.mime_type == &quot;model/step&quot;) {
+        json step_data = parseSTEP(blob);
+        result.cad_data = CADData{
+            .part_ids = extractPartIDs(step_data),
+            .bom = extractBOM(step_data),
+            .dimensions = extractDimensions(step_data)
+        };
+    }
+
+    result.metadata = {
+        {&quot;format&quot;, &quot;STEP&quot;},
+        {&quot;part_count&quot;, result.cad_data-&gt;part_ids.size()}
+    };
+
+    result.ok = true;
+    return result;
+}
+</code></pre>
+<p><strong>Chunking:</strong> Ein Chunk pro Part (Hierarchie via Edges):</p>
+<pre><code class="language-cpp">std::vector&lt;json&gt; CADProcessor::chunk(const ExtractionResult&amp; extraction, int chunk_size, int overlap) {
+    std::vector&lt;json&gt; chunks;
+
+    for (const auto&amp; part_id : extraction.cad_data-&gt;part_ids) {
+        json part_info = extraction.cad_data-&gt;bom[part_id];
+
+        chunks.push_back({
+            {&quot;type&quot;, &quot;cad_part&quot;},
+            {&quot;part_id&quot;, part_id},
+            {&quot;name&quot;, part_info[&quot;name&quot;]},
+            {&quot;material&quot;, part_info[&quot;material&quot;]},
+            {&quot;dimensions&quot;, part_info[&quot;dimensions&quot;]}
+        });
+    }
+
+    return chunks;
+}
+</code></pre>
+<p><strong>Graph-Edges:</strong> <code>contains</code> (Assembly → Part), <code>sibling</code> (Parts im gleichen Assembly)</p>
+<h3 id="26-audioprocessor">2.6 AudioProcessor<a class="headerlink" href="#26-audioprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>Verantwortlichkeiten:</strong></p>
+<ul>
+<li>ID3-Tags extrahieren (Titel, Artist, Album)</li>
+<li>Duration, Bitrate, Codec erkennen</li>
+<li>Speech-to-Text (optional)</li>
+<li>Embedding via Wav2Vec2 (768D)</li>
+</ul>
+<p><strong>Chunking:</strong> Zeit-basiert (z.B. 10-Sekunden-Segmente):</p>
+<pre><code class="language-cpp">std::vector&lt;json&gt; AudioProcessor::chunk(const ExtractionResult&amp; extraction, int chunk_size, int overlap) {
+    int duration = extraction.media_data-&gt;duration_seconds;
+    std::vector&lt;json&gt; chunks;
+
+    for (int i = 0; i &lt; duration; i += chunk_size) {
+        int end_time = std::min(i + chunk_size, duration);
+
+        chunks.push_back({
+            {&quot;type&quot;, &quot;audio_segment&quot;},
+            {&quot;start_time&quot;, i},
+            {&quot;end_time&quot;, end_time},
+            {&quot;transcript&quot;, extractTranscript(i, end_time)} // Optional: Whisper ASR
+        });
+    }
+
+    return chunks;
+}
+</code></pre>
+<h3 id="27-structuredprocessor">2.7 StructuredProcessor<a class="headerlink" href="#27-structuredprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>Verantwortlichkeiten:</strong></p>
+<ul>
+<li>CSV, Parquet, Arrow parsen</li>
+<li>Schema-Inferenz (Spaltentypen)</li>
+<li>Row-Level Chunking</li>
+<li>Spalten-Embeddings (für Table-QA)</li>
+</ul>
+<p><strong>Chunking:</strong></p>
+<pre><code class="language-cpp">std::vector&lt;json&gt; StructuredProcessor::chunk(const ExtractionResult&amp; extraction, int chunk_size, int overlap) {
+    auto rows = parseCSV(extraction.text);
+    json schema = extractSchema(rows);
+
+    std::vector&lt;json&gt; chunks;
+
+    // Header als separater Chunk
+    chunks.push_back({
+        {&quot;type&quot;, &quot;table_schema&quot;},
+        {&quot;schema&quot;, schema}
+    });
+
+    // Rows in Batches
+    for (size_t i = 1; i &lt; rows.size(); i += chunk_size) {
+        json row_batch = json::array();
+        for (size_t j = i; j &lt; std::min(i + chunk_size, rows.size()); ++j) {
+            row_batch.push_back(rows[j]);
+        }
+
+        chunks.push_back({
+            {&quot;type&quot;, &quot;table_rows&quot;},
+            {&quot;rows&quot;, row_batch},
+            {&quot;row_range&quot;, {i, std::min(i + chunk_size, rows.size())}}
+        });
+    }
+
+    return chunks;
+}
+</code></pre>
+<h3 id="28-binaryprocessor-fallback">2.8 BinaryProcessor (Fallback)<a class="headerlink" href="#28-binaryprocessor-fallback" title="Permanent link">&para;</a></h3>
+<p>Falls kein spezialisierter Prozessor vorhanden, nutzt <code>BinaryProcessor</code> nur Hash + Größe:</p>
+<pre><code class="language-cpp">ExtractionResult BinaryProcessor::extract(const std::string&amp; blob, const ContentType&amp; type) {
+    ExtractionResult result;
+    result.metadata = {
+        {&quot;size_bytes&quot;, blob.size()},
+        {&quot;hash_sha256&quot;, computeSHA256(blob)}
+    };
+    result.ok = true;
+    return result;
+}
+</code></pre>
+<h2 id="3-import-pipeline-post-contentimport">3. Import-Pipeline (POST /content/import)<a class="headerlink" href="#3-import-pipeline-post-contentimport" title="Permanent link">&para;</a></h2>
+<p>Ab <strong>MVP 2.0</strong> wird die Ingestion <strong>client-seitig</strong> durchgeführt. Der Server erwartet vorverarbeitete JSON-Objekte mit einem kanonischen Schema.</p>
+<h3 id="31-import-schema">3.1 Import-Schema<a class="headerlink" href="#31-import-schema" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;content&quot;: {
+    &quot;id&quot;: &quot;content-uuid&quot;,
+    &quot;mime_type&quot;: &quot;text/plain&quot;,
+    &quot;category&quot;: &quot;TEXT&quot;,
+    &quot;original_filename&quot;: &quot;doc.txt&quot;,
+    &quot;size_bytes&quot;: 1024,
+    &quot;hash_sha256&quot;: &quot;abc123...&quot;,
+    &quot;created_at&quot;: 1672531200,
+    &quot;user_metadata&quot;: {&quot;author&quot;: &quot;John Doe&quot;},
+    &quot;tags&quot;: [&quot;documentation&quot;, &quot;v1.0&quot;]
+  },
+  &quot;chunks&quot;: [
+    {
+      &quot;id&quot;: &quot;chunk-uuid-1&quot;,
+      &quot;content_id&quot;: &quot;content-uuid&quot;,
+      &quot;seq_num&quot;: 0,
+      &quot;chunk_type&quot;: &quot;text&quot;,
+      &quot;text&quot;: &quot;This is the first chunk...&quot;,
+      &quot;start_offset&quot;: 0,
+      &quot;end_offset&quot;: 512,
+      &quot;embedding&quot;: [0.12, -0.45, ...]  // 768D
+    },
+    {
+      &quot;id&quot;: &quot;chunk-uuid-2&quot;,
+      &quot;content_id&quot;: &quot;content-uuid&quot;,
+      &quot;seq_num&quot;: 1,
+      &quot;chunk_type&quot;: &quot;text&quot;,
+      &quot;text&quot;: &quot;This is the second chunk...&quot;,
+      &quot;start_offset&quot;: 462,
+      &quot;end_offset&quot;: 974,
+      &quot;embedding&quot;: [0.34, 0.67, ...]
+    }
+  ],
+  &quot;edges&quot;: [
+    {
+      &quot;from&quot;: &quot;chunk-uuid-1&quot;,
+      &quot;to&quot;: &quot;chunk-uuid-2&quot;,
+      &quot;type&quot;: &quot;next&quot;,
+      &quot;weight&quot;: 1.0
+    },
+    {
+      &quot;from&quot;: &quot;chunk-uuid-2&quot;,
+      &quot;to&quot;: &quot;chunk-uuid-1&quot;,
+      &quot;type&quot;: &quot;prev&quot;,
+      &quot;weight&quot;: 1.0
+    }
+  ],
+  &quot;blob&quot;: &quot;&lt;base64-encoded-binary&gt;&quot;  // Optional: Original-Blob
+}
+</code></pre>
+<h3 id="32-server-seitige-import-verarbeitung">3.2 Server-seitige Import-Verarbeitung<a class="headerlink" href="#32-server-seitige-import-verarbeitung" title="Permanent link">&para;</a></h3>
+<pre><code class="language-cpp">Status ContentManager::importContent(const json&amp; spec, const std::optional&lt;std::string&gt;&amp; blob) {
+    // 1. Validierung
+    if (!spec.contains(&quot;content&quot;) || !spec.contains(&quot;chunks&quot;)) {
+        return Status::Error(&quot;Invalid schema: missing 'content' or 'chunks'&quot;);
+    }
+
+    // 2. Content-Metadata speichern
+    ContentMeta meta = ContentMeta::fromJson(spec[&quot;content&quot;]);
+    BaseEntity content_entity(meta.id, &quot;content&quot;);
+    content_entity.set(&quot;mime_type&quot;, meta.mime_type);
+    content_entity.set(&quot;category&quot;, static_cast&lt;int&gt;(meta.category));
+    content_entity.set(&quot;original_filename&quot;, meta.original_filename);
+    // ... (weitere Felder)
+    storage_-&gt;put(content_entity);
+
+    // 3. Blob speichern (falls vorhanden)
+    if (blob.has_value()) {
+        BaseEntity blob_entity(meta.id, &quot;content_blob&quot;);
+        blob_entity.setBlob(*blob);
+        storage_-&gt;put(blob_entity);
+    }
+
+    // 4. Chunks speichern + VectorIndex aktualisieren
+    for (const auto&amp; chunk_json : spec[&quot;chunks&quot;]) {
+        ChunkMeta chunk = ChunkMeta::fromJson(chunk_json);
+
+        BaseEntity chunk_entity(chunk.id, &quot;chunk&quot;);
+        chunk_entity.set(&quot;content_id&quot;, chunk.content_id);
+        chunk_entity.set(&quot;seq_num&quot;, chunk.seq_num);
+        chunk_entity.set(&quot;chunk_type&quot;, chunk.chunk_type);
+        chunk_entity.set(&quot;text&quot;, chunk.text);
+        storage_-&gt;put(chunk_entity);
+
+        // VectorIndex: Embedding einfügen
+        if (!chunk.embedding.empty()) {
+            vector_index_-&gt;addVector(chunk.id, chunk.embedding);
+        }
+    }
+
+    // 5. Graph-Edges speichern
+    if (spec.contains(&quot;edges&quot;)) {
+        for (const auto&amp; edge : spec[&quot;edges&quot;]) {
+            graph_index_-&gt;addEdge(
+                edge[&quot;from&quot;],
+                edge[&quot;to&quot;],
+                edge[&quot;type&quot;],
+                edge.value(&quot;weight&quot;, 1.0)
+            );
+        }
+    }
+
+    return Status::OK();
+}
+</code></pre>
+<h3 id="33-http-endpoint">3.3 HTTP-Endpoint<a class="headerlink" href="#33-http-endpoint" title="Permanent link">&para;</a></h3>
+<pre><code class="language-cpp">// In main_server.cpp
+app.post(&quot;/content/import&quot;, [&amp;](const Request&amp; req, Response&amp; res) {
+    json spec = json::parse(req.body);
+
+    std::optional&lt;std::string&gt; blob;
+    if (spec.contains(&quot;blob&quot;)) {
+        blob = base64Decode(spec[&quot;blob&quot;].get&lt;std::string&gt;());
+    }
+
+    auto status = content_manager-&gt;importContent(spec, blob);
+
+    if (status.ok) {
+        res.status = 200;
+        res.set_content(json{{&quot;ok&quot;, true}, {&quot;content_id&quot;, spec[&quot;content&quot;][&quot;id&quot;]}}.dump(), &quot;application/json&quot;);
+    } else {
+        res.status = 400;
+        res.set_content(json{{&quot;error&quot;, status.message}}.dump(), &quot;application/json&quot;);
+    }
+});
+</code></pre>
+<h2 id="4-batching-bulk-import">4. Batching &amp; Bulk-Import<a class="headerlink" href="#4-batching-bulk-import" title="Permanent link">&para;</a></h2>
+<h3 id="41-motivation">4.1 Motivation<a class="headerlink" href="#41-motivation" title="Permanent link">&para;</a></h3>
+<p>Beim Import vieler Dokumente (z.B. 10.000 PDFs) ist sequentielles Einfügen ineffizient. <strong>Batching</strong> gruppiert mehrere Operationen:</p>
+<ul>
+<li><strong>Embedding-Batch-API:</strong> Generierung von 100 Embeddings in einem Request</li>
+<li><strong>RocksDB WriteBatch:</strong> Atomare Transaktionen für mehrere Entities</li>
+<li><strong>VectorIndex Bulk-Insert:</strong> HNSW-Build via Batch-Add</li>
+</ul>
+<h3 id="42-batch-import-schema">4.2 Batch-Import-Schema<a class="headerlink" href="#42-batch-import-schema" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;batch&quot;: [
+    {
+      &quot;content&quot;: {...},
+      &quot;chunks&quot;: [...],
+      &quot;edges&quot;: [...],
+      &quot;blob&quot;: &quot;...&quot;
+    },
+    {
+      &quot;content&quot;: {...},
+      &quot;chunks&quot;: [...],
+      &quot;edges&quot;: [...],
+      &quot;blob&quot;: &quot;...&quot;
+    }
+  ]
+}
+</code></pre>
+<h3 id="43-server-implementierung">4.3 Server-Implementierung<a class="headerlink" href="#43-server-implementierung" title="Permanent link">&para;</a></h3>
+<pre><code class="language-cpp">Status ContentManager::importBatch(const json&amp; batch_spec) {
+    rocksdb::WriteBatch batch;
+    std::vector&lt;std::pair&lt;std::string, std::vector&lt;float&gt;&gt;&gt; embeddings_to_add;
+
+    for (const auto&amp; item : batch_spec[&quot;batch&quot;]) {
+        // Content + Chunks in WriteBatch speichern
+        ContentMeta meta = ContentMeta::fromJson(item[&quot;content&quot;]);
+        batch.Put(&quot;content:&quot; + meta.id, meta.toJson().dump());
+
+        for (const auto&amp; chunk_json : item[&quot;chunks&quot;]) {
+            ChunkMeta chunk = ChunkMeta::fromJson(chunk_json);
+            batch.Put(&quot;chunk:&quot; + chunk.id, chunk.toJson().dump());
+
+            if (!chunk.embedding.empty()) {
+                embeddings_to_add.push_back({chunk.id, chunk.embedding});
+            }
+        }
+    }
+
+    // Atomare DB-Write
+    auto db_status = storage_-&gt;getRaw()-&gt;Write(rocksdb::WriteOptions(), &amp;batch);
+    if (!db_status.ok()) {
+        return Status::Error(&quot;Batch write failed: &quot; + db_status.ToString());
+    }
+
+    // VectorIndex: Bulk-Add
+    vector_index_-&gt;addVectorsBatch(embeddings_to_add);
+
+    return Status::OK();
+}
+</code></pre>
+<h2 id="5-error-handling">5. Error Handling<a class="headerlink" href="#5-error-handling" title="Permanent link">&para;</a></h2>
+<h3 id="51-fehler-kategorien">5.1 Fehler-Kategorien<a class="headerlink" href="#51-fehler-kategorien" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Fehler</th>
+<th>HTTP-Code</th>
+<th>Ursache</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Invalid Schema</code></td>
+<td>400</td>
+<td>Fehlende Pflichtfelder (<code>content</code>, <code>chunks</code>)</td>
+<td>Client: Schema validieren</td>
+</tr>
+<tr>
+<td><code>Duplicate Content</code></td>
+<td>409</td>
+<td><code>hash_sha256</code> bereits vorhanden</td>
+<td>Client: Dedup-Check vor Upload</td>
+</tr>
+<tr>
+<td><code>Embedding Dimension Mismatch</code></td>
+<td>400</td>
+<td>Embedding hat falsche Dimension</td>
+<td>Client: Modell-Version prüfen</td>
+</tr>
+<tr>
+<td><code>Storage Error</code></td>
+<td>500</td>
+<td>RocksDB Write fehlgeschlagen</td>
+<td>Server: Retry mit Backoff</td>
+</tr>
+<tr>
+<td><code>VectorIndex Error</code></td>
+<td>500</td>
+<td>HNSW-Build fehlgeschlagen</td>
+<td>Server: Rebuild Index</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-status-objekt">5.2 Status-Objekt<a class="headerlink" href="#52-status-objekt" title="Permanent link">&para;</a></h3>
+<p>Alle ContentManager-Methoden geben <code>Status</code> zurück:</p>
+<pre><code class="language-cpp">struct Status {
+    bool ok = true;
+    std::string message;
+
+    static Status OK() { return {}; }
+    static Status Error(std::string msg) { return Status{false, std::move(msg)}; }
+};
+</code></pre>
+<p><strong>Beispiel-Nutzung:</strong></p>
+<pre><code class="language-cpp">auto status = content_manager-&gt;importContent(spec, blob);
+if (!status.ok) {
+    THEMIS_ERROR(&quot;Import failed: {}&quot;, status.message);
+    // Logging, Retry-Logik, Client-Notification
+}
+</code></pre>
+<h3 id="53-deduplication">5.3 Deduplication<a class="headerlink" href="#53-deduplication" title="Permanent link">&para;</a></h3>
+<p>Hash-basierte Dedup verhindert doppelte Speicherung:</p>
+<pre><code class="language-cpp">Status ContentManager::importContent(const json&amp; spec, const std::optional&lt;std::string&gt;&amp; blob) {
+    ContentMeta meta = ContentMeta::fromJson(spec[&quot;content&quot;]);
+
+    // Dedup-Check via SecondaryIndex (hash_sha256)
+    auto existing = secondary_index_-&gt;get(&quot;hash_sha256&quot;, meta.hash_sha256);
+    if (existing.has_value()) {
+        return Status{
+            .ok = true,
+            .message = &quot;Duplicate content (hash: &quot; + meta.hash_sha256 + &quot;), skipping import&quot;
+        };
+    }
+
+    // ... normal import
+}
+</code></pre>
+<h2 id="6-graph-konstruktion">6. Graph-Konstruktion<a class="headerlink" href="#6-graph-konstruktion" title="Permanent link">&para;</a></h2>
+<h3 id="61-edge-typen">6.1 Edge-Typen<a class="headerlink" href="#61-edge-typen" title="Permanent link">&para;</a></h3>
+<p>THEMIS konstruiert automatisch Edges für verschiedene Beziehungen:</p>
+<table>
+<thead>
+<tr>
+<th>Edge-Typ</th>
+<th>Bedeutung</th>
+<th>Beispiel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parent</code></td>
+<td>Chunk gehört zu Content</td>
+<td><code>chunk:uuid</code> → <code>content:uuid</code></td>
+</tr>
+<tr>
+<td><code>next</code></td>
+<td>Sequentieller Nachfolger</td>
+<td><code>chunk:1</code> → <code>chunk:2</code></td>
+</tr>
+<tr>
+<td><code>prev</code></td>
+<td>Sequentieller Vorgänger</td>
+<td><code>chunk:2</code> → <code>chunk:1</code></td>
+</tr>
+<tr>
+<td><code>contains</code></td>
+<td>Hierarchie (Assembly → Part)</td>
+<td><code>content:assembly</code> → <code>content:part</code></td>
+</tr>
+<tr>
+<td><code>sibling</code></td>
+<td>Gleiche Hierarchie-Ebene</td>
+<td><code>chunk:part1</code> → <code>chunk:part2</code></td>
+</tr>
+<tr>
+<td><code>member_of</code></td>
+<td>Geodaten: Feature gehört zu Region</td>
+<td><code>chunk:poi</code> → <code>chunk:region</code></td>
+</tr>
+<tr>
+<td><code>spatially_near</code></td>
+<td>Geodaten: Räumliche Nachbarschaft</td>
+<td><code>chunk:poi1</code> → <code>chunk:poi2</code> (z.B. &lt; 1 km)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-automatische-edge-generierung">6.2 Automatische Edge-Generierung<a class="headerlink" href="#62-automatische-edge-generierung" title="Permanent link">&para;</a></h3>
+<p><strong>Text-Chunks:</strong></p>
+<pre><code class="language-cpp">// parent + next/prev Edges
+for (size_t i = 0; i &lt; chunks.size(); ++i) {
+    graph_index_-&gt;addEdge(chunks[i].id, content_id, &quot;parent&quot;, 1.0);
+
+    if (i &gt; 0) {
+        graph_index_-&gt;addEdge(chunks[i].id, chunks[i-1].id, &quot;prev&quot;, 1.0);
+    }
+    if (i &lt; chunks.size() - 1) {
+        graph_index_-&gt;addEdge(chunks[i].id, chunks[i+1].id, &quot;next&quot;, 1.0);
+    }
+}
+</code></pre>
+<p><strong>CAD-Assembly:</strong></p>
+<pre><code class="language-cpp">// contains + sibling Edges
+for (const auto&amp; part_id : assembly_parts) {
+    graph_index_-&gt;addEdge(assembly_id, part_id, &quot;contains&quot;, 1.0);
+
+    for (const auto&amp; sibling_id : assembly_parts) {
+        if (part_id != sibling_id) {
+            graph_index_-&gt;addEdge(part_id, sibling_id, &quot;sibling&quot;, 0.5);
+        }
+    }
+}
+</code></pre>
+<p><strong>Geodaten:</strong></p>
+<pre><code class="language-cpp">// member_of + spatially_near Edges
+for (const auto&amp; poi : pois) {
+    std::string region = findRegion(poi.lat, poi.lon); // Spatial Join
+    graph_index_-&gt;addEdge(poi.id, region, &quot;member_of&quot;, 1.0);
+
+    auto nearby = findNearbyPOIs(poi.lat, poi.lon, 1000.0); // 1 km Radius
+    for (const auto&amp; neighbor : nearby) {
+        double distance = haversineDistance(poi, neighbor);
+        double weight = 1.0 / (1.0 + distance); // Näher = höheres Gewicht
+        graph_index_-&gt;addEdge(poi.id, neighbor.id, &quot;spatially_near&quot;, weight);
+    }
+}
+</code></pre>
+<h3 id="63-graph-expansion-rag">6.3 Graph-Expansion (RAG)<a class="headerlink" href="#63-graph-expansion-rag" title="Permanent link">&para;</a></h3>
+<p>Suche mit Kontext-Expansion:</p>
+<pre><code class="language-cpp">std::vector&lt;std::pair&lt;std::string, float&gt;&gt; ContentManager::searchWithExpansion(
+    const std::string&amp; query_text,
+    int k,
+    int expansion_hops
+) {
+    // 1. Vektor-Suche: Top-K Chunks
+    auto embedding = generateQueryEmbedding(query_text);
+    auto top_k_chunks = vector_index_-&gt;search(embedding, k);
+
+    // 2. Graph-Expansion: Nachbarn via BFS
+    std::set&lt;std::string&gt; expanded_chunks;
+    for (const auto&amp; [chunk_id, score] : top_k_chunks) {
+        expanded_chunks.insert(chunk_id);
+
+        // BFS: expansion_hops Schritte
+        auto neighbors = graph_index_-&gt;bfs(chunk_id, expansion_hops, {&quot;next&quot;, &quot;prev&quot;, &quot;parent&quot;, &quot;sibling&quot;});
+        for (const auto&amp; neighbor : neighbors) {
+            expanded_chunks.insert(neighbor);
+        }
+    }
+
+    // 3. Ergebnisse ranken (Original-Score beibehalten)
+    std::vector&lt;std::pair&lt;std::string, float&gt;&gt; results;
+    for (const auto&amp; chunk_id : expanded_chunks) {
+        auto it = std::find_if(top_k_chunks.begin(), top_k_chunks.end(),
+            [&amp;](const auto&amp; p) { return p.first == chunk_id; });
+
+        float score = (it != top_k_chunks.end()) ? it-&gt;second : 0.5; // Nachbarn mit reduziertem Score
+        results.push_back({chunk_id, score});
+    }
+
+    // 4. Nach Score sortieren
+    std::sort(results.begin(), results.end(),
+        [](const auto&amp; a, const auto&amp; b) { return a.second &gt; b.second; });
+
+    return results;
+}
+</code></pre>
+<h2 id="7-embedding-strategien">7. Embedding-Strategien<a class="headerlink" href="#7-embedding-strategien" title="Permanent link">&para;</a></h2>
+<h3 id="71-embedding-modelle-pro-modalitat">7.1 Embedding-Modelle pro Modalität<a class="headerlink" href="#71-embedding-modelle-pro-modalitat" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Modalität</th>
+<th>Modell</th>
+<th>Dimension</th>
+<th>Beschreibung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Text</td>
+<td>Sentence-Transformers (<code>all-MiniLM-L6-v2</code>)</td>
+<td>768D</td>
+<td>Semantische Textsuche</td>
+</tr>
+<tr>
+<td>Bilder</td>
+<td>CLIP (<code>openai/clip-vit-base-patch32</code>)</td>
+<td>512D</td>
+<td>Multi-modale (Bild + Text) Embeddings</td>
+</tr>
+<tr>
+<td>Geodaten</td>
+<td>Geo2Vec (Custom)</td>
+<td>128D</td>
+<td>[lon, lat] → Vektor</td>
+</tr>
+<tr>
+<td>CAD</td>
+<td>PartNet / GraphSAINT (Custom)</td>
+<td>256D</td>
+<td>Geometry + BOM → Vektor</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>Wav2Vec2 (<code>facebook/wav2vec2-base</code>)</td>
+<td>768D</td>
+<td>Akustische Features</td>
+</tr>
+<tr>
+<td>Tabellen</td>
+<td>TaBERT / TAPAS (Custom)</td>
+<td>768D</td>
+<td>Schema + Rows → Vektor</td>
+</tr>
+</tbody>
+</table>
+<h3 id="72-externe-embedding-services">7.2 Externe Embedding-Services<a class="headerlink" href="#72-externe-embedding-services" title="Permanent link">&para;</a></h3>
+<p>Embeddings werden via HTTP-APIs generiert:</p>
+<p><strong>Text-Embedding:</strong></p>
+<pre><code class="language-http">POST http://localhost:5000/embed
+Content-Type: application/json
+
+{
+  &quot;text&quot;: &quot;This is a sample document.&quot;
+}
+
+Response:
+{
+  &quot;embedding&quot;: [0.123, -0.456, ..., 0.789],  // 768D
+  &quot;model&quot;: &quot;all-MiniLM-L6-v2&quot;
+}
+</code></pre>
+<p><strong>Batch-Embedding:</strong></p>
+<pre><code class="language-http">POST http://localhost:5000/embed/batch
+Content-Type: application/json
+
+{
+  &quot;texts&quot;: [&quot;Doc 1&quot;, &quot;Doc 2&quot;, ..., &quot;Doc 100&quot;]
+}
+
+Response:
+{
+  &quot;embeddings&quot;: [
+    [0.1, 0.2, ...],
+    [0.3, 0.4, ...],
+    ...
+  ]
+}
+</code></pre>
+<h3 id="73-hybrid-search">7.3 Hybrid-Search<a class="headerlink" href="#73-hybrid-search" title="Permanent link">&para;</a></h3>
+<p>Kombination von Vektor- und Attributsuche:</p>
+<pre><code class="language-cpp">std::vector&lt;std::pair&lt;std::string, float&gt;&gt; ContentManager::hybridSearch(
+    const std::string&amp; query_text,
+    const json&amp; filters,
+    int k
+) {
+    // 1. Vektor-Suche
+    auto embedding = generateQueryEmbedding(query_text);
+    auto vector_results = vector_index_-&gt;search(embedding, k * 2); // Oversampling
+
+    // 2. Filter auf Metadaten (SecondaryIndex)
+    std::vector&lt;std::pair&lt;std::string, float&gt;&gt; filtered_results;
+    for (const auto&amp; [chunk_id, score] : vector_results) {
+        auto chunk = getChunk(chunk_id);
+        if (!chunk.has_value()) continue;
+
+        // Filter anwenden
+        bool matches = true;
+        if (filters.contains(&quot;category&quot;)) {
+            auto content = getContentMeta(chunk-&gt;content_id);
+            if (content-&gt;category != filters[&quot;category&quot;].get&lt;ContentCategory&gt;()) {
+                matches = false;
+            }
+        }
+        if (filters.contains(&quot;tags&quot;)) {
+            auto content = getContentMeta(chunk-&gt;content_id);
+            auto required_tags = filters[&quot;tags&quot;].get&lt;std::vector&lt;std::string&gt;&gt;();
+            for (const auto&amp; tag : required_tags) {
+                if (std::find(content-&gt;tags.begin(), content-&gt;tags.end(), tag) == content-&gt;tags.end()) {
+                    matches = false;
+                    break;
+                }
+            }
+        }
+
+        if (matches) {
+            filtered_results.push_back({chunk_id, score});
+        }
+    }
+
+    // 3. Top-K zurückgeben
+    filtered_results.resize(std::min(k, static_cast&lt;int&gt;(filtered_results.size())));
+    return filtered_results;
+}
+</code></pre>
+<h2 id="8-http-api">8. HTTP API<a class="headerlink" href="#8-http-api" title="Permanent link">&para;</a></h2>
+<h3 id="81-endpoints">8.1 Endpoints<a class="headerlink" href="#81-endpoints" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Methode</th>
+<th>Beschreibung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/content/import</code></td>
+<td>POST</td>
+<td>Import vorverarbeiteter Inhalte (Schema oben)</td>
+</tr>
+<tr>
+<td><code>/content/:id</code></td>
+<td>GET</td>
+<td>Content-Metadaten abrufen</td>
+</tr>
+<tr>
+<td><code>/content/:id/blob</code></td>
+<td>GET</td>
+<td>Original-Blob herunterladen</td>
+</tr>
+<tr>
+<td><code>/content/:id/chunks</code></td>
+<td>GET</td>
+<td>Alle Chunks eines Contents (sortiert)</td>
+</tr>
+<tr>
+<td><code>/content/search</code></td>
+<td>POST</td>
+<td>Semantische Suche (Query-Text + Filters)</td>
+</tr>
+<tr>
+<td><code>/content/:id</code></td>
+<td>DELETE</td>
+<td>Content + Chunks + Edges löschen</td>
+</tr>
+</tbody>
+</table>
+<h3 id="82-beispiele">8.2 Beispiele<a class="headerlink" href="#82-beispiele" title="Permanent link">&para;</a></h3>
+<p><strong>Import:</strong></p>
+<pre><code class="language-http">POST /content/import
+Content-Type: application/json
+
+{
+  &quot;content&quot;: {
+    &quot;id&quot;: &quot;doc-123&quot;,
+    &quot;mime_type&quot;: &quot;text/plain&quot;,
+    &quot;category&quot;: &quot;TEXT&quot;,
+    &quot;original_filename&quot;: &quot;readme.txt&quot;,
+    &quot;size_bytes&quot;: 512,
+    &quot;hash_sha256&quot;: &quot;abc...&quot;,
+    &quot;created_at&quot;: 1672531200,
+    &quot;tags&quot;: [&quot;docs&quot;]
+  },
+  &quot;chunks&quot;: [
+    {
+      &quot;id&quot;: &quot;chunk-1&quot;,
+      &quot;content_id&quot;: &quot;doc-123&quot;,
+      &quot;seq_num&quot;: 0,
+      &quot;chunk_type&quot;: &quot;text&quot;,
+      &quot;text&quot;: &quot;Introduction...&quot;,
+      &quot;embedding&quot;: [0.1, 0.2, ...]
+    }
+  ],
+  &quot;edges&quot;: [
+    {
+      &quot;from&quot;: &quot;chunk-1&quot;,
+      &quot;to&quot;: &quot;doc-123&quot;,
+      &quot;type&quot;: &quot;parent&quot;
+    }
+  ]
+}
+
+Response:
+{
+  &quot;ok&quot;: true,
+  &quot;content_id&quot;: &quot;doc-123&quot;,
+  &quot;chunks_created&quot;: 1,
+  &quot;edges_created&quot;: 1
+}
+</code></pre>
+<p><strong>Suche:</strong></p>
+<pre><code class="language-http">POST /content/search
+Content-Type: application/json
+
+{
+  &quot;query&quot;: &quot;machine learning tutorial&quot;,
+  &quot;k&quot;: 10,
+  &quot;filters&quot;: {
+    &quot;category&quot;: &quot;TEXT&quot;,
+    &quot;tags&quot;: [&quot;ai&quot;]
+  },
+  &quot;expansion_hops&quot;: 1
+}
+
+Response:
+{
+  &quot;results&quot;: [
+    {
+      &quot;chunk_id&quot;: &quot;chunk-42&quot;,
+      &quot;content_id&quot;: &quot;doc-ml-intro&quot;,
+      &quot;score&quot;: 0.87,
+      &quot;text&quot;: &quot;Introduction to machine learning...&quot;,
+      &quot;metadata&quot;: {&quot;filename&quot;: &quot;ml_intro.md&quot;}
+    },
+    ...
+  ]
+}
+</code></pre>
+<h2 id="9-best-practices">9. Best Practices<a class="headerlink" href="#9-best-practices" title="Permanent link">&para;</a></h2>
+<h3 id="91-chunking-richtlinien">9.1 Chunking-Richtlinien<a class="headerlink" href="#91-chunking-richtlinien" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Text:</strong> 200–400 Tokens (besserer Retrieval/Ranking-Tradeoff), 50 Tokens Overlap</li>
+<li><strong>Audio/Video:</strong> 2–10 Sekunden pro Segment (annehmbare Granularität)</li>
+<li><strong>Tabellen:</strong> 100–500 Rows pro Batch (Balance zwischen Kontext und Performance)</li>
+<li><strong>Geodaten:</strong> Ein Chunk pro Feature (GeoJSON), Spatial Aggregation bei Millionen Features</li>
+</ul>
+<h3 id="92-embedding-optimierung">9.2 Embedding-Optimierung<a class="headerlink" href="#92-embedding-optimierung" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Batch-Processing:</strong> 100–500 Embeddings pro Request (10x schneller als einzeln)</li>
+<li><strong>GPU-Beschleunigung:</strong> Sentence-Transformers mit CUDA (5–10x Speedup)</li>
+<li><strong>Embedding-Cache:</strong> Hash → Embedding speichern (Dedup vermeidet Re-Computation)</li>
+</ul>
+<h3 id="93-storage-optimierung">9.3 Storage-Optimierung<a class="headerlink" href="#93-storage-optimierung" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Inline vs. External Blobs:</strong></li>
+<li>&lt; 1 MB: RocksDB (schneller Zugriff)</li>
+<li>&gt; 1 MB: Filesystem oder S3 (Blob-Ref in RocksDB)</li>
+<li><strong>Kompression:</strong> Zstd für große Blobs (3:1 Ratio bei Text, 1.5:1 bei Binär)</li>
+<li><strong>TTL:</strong> Alte Inhalte automatisch löschen (siehe <code>docs/base_entity.md</code>)</li>
+</ul>
+<h3 id="94-modalitats-spezifische-guidelines">9.4 Modalitäts-spezifische Guidelines<a class="headerlink" href="#94-modalitats-spezifische-guidelines" title="Permanent link">&para;</a></h3>
+<p><strong>Bilder:</strong></p>
+<ul>
+<li>EXIF-Daten extrahieren (GPS, DateTime, Camera Model)</li>
+<li>OCR nur bei Bedarf (teuer!)</li>
+<li>Object Detection optional (YOLO, Detectron2)</li>
+<li>Captioning mit BLIP/GIT für Textsuche</li>
+</ul>
+<p><strong>Geodaten:</strong></p>
+<ul>
+<li>Normalisierung auf WGS84 (EPSG:4326) vor Import</li>
+<li>Bounding Box pre-compute für schnelle Spatial Queries</li>
+<li>Spatial Joins für <code>member_of</code> Edges (Punkt-in-Polygon-Tests)</li>
+</ul>
+<p><strong>CAD:</strong></p>
+<ul>
+<li>BOM-Extraktion via Open CASCADE oder STEP-Parser</li>
+<li>Geometrie-Hashing für Duplikaterkennung (Topology-Hash)</li>
+<li>Assembly-Hierarchie als <code>contains</code> Edges abbilden</li>
+</ul>
+<p><strong>Tabellen:</strong></p>
+<ul>
+<li>Schema-Inferenz (Datentypen, Primärschlüssel)</li>
+<li>Foreign-Key-Erkennung → <code>references</code> Edges</li>
+<li>Spalten-Normalisierung (z.B. Dates → ISO8601)</li>
+</ul>
+<h2 id="10-performance-benchmarks">10. Performance &amp; Benchmarks<a class="headerlink" href="#10-performance-benchmarks" title="Permanent link">&para;</a></h2>
+<h3 id="101-ingestion-throughput">10.1 Ingestion-Throughput<a class="headerlink" href="#101-ingestion-throughput" title="Permanent link">&para;</a></h3>
+<p><strong>Baseline (Sequentiell):</strong></p>
+<ul>
+<li>Text (1 MB): ~2 s (Tokenization + Embedding)</li>
+<li>Image (5 MB): ~5 s (EXIF + CLIP-Embedding)</li>
+<li>Geodaten (10k Features): ~10 s (Parsing + Spatial Embeddings)</li>
+</ul>
+<p><strong>Mit Batching:</strong></p>
+<ul>
+<li>Text Batch (100 Docs): ~10 s (10x Speedup via Batch-Embedding)</li>
+<li>Image Batch (50 Images): ~15 s (3x Speedup via GPU-Batch)</li>
+</ul>
+<h3 id="102-search-latenz">10.2 Search-Latenz<a class="headerlink" href="#102-search-latenz" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Vektor-Suche (HNSW):</strong> 10–50 ms (1M Vektoren, k=10)</li>
+<li><strong>Hybrid-Search (Vektor + Filter):</strong> 50–100 ms (Filter auf 100k Entities)</li>
+<li><strong>Graph-Expansion (1 Hop):</strong> +20 ms (BFS auf 100k Edges)</li>
+</ul>
+<h3 id="103-storage-groe">10.3 Storage-Größe<a class="headerlink" href="#103-storage-groe" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>RocksDB Overhead:</strong> ~30% (Metadata, Indexes)</li>
+<li><strong>VectorIndex (HNSW):</strong> ~1.5x der Embedding-Größe (Links + Metadata)</li>
+<li><strong>GraphIndex:</strong> ~40 Bytes pro Edge (From + To + Type + Weight)</li>
+</ul>
+<p><strong>Beispiel:</strong> 1 Million Text-Chunks (768D Embeddings)</p>
+<ul>
+<li>RocksDB (Metadata): ~500 MB</li>
+<li>VectorIndex (Embeddings): 1M * 768 * 4 Bytes * 1.5 = ~4.5 GB</li>
+<li>GraphIndex (2 Edges/Chunk): 2M * 40 Bytes = ~80 MB</li>
+<li><strong>Total:</strong> ~5 GB</li>
+</ul>
+<h2 id="11-testing">11. Testing<a class="headerlink" href="#11-testing" title="Permanent link">&para;</a></h2>
+<h3 id="111-unit-tests-pro-processor">11.1 Unit-Tests (pro Processor)<a class="headerlink" href="#111-unit-tests-pro-processor" title="Permanent link">&para;</a></h3>
+<pre><code class="language-cpp">TEST(TextProcessorTest, ExtractsTextFromPlainText) {
+    TextProcessor processor;
+    std::string blob = &quot;Hello, world!&quot;;
+    ContentType type = {.mime_type=&quot;text/plain&quot;, .category=ContentCategory::TEXT};
+
+    auto result = processor.extract(blob, type);
+
+    ASSERT_TRUE(result.ok);
+    EXPECT_EQ(result.text, &quot;Hello, world!&quot;);
+}
+
+TEST(ImageProcessorTest, ExtractsEXIF) {
+    ImageProcessor processor;
+    std::string blob = loadTestImage(&quot;test_photo.jpg&quot;);
+    ContentType type = {.mime_type=&quot;image/jpeg&quot;, .category=ContentCategory::IMAGE};
+
+    auto result = processor.extract(blob, type);
+
+    ASSERT_TRUE(result.ok);
+    EXPECT_TRUE(result.metadata.contains(&quot;exif&quot;));
+    EXPECT_EQ(result.metadata[&quot;exif&quot;][&quot;Make&quot;], &quot;Canon&quot;);
+}
+</code></pre>
+<h3 id="112-integration-tests">11.2 Integration-Tests<a class="headerlink" href="#112-integration-tests" title="Permanent link">&para;</a></h3>
+<pre><code class="language-cpp">TEST(ContentManagerTest, ImportTextDocumentEndToEnd) {
+    auto storage = std::make_shared&lt;RocksDBWrapper&gt;(&quot;./test_db&quot;);
+    auto vector_index = std::make_shared&lt;VectorIndexManager&gt;(storage, 768);
+    auto graph_index = std::make_shared&lt;GraphIndexManager&gt;(storage);
+    auto secondary_index = std::make_shared&lt;SecondaryIndexManager&gt;(storage);
+
+    ContentManager manager(storage, vector_index, graph_index, secondary_index);
+
+    json spec = {
+        {&quot;content&quot;, {
+            {&quot;id&quot;, &quot;test-doc&quot;},
+            {&quot;mime_type&quot;, &quot;text/plain&quot;},
+            {&quot;category&quot;, &quot;TEXT&quot;},
+            {&quot;original_filename&quot;, &quot;test.txt&quot;},
+            {&quot;size_bytes&quot;, 100},
+            {&quot;hash_sha256&quot;, &quot;hash123&quot;},
+            {&quot;created_at&quot;, 1672531200}
+        }},
+        {&quot;chunks&quot;, json::array({
+            {{&quot;id&quot;, &quot;chunk-1&quot;}, {&quot;content_id&quot;, &quot;test-doc&quot;}, {&quot;seq_num&quot;, 0}, {&quot;chunk_type&quot;, &quot;text&quot;}, {&quot;text&quot;, &quot;Hello&quot;}, {&quot;embedding&quot;, std::vector&lt;float&gt;(768, 0.1)}}
+        })},
+        {&quot;edges&quot;, json::array({
+            {{&quot;from&quot;, &quot;chunk-1&quot;}, {&quot;to&quot;, &quot;test-doc&quot;}, {&quot;type&quot;, &quot;parent&quot;}}
+        })}
+    };
+
+    auto status = manager.importContent(spec, std::nullopt);
+
+    ASSERT_TRUE(status.ok);
+
+    // Verify metadata stored
+    auto meta = manager.getContentMeta(&quot;test-doc&quot;);
+    ASSERT_TRUE(meta.has_value());
+    EXPECT_EQ(meta-&gt;mime_type, &quot;text/plain&quot;);
+
+    // Verify chunks stored
+    auto chunks = manager.getContentChunks(&quot;test-doc&quot;);
+    EXPECT_EQ(chunks.size(), 1);
+
+    // Verify graph edges
+    auto neighbors = graph_index-&gt;getOutNeighbors(&quot;chunk-1&quot;);
+    EXPECT_EQ(neighbors.size(), 1); // Has 'parent' edge
+}
+</code></pre>
+<h3 id="113-performance-benchmarks">11.3 Performance-Benchmarks<a class="headerlink" href="#113-performance-benchmarks" title="Permanent link">&para;</a></h3>
+<pre><code class="language-cpp">static void BM_ImportLargeDocument(benchmark::State&amp; state) {
+    ContentManager manager(/* ... */);
+
+    std::string large_text(10 * 1024 * 1024, 'A'); // 10 MB
+    json spec = createTestSpec(large_text, 512, 50); // 512 Tokens/Chunk, 50 Overlap
+
+    for (auto _ : state) {
+        manager.importContent(spec, std::nullopt);
+    }
+}
+BENCHMARK(BM_ImportLargeDocument);
+
+static void BM_HybridSearch(benchmark::State&amp; state) {
+    ContentManager manager(/* ... */);
+    // ... populate with 100k documents
+
+    for (auto _ : state) {
+        manager.hybridSearch(&quot;machine learning&quot;, {{&quot;category&quot;, &quot;TEXT&quot;}}, 10);
+    }
+}
+BENCHMARK(BM_HybridSearch);
+</code></pre>
+<h2 id="12-roadmap">12. Roadmap<a class="headerlink" href="#12-roadmap" title="Permanent link">&para;</a></h2>
+<h3 id="mvp-10-aktuell">MVP 1.0 (Aktuell)<a class="headerlink" href="#mvp-10-aktuell" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[x] ContentTypeRegistry + ContentCategory</li>
+<li>[x] TextProcessor (Extraction, Chunking, Embedding via Mock)</li>
+<li>[x] ContentManager::importContent() (kanonisches Schema)</li>
+<li>[x] HTTP Endpoint: POST /content/import</li>
+<li>[x] BasicTests (Unit + Integration)</li>
+</ul>
+<h3 id="mvp-20-geplant">MVP 2.0 (Geplant)<a class="headerlink" href="#mvp-20-geplant" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] ImageProcessor (EXIF + CLIP-Embedding via external service)</li>
+<li>[ ] GeoProcessor (GeoJSON + Geo2Vec)</li>
+<li>[ ] CADProcessor (STEP + PartNet-Embedding)</li>
+<li>[ ] Batch-Import (POST /content/import/batch)</li>
+<li>[ ] Hybrid-Search (Vektor + Filter)</li>
+<li>[ ] Graph-Expansion (BFS mit <code>next</code>, <code>prev</code>, <code>contains</code>)</li>
+</ul>
+<h3 id="future-post-mvp">Future (Post-MVP)<a class="headerlink" href="#future-post-mvp" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] AudioProcessor (ID3 + Wav2Vec2 + Whisper ASR)</li>
+<li>[ ] StructuredProcessor (CSV/Parquet + TaBERT)</li>
+<li>[ ] Async-Ingestion (Job-Queue mit Status-Tracking)</li>
+<li>[ ] External Blob-Storage (S3-Anbindung)</li>
+<li>[ ] Multi-Hop Graph-Reasoning (z.B. "Show CAD parts from same supplier")</li>
+<li>[ ] Federated Search (Multi-Tenant mit Access Control)</li>
+</ul>
+<h2 id="13-fazit">13. Fazit<a class="headerlink" href="#13-fazit" title="Permanent link">&para;</a></h2>
+<p>Die <strong>Content Pipeline</strong> bietet eine <strong>skalierbare, erweiterbare Architektur</strong> für heterogene Datentypen. Durch die Trennung von generischen Operationen (Hashing, Graph-Erstellung) und typ-spezifischer Verarbeitung (via Processors) bleibt das System wartbar und einfach erweiterbar.</p>
+<p><strong>Key Benefits:</strong></p>
+<ul>
+<li><strong>Einheitliche API:</strong> Ein Import-Endpoint für alle Datentypen</li>
+<li><strong>Wiederverwendbare Komponenten:</strong> Chunking, Graph-Erstellung, Deduplication</li>
+<li><strong>Typ-Sicherheit:</strong> ContentTypeRegistry verhindert falsche Verarbeitung</li>
+<li><strong>Produktivität:</strong> Neue Datentypen in &lt; 1 Tag integrierbar (nur Processor implementieren)</li>
+<li><strong>RAG-Ready:</strong> Graph-Expansion für kontextuelle Suche out-of-the-box</li>
+<li><strong>Performance:</strong> Batching, GPU-Embeddings, HNSW-Index für Millionen Vektoren</li>
+</ul>
+<p><strong>Weiterführende Dokumentation:</strong></p>
+<ul>
+<li><a href="../content_architecture/">Content Architecture</a> - Design-Details der Prozessor-Architektur</li>
+<li><a href="../content/ingestion/">Ingestion Guidelines</a> - Modalitäts-spezifische Vorverarbeitungs-Empfehlungen</li>
+<li><a href="../indexes/#vector-index">Vector Index</a> - HNSW-Algorithmus und Tuning-Parameter</li>
+<li><a href="../indexes/#graph-index">Graph Index</a> - BFS/DFS-Traversierung und Edge-Typen</li>
+<li><a href="../aql_syntax/">AQL Syntax</a> - Hybrid-Queries mit <code>VECTOR_KNN()</code> und <code>GRAPH_EXPAND()</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.instant", "content.code.copy"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "In Zwischenablage kopiert", "clipboard.copy": "In Zwischenablage kopieren", "search.result.more.one": "1 weiteres Suchergebnis auf dieser Seite", "search.result.more.other": "# weitere Suchergebnisse auf dieser Seite", "search.result.none": "Keine Suchergebnisse", "search.result.one": "1 Suchergebnis", "search.result.other": "# Suchergebnisse", "search.result.placeholder": "Suchbegriff eingeben", "search.result.term.missing": "Es fehlt", "select.version": "Version ausw\u00e4hlen"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+        <script src="../js/print-site.js"></script>
+      
+    
+  </body>
+</html>
