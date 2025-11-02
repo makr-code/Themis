@@ -124,7 +124,6 @@ set(THEMIS_CORE_SOURCES
     
     src/query/query_engine.cpp
     src/query/query_optimizer.cpp
-    src/query/query_parser.cpp
     src/query/aql_parser.cpp
     src/query/aql_translator.cpp
     src/query/semantic_cache.cpp

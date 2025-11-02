@@ -20,6 +20,12 @@ struct RangerClientConfig {
     std::optional<std::string> ca_cert_path;       // optional custom CA
     std::optional<std::string> client_cert_path;   // optional mTLS
     std::optional<std::string> client_key_path;    // optional mTLS
+    // Timeouts (milliseconds)
+    long connect_timeout_ms = 5000; // default 5s connect timeout
+    long request_timeout_ms = 15000; // default 15s total timeout
+    // Retry policy
+    int max_retries = 2;            // number of retries on transient errors (in addition to first try)
+    long retry_backoff_ms = 500;    // initial backoff between retries, exponential
 };
 
 class RangerClient {

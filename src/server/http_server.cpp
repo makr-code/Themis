@@ -279,6 +279,19 @@ HttpServer::HttpServer(
         if (auto ca = get_env("THEMIS_RANGER_CA_CERT")) rcfg.ca_cert_path = *ca;
         if (auto cc = get_env("THEMIS_RANGER_CLIENT_CERT")) rcfg.client_cert_path = *cc;
         if (auto ck = get_env("THEMIS_RANGER_CLIENT_KEY")) rcfg.client_key_path = *ck;
+        // Optional timeouts & retry configuration
+        if (auto ct = get_env("THEMIS_RANGER_CONNECT_TIMEOUT_MS")) {
+            try { rcfg.connect_timeout_ms = std::stol(*ct); } catch (...) {}
+        }
+        if (auto rt = get_env("THEMIS_RANGER_REQUEST_TIMEOUT_MS")) {
+            try { rcfg.request_timeout_ms = std::stol(*rt); } catch (...) {}
+        }
+        if (auto mr = get_env("THEMIS_RANGER_MAX_RETRIES")) {
+            try { rcfg.max_retries = std::stoi(*mr); } catch (...) {}
+        }
+        if (auto rb = get_env("THEMIS_RANGER_RETRY_BACKOFF_MS")) {
+            try { rcfg.retry_backoff_ms = std::stol(*rb); } catch (...) {}
+        }
         try {
             ranger_client_ = std::make_unique<themis::server::RangerClient>(std::move(rcfg));
             THEMIS_INFO("Ranger client configured for {}", *base);

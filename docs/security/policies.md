@@ -172,6 +172,12 @@ $env:THEMIS_RANGER_CA_CERT    = "C:\\certs\\ca.pem"  # optional eigenes CA-Bundl
 # mTLS (optional)
 $env:THEMIS_RANGER_CLIENT_CERT = "C:\\certs\\client.crt"
 $env:THEMIS_RANGER_CLIENT_KEY  = "C:\\certs\\client.key"
+
+# Timeouts & Retry (optional, defaults shown)
+$env:THEMIS_RANGER_CONNECT_TIMEOUT_MS = "5000"     # Verbindungsaufbau-Timeout
+$env:THEMIS_RANGER_REQUEST_TIMEOUT_MS = "15000"    # Gesamt-Request-Timeout
+$env:THEMIS_RANGER_MAX_RETRIES        = "2"        # Anzahl Wiederholungen bei 5xx/Netzfehlern
+$env:THEMIS_RANGER_RETRY_BACKOFF_MS   = "500"      # Initialer Backoff (exponentiell)
 ```
 
 Hinweise:

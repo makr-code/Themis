@@ -14,6 +14,10 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 >   - Verwendet jetzt GET /api/retention/policies über ThemisApiClient (inkl. Name-Filter, Pagination vorbereitet).
 >   - DI eingerichtet (appsettings.json, ThemisApiClient), Startup via App.xaml.cs.
 >   - Nächste Schritte: Create/Update/Delete, History und Stats an UI anbinden.
+> - Konfiguration (YAML): Policies und Server unterstützen jetzt YAML (Priorität vor JSON); Doku aktualisiert; Baseline `config/policies.yaml` hinzugefügt.
+> - Ranger-Adapter: Timeouts & Retry implementiert (ENV: THEMIS_RANGER_CONNECT_TIMEOUT_MS, _REQUEST_TIMEOUT_MS, _MAX_RETRIES, _RETRY_BACKOFF_MS). Connection‑Pooling bleibt offen.
+> - PKI/Signaturen: Aktuell Demo‑Stub (Base64) – nicht eIDAS‑konform. Action: OpenSSL‑basierte RSA Sign/Verify implementieren (HSM optional). Doku‑Hinweis ergänzt.
+> - Query Parser (legacy): Unbenutzt, aus Build entfernt. AQL Parser/Translator ist authoritative.
 
 ---
 
@@ -28,6 +32,7 @@ Diese Kurzliste verdichtet die wichtigsten noch offenen Themen aus den detaillie
 - Time-Series: Gorilla-Compression + Continuous Aggregates/Retention Policies
 - **Compression Strategy**: Gorilla Time-Series (10-20x Ratio), Content-Blob ZSTD (1.5-2x), Vector Quantization (SQ8 für >1M Vektoren)
 - Security: Column-Level Encryption Key Rotation, Dynamic Data Masking, RBAC-Basis
+- Security: Column-Level Encryption Key Rotation, Dynamic Data Masking, RBAC-Basis, eIDAS-konforme Signaturen (PKI)
 - Observability/Ops: POST /config (Hot-Reload), strukturierte Logs, inkrementelle Backups
 - Auto-Scaling (Serverless-Basis): Request-basiertes Scaling, Auto-Pause, Global Secondary Indexes (eventual)
 

@@ -3,6 +3,8 @@
 #include <curl/curl.h>
 #include <sstream>
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -20,9 +22,6 @@ namespace {
 RangerClient::RangerClient(RangerClientConfig cfg) : cfg_(std::move(cfg)) {}
 
 std::optional<json> RangerClient::fetchPolicies(std::string* err) const {
-    CURL* curl = curl_easy_init();
-    if (!curl) { if (err) *err = "curl init failed"; return std::nullopt; }
-
     std::string url = cfg_.base_url;
     if (!cfg_.policies_path.empty()) {
         if (!url.empty() && url.back() == '/' && cfg_.policies_path.front() == '/') {
@@ -37,48 +36,83 @@ std::optional<json> RangerClient::fetchPolicies(std::string* err) const {
         url += std::string("&serviceName=") + cfg_.service_name;
     }
 
-    std::string response;
-    struct curl_slist* headers = nullptr;
-    if (!cfg_.bearer_token.empty()) {
-        std::string auth = std::string("Authorization: Bearer ") + cfg_.bearer_token;
-        headers = curl_slist_append(headers, auth.c_str());
+    int attempts = 0;
+    long backoff = std::max(0L, cfg_.retry_backoff_ms);
+    const int max_attempts = std::max(1, cfg_.max_retries + 1); // first try + retries
+    std::string last_err;
+
+    while (attempts < max_attempts) {
+        attempts++;
+
+        CURL* curl = curl_easy_init();
+        if (!curl) { last_err = "curl init failed"; break; }
+
+        std::string response;
+        struct curl_slist* headers = nullptr;
+        if (!cfg_.bearer_token.empty()) {
+            std::string auth = std::string("Authorization: Bearer ") + cfg_.bearer_token;
+            headers = curl_slist_append(headers, auth.c_str());
+        }
+        headers = curl_slist_append(headers, "Accept: application/json");
+
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeToString);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "themisdb/1.0");
+
+        // Timeouts
+        if (cfg_.connect_timeout_ms > 0) curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, cfg_.connect_timeout_ms);
+        if (cfg_.request_timeout_ms > 0) curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg_.request_timeout_ms);
+
+        // TLS options
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, cfg_.tls_verify ? 1L : 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, cfg_.tls_verify ? 2L : 0L);
+        if (cfg_.ca_cert_path) curl_easy_setopt(curl, CURLOPT_CAINFO, cfg_.ca_cert_path->c_str());
+        if (cfg_.client_cert_path) curl_easy_setopt(curl, CURLOPT_SSLCERT, cfg_.client_cert_path->c_str());
+        if (cfg_.client_key_path) curl_easy_setopt(curl, CURLOPT_SSLKEY, cfg_.client_key_path->c_str());
+
+        CURLcode rc = curl_easy_perform(curl);
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+
+        bool success = (rc == CURLE_OK) && (http_code >= 200 && http_code < 300);
+        if (success) {
+            try {
+                return json::parse(response);
+            } catch (const std::exception& e) {
+                last_err = e.what();
+                // Parsing error is not transient; break
+                break;
+            }
+        }
+
+        // Build error message
+        std::ostringstream o;
+        if (rc != CURLE_OK) {
+            o << "curl error: " << curl_easy_strerror(rc);
+        } else {
+            o << "HTTP " << http_code << ": " << response;
+        }
+        last_err = o.str();
+
+        // Retry on transient errors: network failures or 5xx HTTP
+        bool should_retry = (rc != CURLE_OK) || (http_code >= 500 && http_code < 600);
+        if (!should_retry || attempts >= max_attempts) {
+            break;
+        }
+        // Backoff (simple exponential)
+        if (backoff > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(backoff));
+            backoff = std::min(backoff * 2, 8000L);
+        }
     }
-    headers = curl_slist_append(headers, "Accept: application/json");
 
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeToString);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "themisdb/1.0");
-
-    // TLS options
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, cfg_.tls_verify ? 1L : 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, cfg_.tls_verify ? 2L : 0L);
-    if (cfg_.ca_cert_path) curl_easy_setopt(curl, CURLOPT_CAINFO, cfg_.ca_cert_path->c_str());
-    if (cfg_.client_cert_path) curl_easy_setopt(curl, CURLOPT_SSLCERT, cfg_.client_cert_path->c_str());
-    if (cfg_.client_key_path) curl_easy_setopt(curl, CURLOPT_SSLKEY, cfg_.client_key_path->c_str());
-
-    CURLcode rc = curl_easy_perform(curl);
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
-    if (rc != CURLE_OK) {
-        if (err) *err = curl_easy_strerror(rc);
-        return std::nullopt;
-    }
-    if (http_code < 200 || http_code >= 300) {
-        if (err) { std::ostringstream o; o << "HTTP " << http_code << ": " << response; *err = o.str(); }
-        return std::nullopt;
-    }
-    try {
-        return json::parse(response);
-    } catch (const std::exception& e) {
-        if (err) *err = e.what();
-        return std::nullopt;
-    }
+    if (err) *err = last_err.empty() ? std::string("fetchPolicies failed") : last_err;
+    return std::nullopt;
 }
 
 // Helper: to lower
