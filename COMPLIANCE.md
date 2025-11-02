@@ -58,10 +58,12 @@ python demo_compliance.py
 
 | Komponente | Funktion | Status |
 |------------|----------|--------|
-| Qualifizierte Signatur | PKI-Client (RSA-SHA256) | ✅ |
+| Qualifizierte Signatur | PKI-Client (RSA-SHA256) | ⚠️ **Stub** (Base64-Encoding, nicht produktiv) |
 | Zeitstempel | Präzise Zeiterfassung | ✅ |
 | Langzeitarchivierung | Archive-Handler (S3/Tape) | ⚙️ Konfigurierbar |
-| Nachweisbarkeit | Tamper-proof Audit-Logs | ✅ |
+| Nachweisbarkeit | Tamper-proof Audit-Logs | ⚠️ Teilweise (PKI-Stub limitiert) |
+
+**⚠️ Wichtiger Hinweis:** Die aktuelle PKI-Implementierung (`src/utils/pki_client.cpp`) ist ein Demo-Stub und **nicht eIDAS-konform**. Für produktive Nutzung muss eine echte RSA-Signatur-Integration (OpenSSL/HSM) implementiert werden. Siehe `CODE_AUDIT_MOCKUPS_STUBS.md` für Details.
 
 ### HGB §257
 

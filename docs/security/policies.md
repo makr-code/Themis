@@ -145,6 +145,8 @@ Sicherheit & Betrieb:
 
 Fazit: Ranger ist nicht erforderlich, bringt aber als optionales Management deutliche Vorteile in Enterprise-Umgebungen. Der empfohlene Weg ist ein lesender Sync mit lokalem Enforcen.
 
+**⚠️ Production-Hinweis:** Die aktuelle Ranger-Adapter-Implementierung ist funktional für Dev/Demo-Umgebungen. Für Production-Deployments mit hoher Last wird empfohlen, Connection-Pooling, Retry-Logic und Timeout-Konfiguration hinzuzufügen. Details siehe `CODE_AUDIT_MOCKUPS_STUBS.md`.
+
 ### API-Details & Absicherung
 
 - Import: `POST /policies/import/ranger` (erfordert Scope `admin` sowie passende Policy)

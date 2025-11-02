@@ -2,6 +2,8 @@
 
 ThemisDB unterstützt eine externe Schlüsselverwaltung via KeyProvider. Aktuell ist standardmäßig ein MockKeyProvider verdrahtet; eine Vault‑basierte Implementierung ist vorbereitet.
 
+**⚠️ Hinweis zur PKI-Integration:** Die aktuelle PKI-Client-Implementierung (`src/utils/pki_client.cpp`) ist ein Demo-Stub für Entwicklung/Tests. Für produktive Nutzung mit eIDAS-konformen Signaturen ist eine echte RSA/OpenSSL-Integration erforderlich. Details siehe `CODE_AUDIT_MOCKUPS_STUBS.md`.
+
 ## Schlüsselarten (Beispiele)
 - LEK: Local Encryption Key
 - KEK: Key Encryption Key
