@@ -2,6 +2,7 @@
 #include "utils/serialization.h"
 #include "utils/logger.h"
 #include <simdjson.h>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
 
@@ -401,7 +402,8 @@ std::string BaseEntity::toJson() const {
             } else if constexpr (std::is_same_v<T, double>) {
                 oss << arg;
             } else if constexpr (std::is_same_v<T, std::string>) {
-                oss << "\"" << arg << "\""; // TODO: proper JSON escaping
+                // Use nlohmann::json for proper string escaping (prevents injection)
+                oss << nlohmann::json(arg).dump();
             } else if constexpr (std::is_same_v<T, std::vector<float>>) {
                 oss << "[";
                 for (size_t i = 0; i < arg.size(); ++i) {
