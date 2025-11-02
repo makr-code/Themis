@@ -340,15 +340,23 @@ consumeChangefeed();
 {
   "features": {
     "cdc": true
+  },
+  "sse": {
+    "max_events_per_second": 0
   }
 }
 ```
+
+Bemerkungen:
+- `features.cdc`: Aktiviert Changefeed und SSE-Streaming-Endpunkte
+- `sse.max_events_per_second`: Server-seitiges Rate-Limit pro SSE-Verbindung (0 = unbegrenzt, empfohlen für Produktion: 0 oder 100–1000 je nach Last)
 
 ### Verify CDC Status
 
 Check logs on server startup:
 ```
 [INFO] Changefeed initialized using default CF
+[INFO] SSE Connection Manager initialized
 ```
 
 Query an endpoint to verify feature is enabled:
@@ -370,6 +378,92 @@ curl http://localhost:8765/changefeed?from_seq=0&limit=1
 
 ---
 
+## SSE-Streaming: Backpressure & Reconnect
+
+Das SSE-Streaming über `GET /changefeed/stream` ermöglicht nahezu Echtzeit-Konsum der CDC-Events mittels Server-Sent Events.
+
+Parameter (Query):
+- `from_seq` (uint64, optional): Start nach dieser Sequence (exklusiv)
+- `key_prefix` (string, optional): Filter nach Schlüsselpräfix (z. B. `user:`)
+- `keep_alive` (bool, default `true`): Streaming mit Heartbeats; bei `false` einmalige Batch-Antwort
+- `max_seconds` (int, default `30`): Dauer des Streaming-Zyklus (Testzwecke, 1..60)
+- `heartbeat_ms` (int, optional): Herzschlag-Intervall (nur Test/Override; min 100ms)
+- `retry_ms` (int, default `3000`): SSE-„retry“-Hinweis für Client-Reconnects
+- `max_events` (int, default `100`): Maximal pro Poll gelesene Events (Backpressure am Endpunkt)
+
+Header (Client → Server):
+- `Last-Event-ID`: Startet das Streaming ab der zuletzt verarbeiteten ID; dank exklusivem `from_seq` werden keine Duplikate erneut gesendet.
+
+Format (Server → Client):
+- Vorangestellter Hinweis: `retry: <ms>`
+- Pro Event:
+  - `id: <sequence>`
+  - `data: <json>`
+- Heartbeats als Kommentar: `: heartbeat`
+
+Backpressure & Pufferung:
+- Jeder Stream hat einen internen Puffer (Standard: 1000 Events). Bei Überlauf gilt Drop-Oldest-Policy (älteste Events werden verworfen).
+- Pro-Poll-Kappung via `max_events` begrenzt die Eventabnahme je Schleifendurchlauf.
+- Metrik: `vccdb_sse_dropped_events_total` zählt verwarfene Events (Prometheus unter `/metrics`).
+- Optional (serverseitig): `max_events_per_second` Rate-Limit pro Verbindung (0 = unbegrenzt).
+
+Client-Reconnect (Beispiel, Browser):
+```javascript
+let es;
+function connect(fromSeq = 0) {
+  const headers = fromSeq ? { 'Last-Event-ID': String(fromSeq) } : {};
+  es = new EventSource('/changefeed/stream?keep_alive=true', { withCredentials: false });
+  let lastId = fromSeq;
+  es.onmessage = (ev) => {
+    const data = JSON.parse(ev.data);
+    lastId = parseInt(ev.lastEventId || lastId, 10);
+    handleEvent(data);
+  };
+  es.onerror = () => {
+    es.close();
+    setTimeout(() => connect(lastId), 3000); // Backoff siehe retry
+  };
+}
+connect();
+```
+
+Proxy-Guidelines (Nginx):
+```nginx
+location /changefeed/stream {
+  proxy_pass http://themis_backend;
+  proxy_http_version 1.1;
+  proxy_set_header Connection '';
+  proxy_buffering off;         # wichtig: keine Pufferung
+  proxy_cache off;
+  gzip off;                    # keine Transformation
+  chunked_transfer_encoding on; # Streaming erlauben
+  proxy_read_timeout 1h;       # lange Timeouts für SSE
+  add_header Cache-Control "no-cache, no-transform";
+}
+```
+
+Proxy-Guidelines (HAProxy):
+```
+frontend fe
+  bind *:443
+  default_backend be
+
+backend be
+  server s1 themis:8080 check
+  http-response add-header Cache-Control "no-cache, no-transform"
+  option http-keep-alive
+  timeout server 1h
+  timeout tunnel 1h
+```
+
+Empfohlene Defaults:
+- `retry_ms=3000`, `heartbeat_ms≈15000`, `max_events=100`
+- Proxy: Buffering aus, `no-transform`, lange Read-Timeouts, keine Gzip-Kompression
+- Client: Last-Event-ID persistieren (z. B. lokal), Exponential Backoff bei Fehlern
+
+Tests/Verifikation:
+- Integrationstests prüfen: Last-Event-ID-Resume (exklusive Fortsetzung), Backpressure (Metrik > 0 unter Last), per-Poll-Kappung bei kurzer Laufzeit.
+
 ## Summary
 
 Zusammenfassung:
@@ -377,6 +471,6 @@ Zusammenfassung:
 - Sequence-basiertes append-only Log
 - Automatisches Tracking für PUT/DELETE
 - GET /changefeed mit Filter/Pagination + Long-Poll
-- Experimentelles SSE-Streaming (`/changefeed/stream`) mit Keep-Alive/Heartbeats
+- SSE-Streaming (`/changefeed/stream`) mit Keep-Alive/Heartbeats, Drop-Oldest-Backpressure, Retry/Resume über Last-Event-ID
 
 Einsatz: Echtzeit-Sync, Audit-Trails, Event Sourcing – produktionsnah nutzbar; für sehr hohe Last ggf. Erweiterungen einplanen.

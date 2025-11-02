@@ -45,6 +45,7 @@
 - Sicherheit & Governance
   - [Überblick](security/overview.md)
   - [RBAC & Authorization](rbac_authorization.md)
+  - [Policies (MVP)](security/policies.md)
   - [Schlüsselverwaltung](security/key_management.md)
   - [Verschlüsselungsstrategie](encryption_strategy.md)
   - [Verschlüsselungsdeployment](encryption_deployment.md)
@@ -61,11 +62,22 @@
   - [Compliance-Integration](compliance_integration.md)
   - [Governance Usage](governance_usage.md)
   - [Security/Compliance Review](security/security_compliance_review.md)
+  - [Compliance](compliance.md)
 - Deployment & Betrieb
   - [Deployment](deployment.md)
   - [Tracing & Observability](tracing.md)
   - [Change Data Capture (CDC)](change_data_capture.md)
   - [Operations Runbook](operations_runbook.md)
+- Entwicklung
+  - [Code Quality Pipeline](code_quality.md)
+  - [Developers Guide](development/developers.md)
+  - [Todo Liste](development/todo.md)
+  - [Tool Todo](development/tool_todo.md)
+  - [Priorities](development/priorities.md)
+  - [Implementation Status](development/implementation_status.md)
+  - [Audit API Implementation](development/audit_api_implementation.md)
+  - [SAGA API Implementation](development/saga_api_implementation.md)
+  - [Code Audit Mockups/Stubs](development/code_audit_mockups_stubs.md)
 - [Publikation & Ablage](publishing.md)
 - Admin-Tools
   - [Admin Guide](admin_tools_admin_guide.md)

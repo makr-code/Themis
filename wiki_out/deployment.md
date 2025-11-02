@@ -85,7 +85,59 @@ cd vccdb
 
 ## Configuration
 
-### Basic Configuration (`config.json`)
+### Basic Configuration
+
+THEMIS supports both **JSON** and **YAML** configuration files. YAML is recommended for better readability.
+
+**YAML Example** (`config.yaml` or `config/config.yaml`):
+
+```yaml
+storage:
+  rocksdb_path: /var/lib/vccdb/data
+  memtable_size_mb: 256
+  block_cache_size_mb: 1024
+  max_open_files: 10000
+  enable_statistics: true
+  compression:
+    default: lz4
+    bottommost: zstd
+
+server:
+  host: 0.0.0.0
+  port: 8765
+  worker_threads: 8
+  request_timeout_ms: 30000
+  max_request_size_mb: 10
+
+logging:
+  level: info
+  file: /var/log/vccdb/server.log
+  rotation_size_mb: 100
+  max_files: 10
+
+vector_index:
+  engine: hnsw
+  hnsw_m: 16
+  hnsw_ef_construction: 200
+  use_gpu: false
+
+features:
+  semantic_cache: true
+  llm_store: true
+  cdc: true
+  timeseries: true
+  retention:
+    enabled: true
+    interval_hours: 24
+    policies_path: ./config/retention_policies.yaml
+
+tracing:
+  enabled: true
+  service_name: themis-server
+  otlp_endpoint: http://localhost:4318
+```
+
+**JSON Example** (`config.json`):
 
 ```json
 {
@@ -132,15 +184,23 @@ export THEMIS_STORAGE_PATH=/mnt/nvme/vccdb
 export THEMIS_LOG_LEVEL=debug
 export THEMIS_WORKER_THREADS=16
 
-./themis_server --config config.json
+./themis_server --config config.yaml
 # Port 9000, custom storage path, debug logging, 16 threads
+# Note: Also accepts config.json or config.yml
 ```
+
+**Default Search Paths:**
+
+The server searches for configuration files in the following order:
+1. `./config.yaml`, `./config.yml`, `./config.json`
+2. `./config/config.yaml`, `./config/config.yml`, `./config/config.json`
+3. `/etc/vccdb/config.yaml`, `/etc/vccdb/config.yml`, `/etc/vccdb/config.json`
 
 ### Configuration Validation
 
 ```bash
-# Validate config before starting server
-./themis_server --config config.json --validate
+# Validate config before starting server (YAML or JSON)
+./themis_server --config config.yaml --validate
 
 # Output:
 # ✓ Config file valid
@@ -712,65 +772,450 @@ groups:
 
 ## Backup & Recovery
 
-### Snapshot Backup (RocksDB Checkpoint)
+ThemisDB provides robust backup and restore capabilities using RocksDB checkpoints and WAL (Write-Ahead Log) archiving. This enables both full backups and point-in-time recovery (PITR).
+
+### Overview
+
+**Backup Types:**
+- **Full Checkpoint**: Consistent snapshot using RocksDB checkpoint API
+- **Incremental (WAL Archive)**: Continuous archival of WAL files for PITR
+- **Retention Policies**: Automatic cleanup of old backups
+
+**Recovery Objectives:**
+- **RTO (Recovery Time Objective)**: < 5 minutes for checkpoint restore
+- **RPO (Recovery Point Objective)**: < 1 minute with WAL archiving enabled
+
+### Incremental Backup Scripts
+
+ThemisDB includes production-ready backup scripts supporting both Windows (PowerShell) and Linux (Bash).
+
+#### Linux/Unix Backup
 
 ```bash
-# Create snapshot
-curl -X POST http://localhost:8765/admin/snapshot \
-  -H "Content-Type: application/json" \
-  -d '{"path":"/backups/vccdb-snapshot-2025-10-28"}'
+# Script location: scripts/backup-incremental.sh
 
-# Verify snapshot
-ls -lh /backups/vccdb-snapshot-2025-10-28/
-# Output: CURRENT, MANIFEST, *.sst files
+# Basic usage (daily backup)
+./scripts/backup-incremental.sh \
+  --db-path /var/lib/themis \
+  --backup-root /backup/themis \
+  --retention-days 7
 
-# Restore from snapshot
-./themis_server --restore /backups/vccdb-snapshot-2025-10-28 \
-               --target /var/lib/vccdb/data
+# Advanced usage with custom settings
+./scripts/backup-incremental.sh \
+  --db-path /var/lib/themis \
+  --backup-root /backup/themis \
+  --retention-days 14 \
+  --api-url http://localhost:8765 \
+  --verbose
+
+# What it does:
+# 1. Creates RocksDB checkpoint via POST /api/admin/backup
+#    (falls back to manual copy if server offline)
+# 2. Archives all .log WAL files with timestamp prefix
+# 3. Generates manifest.json with backup metadata
+# 4. Cleans up backups older than retention period
 ```
 
-### Continuous Backup (WAL Archival)
+**Backup Structure:**
+```
+/backup/themis/
+├── checkpoint_1730123456789/
+│   ├── .rocksdb/              # RocksDB checkpoint data
+│   │   ├── CURRENT
+│   │   ├── MANIFEST-000123
+│   │   ├── 000456.sst
+│   │   └── ...
+│   ├── wal_archive/           # Archived WAL files
+│   │   ├── 20251028-020015-000123.log
+│   │   ├── 20251028-020015-000124.log
+│   │   └── ...
+│   └── manifest.json          # Backup metadata
+└── checkpoint_1730209856789/  # Older backup
+    └── ...
+```
 
+**manifest.json Example:**
 ```json
 {
-  "storage": {
-    "wal_archive_path": "/backups/wal",
-    "wal_ttl_seconds": 86400,  // Keep WAL for 24 hours
-    "enable_wal_archival": true
-  }
+  "timestamp": "1730123456789",
+  "backup_time": "2025-10-28T02:00:15Z",
+  "db_path": "/var/lib/themis",
+  "backup_type": "checkpoint_with_wal",
+  "checkpoint_size_bytes": 15728640000,
+  "wal_file_count": 12,
+  "retention_days": 7
 }
 ```
 
-```bash
-# Backup script (cron job: 0 */6 * * *)
-#!/bin/bash
-BACKUP_DIR="/backups/$(date +%Y%m%d-%H%M%S)"
-cp -r /var/lib/vccdb/data "$BACKUP_DIR"
-tar -czf "$BACKUP_DIR.tar.gz" "$BACKUP_DIR"
-rm -rf "$BACKUP_DIR"
+#### Windows Backup
 
-# Retention: keep last 7 days
-find /backups -name "*.tar.gz" -mtime +7 -delete
+```powershell
+# Script location: scripts\backup-incremental.ps1
+
+# Basic usage
+.\scripts\backup-incremental.ps1 `
+  -DbPath "C:\ProgramData\Themis" `
+  -BackupRoot "D:\Backup\Themis" `
+  -RetentionDays 7
+
+# With verbose logging
+.\scripts\backup-incremental.ps1 `
+  -DbPath "C:\ProgramData\Themis" `
+  -BackupRoot "D:\Backup\Themis" `
+  -RetentionDays 14 `
+  -ApiUrl "http://localhost:8765" `
+  -Verbose
+```
+
+### Restore Procedures
+
+#### Linux/Unix Restore
+
+```bash
+# Script location: scripts/restore.sh
+
+# Basic restore (checkpoint only)
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis
+
+# Full restore with WAL replay (point-in-time recovery)
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis \
+  --with-wal
+
+# Force overwrite existing database
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis \
+  --force
+
+# Verify backup before restore
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis \
+  --verify
+```
+
+**Restore Process:**
+1. Validates backup structure (checkpoint + manifest)
+2. Stops ThemisDB server (if running)
+3. Removes existing database files (with --force)
+4. Copies checkpoint data to DB path
+5. Optionally replays WAL files (with --with-wal)
+6. Restarts server and verifies connectivity
+
+#### Windows Restore
+
+```powershell
+# Script location: scripts\restore.ps1
+
+# Basic restore
+.\scripts\restore.ps1 `
+  -BackupPath "D:\Backup\Themis\checkpoint_1730123456789" `
+  -DbPath "C:\ProgramData\Themis"
+
+# Full restore with WAL
+.\scripts\restore.ps1 `
+  -BackupPath "D:\Backup\Themis\checkpoint_1730123456789" `
+  -DbPath "C:\ProgramData\Themis" `
+  -WithWAL `
+  -Force
+```
+
+### Automated Backup Scheduling
+
+#### systemd (Linux)
+
+ThemisDB includes systemd units for automated backups:
+
+**Installation:**
+```bash
+# Copy unit files
+sudo cp scripts/systemd/themisdb-backup.service /etc/systemd/system/
+sudo cp scripts/systemd/themisdb-backup.timer /etc/systemd/system/
+
+# Enable and start timer
+sudo systemctl daemon-reload
+sudo systemctl enable themisdb-backup.timer
+sudo systemctl start themisdb-backup.timer
+
+# Check timer status
+sudo systemctl status themisdb-backup.timer
+sudo systemctl list-timers themisdb-backup.timer
+```
+
+**Configuration (`themisdb-backup.service`):**
+```ini
+[Unit]
+Description=ThemisDB Incremental Backup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/themis/scripts/backup-incremental.sh \
+  --db-path /var/lib/themis \
+  --backup-root /backup/themis \
+  --retention-days 7 \
+  --verbose
+
+# Resource limits (prevent backup impact on live traffic)
+CPUQuota=50%
+MemoryMax=2G
+IOWeight=50
+
+StandardOutput=journal
+StandardError=journal
+```
+
+**Timer Schedule (`themisdb-backup.timer`):**
+```ini
+[Unit]
+Description=Daily ThemisDB Backup at 2:00 AM
+
+[Timer]
+# Daily at 2:00 AM
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+# Randomize start time ±15min to avoid thundering herd
+RandomizedDelaySec=15min
+
+# Run 15min after boot if missed
+OnBootSec=15min
+
+[Install]
+WantedBy=timers.target
+```
+
+**Monitoring:**
+```bash
+# View recent backup logs
+sudo journalctl -u themisdb-backup.service -n 50
+
+# Check last backup status
+sudo systemctl status themisdb-backup.service
+
+# Manually trigger backup
+sudo systemctl start themisdb-backup.service
+```
+
+#### Kubernetes CronJob
+
+For containerized deployments, use Kubernetes CronJob:
+
+```yaml
+# File: scripts/k8s/backup-cronjob.yaml
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: themisdb-backup
+  namespace: themis
+spec:
+  schedule: "0 2 * * *"  # Daily at 2:00 AM UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: themisdb/backup-tools:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              /scripts/backup-incremental.sh \
+                --db-path /data/themis \
+                --backup-root /backup/themis \
+                --retention-days 14 \
+                --verbose
+            
+            volumeMounts:
+            - name: themis-data
+              mountPath: /data/themis
+              readOnly: true
+            - name: backup-storage
+              mountPath: /backup/themis
+            
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+          
+          volumes:
+          - name: themis-data
+            persistentVolumeClaim:
+              claimName: themisdb-data-pvc
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: themisdb-backup-pvc
+          
+          restartPolicy: OnFailure
+```
+
+**Deploy:**
+```bash
+kubectl apply -f scripts/k8s/backup-cronjob.yaml
+
+# Check CronJob status
+kubectl get cronjob -n themis
+kubectl describe cronjob themisdb-backup -n themis
+
+# View recent job runs
+kubectl get jobs -n themis -l job-name=themisdb-backup
+
+# Check logs from latest run
+kubectl logs -n themis -l job-name=themisdb-backup --tail=100
+```
+
+#### Windows Task Scheduler
+
+```powershell
+# Create scheduled task for daily 2:00 AM backups
+$action = New-ScheduledTaskAction `
+  -Execute "PowerShell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\Themis\scripts\backup-incremental.ps1 -DbPath C:\ProgramData\Themis -BackupRoot D:\Backup\Themis -RetentionDays 7 -Verbose"
+
+$trigger = New-ScheduledTaskTrigger -Daily -At 2:00AM
+
+$settings = New-ScheduledTaskSettingsSet `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries `
+  -StartWhenAvailable `
+  -RunOnlyIfNetworkAvailable
+
+Register-ScheduledTask `
+  -TaskName "ThemisDB Daily Backup" `
+  -Action $action `
+  -Trigger $trigger `
+  -Settings $settings `
+  -User "SYSTEM" `
+  -RunLevel Highest `
+  -Description "Daily incremental backup of ThemisDB"
+
+# Verify task
+Get-ScheduledTask -TaskName "ThemisDB Daily Backup"
+
+# Run manually
+Start-ScheduledTask -TaskName "ThemisDB Daily Backup"
+
+# View history
+Get-ScheduledTaskInfo -TaskName "ThemisDB Daily Backup"
 ```
 
 ### Disaster Recovery Procedure
 
+**Complete Recovery Workflow:**
+
 ```bash
-# 1. Stop server
-sudo systemctl stop vccdb
+# 1. Stop ThemisDB server
+sudo systemctl stop themisdb
+# OR (Docker):
+docker stop themisdb
 
-# 2. Restore data directory
-tar -xzf /backups/20251028-120000.tar.gz -C /var/lib/vccdb/
+# 2. Identify recovery point
+ls -lht /backup/themis/
+# Select desired checkpoint, e.g., checkpoint_1730123456789
 
-# 3. Verify data integrity
-./themis_server --config config.json --verify
+# 3. Verify backup integrity
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis \
+  --verify
 
-# 4. Restart server
-sudo systemctl start vccdb
+# 4. Restore database
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis \
+  --with-wal \
+  --force
 
-# 5. Verify health
+# 5. Restart server
+sudo systemctl start themisdb
+# OR (Docker):
+docker start themisdb
+
+# 6. Verify recovery
 curl http://localhost:8765/health
-curl http://localhost:8765/stats | jq .storage.rocksdb.estimate_num_keys
+curl http://localhost:8765/api/stats | jq .storage.rocksdb.estimate_num_keys
+
+# 7. Run data integrity checks
+curl http://localhost:8765/api/admin/verify \
+  -X POST \
+  -H "Content-Type: application/json"
+```
+
+**Expected Recovery Times:**
+- **Small DB (<10 GB)**: 2-5 minutes
+- **Medium DB (10-100 GB)**: 5-15 minutes
+- **Large DB (100 GB+)**: 15-45 minutes
+
+### Backup Best Practices
+
+**Retention Strategy:**
+- **Daily backups**: Keep 7 days (short-term recovery)
+- **Weekly backups**: Keep 4 weeks (medium-term recovery)
+- **Monthly backups**: Keep 12 months (long-term compliance)
+
+**Storage Recommendations:**
+- Use separate physical drives/volumes for backups
+- Network-attached storage (NAS) or object storage (S3, MinIO) for off-site copies
+- Enable encryption at rest for compliance (GDPR, HIPAA)
+
+**Monitoring:**
+- Alert on backup failures (systemd journal, Kubernetes events)
+- Track backup size trends (detect rapid growth)
+- Test restore procedures quarterly
+
+**Performance Impact:**
+- Backups use RocksDB checkpoints (minimal I/O impact)
+- WAL archiving is lightweight (sequential writes)
+- Run backups during low-traffic periods (2:00 AM default)
+- systemd resource limits prevent backup starvation
+
+### Troubleshooting
+
+**Issue: Backup fails with "Cannot create checkpoint"**
+```bash
+# Check disk space
+df -h /backup/themis
+
+# Verify permissions
+ls -ld /backup/themis
+sudo chown -R themis:themis /backup/themis
+
+# Check server status
+curl http://localhost:8765/health
+```
+
+**Issue: Restore fails with "Database path not empty"**
+```bash
+# Use --force to overwrite
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis \
+  --force
+```
+
+**Issue: WAL replay errors**
+```bash
+# Verify WAL archive integrity
+ls -lh /backup/themis/checkpoint_*/wal_archive/
+
+# Restore without WAL (checkpoint only)
+./scripts/restore.sh \
+  --backup-path /backup/themis/checkpoint_1730123456789 \
+  --db-path /var/lib/themis
+  # Omit --with-wal flag
 ```
 
 ## Performance Tuning
