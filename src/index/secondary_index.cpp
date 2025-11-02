@@ -5,6 +5,8 @@
 #include "storage/key_schema.h"
 #include "storage/base_entity.h"
 #include "utils/logger.h"
+#include "utils/stemmer.h"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <unordered_set>
@@ -436,16 +438,32 @@ bool SecondaryIndexManager::hasTTLIndex(std::string_view table, std::string_view
 // Fulltext-Index
 // ────────────────────────────────────────────────────────────────────────────
 
-SecondaryIndexManager::Status SecondaryIndexManager::createFulltextIndex(std::string_view table, std::string_view column) {
+SecondaryIndexManager::Status SecondaryIndexManager::createFulltextIndex(
+	std::string_view table, 
+	std::string_view column,
+	const FulltextConfig& config
+) {
 	if (table.empty() || column.empty()) return Status::Error("createFulltextIndex: table/column darf nicht leer sein");
 	if (table.find(':') != std::string::npos || column.find(':') != std::string::npos) {
 		return Status::Error("createFulltextIndex: ':' ist in table/column nicht erlaubt");
 	}
+	
+	// Serialize config to JSON
+	nlohmann::json configJson = {
+		{"type", "fulltext"},
+		{"stemming_enabled", config.stemming_enabled},
+		{"language", config.language}
+	};
+	std::string configStr = configJson.dump();
+	std::vector<uint8_t> configBytes(configStr.begin(), configStr.end());
+	
 	std::string metaKey = makeFulltextIndexMetaKey(table, column);
-	std::string marker = "fulltext";
-	std::vector<uint8_t> markerBytes(marker.begin(), marker.end());
-	if (!db_.put(metaKey, markerBytes)) return Status::Error("createFulltextIndex: Schreiben des Metaschlüssels fehlgeschlagen: " + metaKey);
-	THEMIS_INFO("Fulltext Index erstellt: {}.{}", table, column);
+	if (!db_.put(metaKey, configBytes)) {
+		return Status::Error("createFulltextIndex: Schreiben des Metaschlüssels fehlgeschlagen: " + metaKey);
+	}
+	
+	THEMIS_INFO("Fulltext Index erstellt: {}.{} (stemming={}, lang={})", 
+		table, column, config.stemming_enabled, config.language);
 	return Status::OK();
 }
 
@@ -460,6 +478,26 @@ SecondaryIndexManager::Status SecondaryIndexManager::dropFulltextIndex(std::stri
 bool SecondaryIndexManager::hasFulltextIndex(std::string_view table, std::string_view column) const {
 	std::string metaKey = makeFulltextIndexMetaKey(table, column);
 	return db_.get(metaKey).has_value();
+}
+
+std::optional<SecondaryIndexManager::FulltextConfig> 
+SecondaryIndexManager::getFulltextConfig(std::string_view table, std::string_view column) const {
+	std::string metaKey = makeFulltextIndexMetaKey(table, column);
+	auto val = db_.get(metaKey);
+	if (!val) return std::nullopt;
+	
+	try {
+		std::string configStr(val->begin(), val->end());
+		auto configJson = nlohmann::json::parse(configStr);
+		
+		FulltextConfig config;
+		config.stemming_enabled = configJson.value("stemming_enabled", false);
+		config.language = configJson.value("language", "none");
+		return config;
+	} catch (...) {
+		// Legacy format (just "fulltext" marker) - return default config
+		return FulltextConfig{};
+	}
 }
 
 // Lädt alle Spalten, die für eine Tabelle indiziert sind, aus den Metaschlüsseln
@@ -867,8 +905,10 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForPut_(std::s
 		auto maybeText = newEntity.extractField(fcol);
 		if (!maybeText || isNullOrEmpty_(maybeText)) continue;
 		
-		// Tokenize text
-		auto tokens = tokenize(*maybeText);
+		// Get index config and tokenize with stemming if enabled
+		auto config = getFulltextConfig(table, fcol).value_or(FulltextConfig{});
+		auto tokens = tokenize(*maybeText, config);
+		
 		std::unordered_map<std::string, uint32_t> tf;
 		for (const auto& t : tokens) { if (!t.empty()) tf[t]++; }
 		const std::string dkey = makeFulltextDocLenKey(table, fcol, pk);
@@ -1070,8 +1110,10 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForDelete_(std
 			auto maybeText = oldEntityOpt->extractField(fcol);
 			if (!maybeText || isNullOrEmpty_(maybeText)) continue;
 			
-			// Tokenize old text
-			auto tokens = tokenize(*maybeText);
+			// Get index config and tokenize with same settings as index
+			auto config = getFulltextConfig(table, fcol).value_or(FulltextConfig{});
+			auto tokens = tokenize(*maybeText, config);
+			
 			std::unordered_set<std::string> uniqueTokens(tokens.begin(), tokens.end());
 			for (const auto& token : uniqueTokens) {
 				if (token.empty()) continue;
@@ -1662,8 +1704,10 @@ SecondaryIndexManager::computeBM25Scores_(
 		return {Status::Error("computeBM25Scores_: Kein Fulltext-Index für " + std::string(table) + "." + std::string(column)), {}};
 	}
 	
-	// Tokenize query
-	auto tokens = tokenize(query);
+	// Get index config and tokenize query with same settings as index
+	auto config = getFulltextConfig(table, column).value_or(FulltextConfig{});
+	auto tokens = tokenize(query, config);
+	
 	if (tokens.empty()) {
 		return {Status::OK(), {}};
 	}
@@ -1847,6 +1891,22 @@ std::vector<std::string> SecondaryIndexManager::tokenize(std::string_view text) 
 	return tokens;
 }
 
+// Tokenizer with Stemming support
+std::vector<std::string> SecondaryIndexManager::tokenize(std::string_view text, const FulltextConfig& config) {
+	// First tokenize normally (lowercase + whitespace split)
+	std::vector<std::string> tokens = tokenize(text);
+	
+	// Apply stemming if enabled
+	if (config.stemming_enabled) {
+		auto lang = utils::Stemmer::parseLanguage(config.language);
+		for (auto& token : tokens) {
+			token = utils::Stemmer::stem(token, lang);
+		}
+	}
+	
+	return tokens;
+}
+
 // =============================================================================
 // Index Statistics & Maintenance
 // =============================================================================
@@ -2005,6 +2065,9 @@ void SecondaryIndexManager::rebuildIndex(const std::string& table, const std::st
 		});
 		if (aborted) return;
 	} else if (indexType == "fulltext") {
+		// Get index config for consistent tokenization
+		auto config = getFulltextConfig(table, column).value_or(FulltextConfig{});
+		
 		bool aborted = false;
 		db_.scanPrefix(entityPrefix, [&](std::string_view key, std::string_view val) {
 			size_t lastColon = key.rfind(':');
@@ -2016,7 +2079,7 @@ void SecondaryIndexManager::rebuildIndex(const std::string& table, const std::st
 			auto maybeVal = entity.extractField(column);
 			if (!maybeVal) { if (!advance()) { aborted = true; return false; } return true; }
 
-			auto tokens = tokenize(*maybeVal);
+			auto tokens = tokenize(*maybeVal, config);
 			for (const auto& token : tokens) {
 				std::string ftKey = makeFulltextIndexKey(table, column, token, pk);
 				writeIndexEntry(ftKey, pk);
@@ -2628,8 +2691,10 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForPut_(
 		auto maybeText = newEntity.extractField(fcol);
 		if (!maybeText || isNullOrEmpty_(maybeText)) continue;
 		
-		// Tokenize text
-		auto tokens = tokenize(*maybeText);
+		// Get index config and tokenize with stemming if enabled
+		auto config = getFulltextConfig(table, fcol).value_or(FulltextConfig{});
+		auto tokens = tokenize(*maybeText, config);
+		
 		std::unordered_map<std::string, uint32_t> tf;
 		for (const auto& t : tokens) { if (!t.empty()) tf[t]++; }
 		const std::string dkey = makeFulltextDocLenKey(table, fcol, pk);
@@ -2833,8 +2898,10 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForDelete_(
 			auto maybeText = oldEntityOpt->extractField(fcol);
 			if (!maybeText || isNullOrEmpty_(maybeText)) continue;
 			
-			// Tokenize old text
-			auto tokens = tokenize(*maybeText);
+			// Get index config and tokenize with same settings as index
+			auto config = getFulltextConfig(table, fcol).value_or(FulltextConfig{});
+			auto tokens = tokenize(*maybeText, config);
+			
 			std::unordered_set<std::string> uniqueTokens(tokens.begin(), tokens.end());
 			for (const auto& token : uniqueTokens) {
 				if (token.empty()) continue;

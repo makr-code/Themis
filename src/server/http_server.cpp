@@ -5841,6 +5841,39 @@ http::response<http::string_body> HttpServer::handleCreateIndex(
                 }
                 json resp = {{"success", true}, {"table", table}, {"column", column}, {"type", "range"}};
                 return makeResponse(http::status::ok, resp.dump(), req);
+            } else if (type == "fulltext") {
+                if (!body.contains("column")) {
+                    return makeErrorResponse(http::status::bad_request, "Missing 'column' for fulltext index", req);
+                }
+                std::string column = body["column"].get<std::string>();
+                
+                // Parse optional config
+                SecondaryIndexManager::FulltextConfig config;
+                if (body.contains("config") && body["config"].is_object()) {
+                    auto configObj = body["config"];
+                    config.stemming_enabled = configObj.value("stemming_enabled", false);
+                    config.language = configObj.value("language", "none");
+                } else {
+                    config.stemming_enabled = false;
+                    config.language = "none";
+                }
+                
+                auto st = secondary_index_->createFulltextIndex(table, column, config);
+                if (!st.ok) {
+                    return makeErrorResponse(http::status::bad_request, st.message, req);
+                }
+                
+                json resp = {
+                    {"success", true}, 
+                    {"table", table}, 
+                    {"column", column}, 
+                    {"type", "fulltext"},
+                    {"config", {
+                        {"stemming_enabled", config.stemming_enabled},
+                        {"language", config.language}
+                    }}
+                };
+                return makeResponse(http::status::ok, resp.dump(), req);
             }
         }
 

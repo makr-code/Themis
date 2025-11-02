@@ -18,6 +18,26 @@
 - **Normalization:** Min-Max for weighted, reciprocal rank for RRF
 - **Tests:** No regressions in fulltext suite
 
+### ✅ Stemming & Advanced Analyzers (v1.1)
+- **Implementation:** Porter-Subset (EN), simplified suffix removal (DE)
+- **Configuration:** Per-index via `POST /index/create` with:
+  ```json
+  {
+    "type": "fulltext",
+    "config": {
+      "stemming_enabled": true,
+      "language": "en"  // en | de | none
+    }
+  }
+  ```
+- **Index Maintenance:** Consistent tokenization in Put/Delete/Rebuild
+- **Query-Time:** Automatically uses index config for query tokens
+- **Storage:** Config persisted in `ftidxmeta:table:column` as JSON
+- **Backward Compatible:** Default `{stemming_enabled: false, language: "none"}`
+- **Tests:** 16/16 stemming tests passed + 10/10 fulltext regression tests
+- **HTTP API:** `/index/create` with `type: "fulltext"` and optional `config`
+- **OpenAPI:** Documented in openapi.yaml with examples
+
 ## Future Work (v2+)
 
 ### 🔲 AQL Integration: BM25(doc) Function
@@ -65,69 +85,52 @@ FOR doc IN articles
 
 ---
 
-### 🔲 Stemming & Advanced Analyzers
+### 🔲 Advanced Analyzer Extensions
 
-**Goal:** Improve text matching with linguistic normalization
+**Goal:** Extend stemming with additional linguistic features
 
-**Requirements:**
-1. **Stemmer Integration**
-   - Embed Snowball stemmer (C++ library or minimal port)
-   - Support languages: German (DE), English (EN)
-   - Configuration: per-index `stemming_enabled` flag + `language`
+**Potential Enhancements:**
+1. **Stopword Filtering**
+   - Remove high-frequency, low-information words (de: "der", "die", "das"; en: "the", "a", "an")
+   - Configurable per-index stopword lists
+   - Reduces index size and improves relevance
 
-2. **Tokenizer Extension** (secondary_index.cpp)
-   - Add `tokenize()` overload with stemming option
-   - Apply stemming after lowercase conversion
-   - Store stemmed tokens in index
+2. **Umlaut Normalization (German)**
+   - Normalize "ä→a", "ö→o", "ü→u", "ß→ss"
+   - Improves matching for search queries without special chars
+   - Example: "läuft" → "lauft" (stems to "lauf")
 
-3. **Index Metadata**
-   - Extend `createFulltextIndex` API with optional config:
-     ```json
-     {
-       "table": "docs",
-       "column": "text",
-       "type": "fulltext",
-       "config": {
-         "stemming_enabled": true,
-         "language": "en"
-       }
-     }
-     ```
-   - Persist config in `ftidxmeta:table:column`
+3. **Compound Word Splitting (German)**
+   - Split "Fußballweltmeisterschaft" → "fußball welt meisterschaft"
+   - Critical for German precision/recall
+   - Requires dictionary or ML-based approach
 
-4. **Backward Compatibility**
-   - Default: `stemming_enabled = false`
-   - Existing indexes: no migration (recreate with new config)
+4. **Lemmatization (vs. Stemming)**
+   - More accurate morphological analysis
+   - "running" → "run", "better" → "good"
+   - Requires POS tagging and lexicon
 
-**Example:**
-```cpp
-// Before stemming: "running" ≠ "run"
-// After stemming:  "run" == "run" (matched)
+**Effort Estimate:** 2-5 days (depending on scope)
+- Stopwords: 4-6 hours
+- Umlaut normalization: 2-3 hours
+- Compound splitting: 1-2 days (complex)
+- Lemmatization: 2-3 days (requires NLP library)
 
-// Query: "optimization techniques"
-// Stems to: "optim technique"
-// Matches doc with: "optimize", "optimization", "optimizing"
-```
+**Complexity:** Medium-High
+- Stopwords: Low
+- Normalization: Low
+- Compound splitting: High (ambiguity resolution)
+- Lemmatization: High (dependency on NLP toolkit)
 
-**Effort Estimate:** 1-2 days
-- Snowball integration: 4-6 hours
-- Tokenizer extension: 2-4 hours
-- Index config persistence: 2-3 hours
-- Testing (DE/EN corpora): 4-6 hours
-
-**Complexity:** Low-Medium
-- Snowball is well-documented, portable C code
-- Tokenizer integration straightforward
-- Config handling requires minor schema extension
-
-**Priority:** High (for non-English content)
-- Critical for German text (compound words, declension)
-- Significantly improves recall (10-30% typical gain)
-- Industry standard (Elasticsearch, Solr use Snowball)
+**Priority:** Medium
+- Stopwords: High value/effort ratio
+- Umlaut normalization: High for German content
+- Compound splitting: Nice-to-have (complex)
+- Lemmatization: Overkill for most use cases (stemming sufficient)
 
 **Alternative Analyzers (Future):**
-- N-Grams (for partial matching)
-- Phonetic matching (Soundex, Metaphone)
+- N-Grams (for partial matching, typo tolerance)
+- Phonetic matching (Soundex, Metaphone for fuzzy search)
 - Synonym expansion
 - Stop-word removal
 
@@ -253,3 +256,9 @@ FOR doc IN articles
 - Okapi BM25: Robertson & Zaragoza (2009)
 - RRF: Cormack, Clarke, Büttcher. SIGIR 2009
 - LambdaMART: Burges (2010)
+
+Nächste sinnvolle Schritte
+Stopword-Listen (EN/DE) pro Index konfigurierbar machen.
+Umlaut-/ß-Normalisierung (z. B. „läuft“ -> „lauft“) für DE verbessern.
+Phrase Queries und Highlighting.
+AQL-Integration: FULLTEXT-Operator + BM25 im Sort (geplant für V2).

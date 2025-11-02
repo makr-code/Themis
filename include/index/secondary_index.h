@@ -64,9 +64,18 @@ public:
     std::pair<Status, size_t> cleanupExpiredEntities(std::string_view table, std::string_view column);
 
     // Fulltext-Index: Inverted Index für Textsuche
-    Status createFulltextIndex(std::string_view table, std::string_view column);
+    struct FulltextConfig {
+        bool stemming_enabled = false;
+        std::string language = "none"; // "en", "de", "none"
+    };
+    
+    Status createFulltextIndex(std::string_view table, std::string_view column, 
+                               const FulltextConfig& config = FulltextConfig{});
     Status dropFulltextIndex(std::string_view table, std::string_view column);
     bool hasFulltextIndex(std::string_view table, std::string_view column) const;
+    
+    // Get fulltext index configuration
+    std::optional<FulltextConfig> getFulltextConfig(std::string_view table, std::string_view column) const;
     
     // Fulltext-Suche: AND-Logik für alle Tokens (deprecated: use scanFulltextWithScores)
     std::pair<Status, std::vector<std::string>> scanFulltext(
@@ -199,6 +208,9 @@ public:
     
     // Utility: Fulltext-Tokenizer (Whitespace + Lowercase)
     static std::vector<std::string> tokenize(std::string_view text);
+    
+    // Utility: Fulltext-Tokenizer mit Stemming (Whitespace + Lowercase + Stem)
+    static std::vector<std::string> tokenize(std::string_view text, const FulltextConfig& config);
 
     // Index-Statistiken und Wartung
     struct IndexStats {

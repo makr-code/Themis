@@ -168,6 +168,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/hkdf_helper.cpp
     src/utils/saga_logger.cpp
     src/utils/lek_manager.cpp
+    src/utils/stemmer.cpp
     src/utils/pii_pseudonymizer.cpp
     src/security/pki_key_provider.cpp
     src/auth/jwt_validator.cpp
@@ -282,6 +283,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_changefeed.cpp
         tests/test_http_changefeed_sse.cpp
         tests/test_http_timeseries.cpp
+    tests/test_stemming.cpp
         tests/test_http_governance.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp

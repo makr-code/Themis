@@ -13,7 +13,11 @@ POST /index/create
 {
   "table": "articles",
   "column": "content",
-  "type": "fulltext"
+  "type": "fulltext",
+  "config": {
+    "stemming_enabled": true,
+    "language": "de"  // en | de | none
+  }
 }
 ```
 
@@ -54,9 +58,12 @@ POST /search/fulltext
 
 ## Tokenisierung
 
-- **Whitespace-basiert**: Tokens werden bei Leerzeichen/Satzzeichen getrennt
-- **Lowercase**: Alle Tokens in Kleinbuchstaben konvertiert
-- **Keine Stemming** (v1): "running" ≠ "run" – Stemming geplant für v2
+- Whitespace-basiert: Tokens werden bei Leerzeichen/Satzzeichen getrennt
+- Lowercase: Alle Tokens in Kleinbuchstaben konvertiert
+- Optionales Stemming (pro Index konfigurierbar):
+  - Aktivieren via `POST /index/create` mit `type: "fulltext"` und `config.stemming_enabled=true`
+  - Unterstützte Sprachen: `en` (Porter-Subset), `de` (vereinfachtes Suffix-Stemming)
+  - Query-Tokenisierung nutzt immer dieselbe Konfiguration wie der Index
 
 ## Query-Semantik
 
@@ -84,9 +91,9 @@ Die alte API `scanFulltext()` (C++ intern) liefert weiterhin nur PKs ohne Scores
 ## Roadmap
 
 - ✅ BM25 v1 mit HTTP API
+- ✅ Hybrid Search: Text + Vector Fusion (RRF/Weighted)
+- ✅ Analyzer: Stemming (EN/DE) pro Index konfigurierbar
 - 🔲 AQL Integration: `SORT BM25(doc) DESC`
-- 🔲 Hybrid Search: Text + Vector Fusion (RRF/Weighted)
-- 🔲 Analyzer: Stemming (Porter/Snowball für DE/EN)
 - 🔲 Phrase Search: "exact match" Queries
 - 🔲 Highlighting: Matched Terms in Response markieren
 

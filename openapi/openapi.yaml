@@ -447,13 +447,14 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
   /index/create:
     post:
-      summary: Sekundärindex erstellen (Equality oder Range)
+      summary: Sekundärindex erstellen (Equality, Range oder Fulltext)
       operationId: createIndex
       tags: [indexes]
       description: |
-        Erstellt einen Index auf einer Spalte. Zwei Typen verfügbar:
+        Erstellt einen Index auf einer Spalte. Typen verfügbar:
         - equality: Für Gleichheitsfilter (default). Optional: unique=true für Unique-Constraint.
         - range: Für gte/lte-Prädikate und ORDER BY.
+        - fulltext: Invertierter Index für Volltextsuche (BM25). Optional: config.stemming_enabled und config.language ("en", "de", "none").
         
         Ein Range-Index kann unabhängig von einem Equality-Index existieren.
       requestBody:
@@ -482,6 +483,24 @@ paths:
                   column: email
                   type: equality
                   unique: true
+              fulltext_index_de:
+                summary: Fulltext-Index mit deutschem Stemming
+                value:
+                  table: docs
+                  column: text
+                  type: fulltext
+                  config:
+                    stemming_enabled: true
+                    language: de
+              fulltext_index_en_disabled:
+                summary: Fulltext-Index ohne Stemming
+                value:
+                  table: docs
+                  column: text
+                  type: fulltext
+                  config:
+                    stemming_enabled: false
+                    language: none
       responses:
         '200':
           description: Index erstellt
@@ -987,13 +1006,26 @@ components:
         column: { type: string }
         type:
           type: string
-          enum: [equality, range]
+          enum: [equality, range, fulltext]
           default: equality
-          description: Index-Typ. equality für Gleichheitsfilter, range für gte/lte und ORDER BY
+          description: Index-Typ. equality für Gleichheitsfilter, range für gte/lte und ORDER BY, fulltext für Volltextsuche.
         unique:
           type: boolean
           default: false
           description: Nur für Equality-Indizes. Wenn true, wird eine Unique-Constraint erzwungen.
+        config:
+          type: object
+          description: Nur für fulltext-Indizes. Konfiguration der Tokenisierung/Stemming.
+          properties:
+            stemming_enabled:
+              type: boolean
+              default: false
+              description: Stemming aktivieren
+            language:
+              type: string
+              enum: [en, de, none]
+              default: none
+              description: Sprache für Stemming
       required: [table, column]
     IndexResponse:
       type: object
