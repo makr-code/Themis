@@ -189,6 +189,7 @@ private:
     http::response<http::string_body> handleGetContentBlob(const http::request<http::string_body>& req);
     http::response<http::string_body> handleGetContentChunks(const http::request<http::string_body>& req);
     http::response<http::string_body> handleHybridSearch(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleFulltextSearch(const http::request<http::string_body>& req);
     http::response<http::string_body> handleContentFilterSchemaGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleContentFilterSchemaPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigGet(const http::request<http::string_body>& req);

@@ -488,6 +488,7 @@ namespace {
         ContentBlobGet,
         ContentChunksGet,
         HybridSearchPost,
+        FulltextSearchPost,
         ContentFilterSchemaGet,
         ContentFilterSchemaPut,
         EdgeWeightConfigGet,
@@ -591,6 +592,9 @@ namespace {
 
     // Hybrid Search
         if (target == "/search/hybrid" && method == http::verb::post) return Route::HybridSearchPost;
+        
+        // Fulltext Search
+        if (target == "/search/fulltext" && method == http::verb::post) return Route::FulltextSearchPost;
 
     // Content filter schema config
     if (target == "/config/content-filters" && method == http::verb::get) return Route::ContentFilterSchemaGet;
@@ -796,6 +800,9 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::HybridSearchPost:
             response = handleHybridSearch(req);
+            break;
+        case Route::FulltextSearchPost:
+            response = handleFulltextSearch(req);
             break;
         case Route::ContentFilterSchemaGet:
             response = handleContentFilterSchemaGet(req);
@@ -5401,6 +5408,71 @@ http::response<http::string_body> HttpServer::handleHybridSearch(
         return makeErrorResponse(http::status::bad_request, std::string("Hybrid search error: ") + e.what(), req);
     } catch (...) {
         return makeErrorResponse(http::status::bad_request, "Hybrid search error", req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleFulltextSearch(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!secondary_index_) return makeErrorResponse(http::status::service_unavailable, "IndexManager not initialized", req);
+        
+        json body = json::parse(req.body());
+        
+        // Required fields
+        if (!body.contains("table") || !body["table"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing or invalid 'table' field", req);
+        }
+        if (!body.contains("column") || !body["column"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing or invalid 'column' field", req);
+        }
+        if (!body.contains("query") || !body["query"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing or invalid 'query' field", req);
+        }
+        
+        std::string table = body["table"];
+        std::string column = body["column"];
+        std::string query = body["query"];
+        size_t limit = body.value("limit", 1000);
+        
+        // Check if fulltext index exists
+        if (!secondary_index_->hasFulltextIndex(table, column)) {
+            return makeErrorResponse(http::status::bad_request, 
+                "No fulltext index on " + table + "." + column, req);
+        }
+        
+        // Perform BM25-scored fulltext search
+        auto [status, results] = secondary_index_->scanFulltextWithScores(table, column, query, limit);
+        
+        if (!status.ok) {
+            return makeErrorResponse(http::status::internal_server_error, status.message, req);
+        }
+        
+        // Build response with scores
+        json resp = json::array();
+        for (const auto& result : results) {
+            resp.push_back({
+                {"pk", result.pk},
+                {"score", result.score}
+            });
+        }
+        
+        json out = {
+            {"count", resp.size()},
+            {"results", resp},
+            {"table", table},
+            {"column", column},
+            {"query", query}
+        };
+        
+        return makeResponse(http::status::ok, out.dump(), req);
+        
+    } catch (const json::exception& e) {
+        return makeErrorResponse(http::status::bad_request, std::string("JSON parse error: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, std::string("Fulltext search error: ") + e.what(), req);
+    } catch (...) {
+        return makeErrorResponse(http::status::internal_server_error, "Unknown fulltext search error", req);
     }
 }
 

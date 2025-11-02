@@ -68,8 +68,20 @@ public:
     Status dropFulltextIndex(std::string_view table, std::string_view column);
     bool hasFulltextIndex(std::string_view table, std::string_view column) const;
     
-    // Fulltext-Suche: AND-Logik für alle Tokens
+    // Fulltext-Suche: AND-Logik für alle Tokens (deprecated: use scanFulltextWithScores)
     std::pair<Status, std::vector<std::string>> scanFulltext(
+        std::string_view table,
+        std::string_view column,
+        std::string_view query,
+        size_t limit = 1000
+    ) const;
+    
+    // Fulltext-Suche mit BM25-Scores
+    struct FulltextResult {
+        std::string pk;
+        double score;
+    };
+    std::pair<Status, std::vector<FulltextResult>> scanFulltextWithScores(
         std::string_view table,
         std::string_view column,
         std::string_view query,
@@ -328,6 +340,14 @@ private:
     
     // TTL-Helpers
     int64_t getTTLSeconds_(std::string_view table, std::string_view column) const;
+    
+    // Fulltext-Helpers: BM25 Score Computation (internal)
+    std::pair<Status, std::vector<FulltextResult>> computeBM25Scores_(
+        std::string_view table,
+        std::string_view column,
+        std::string_view query,
+        size_t limit
+    ) const;
     
     // Prüft ob Feld-Wert NULL/leer ist (für Sparse-Index)
     static bool isNullOrEmpty_(const std::optional<std::string>& value);

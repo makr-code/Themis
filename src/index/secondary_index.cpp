@@ -1650,15 +1650,16 @@ SecondaryIndexManager::cleanupExpiredEntities(std::string_view table, std::strin
 // Fulltext Scan
 // ────────────────────────────────────────────────────────────────────────────
 
-std::pair<SecondaryIndexManager::Status, std::vector<std::string>>
-SecondaryIndexManager::scanFulltext(
+// Internal helper: computes BM25 scores for fulltext queries
+std::pair<SecondaryIndexManager::Status, std::vector<SecondaryIndexManager::FulltextResult>>
+SecondaryIndexManager::computeBM25Scores_(
 	std::string_view table,
 	std::string_view column,
 	std::string_view query,
 	size_t limit
 ) const {
 	if (!hasFulltextIndex(table, column)) {
-		return {Status::Error("scanFulltext: Kein Fulltext-Index für " + std::string(table) + "." + std::string(column)), {}};
+		return {Status::Error("computeBM25Scores_: Kein Fulltext-Index für " + std::string(table) + "." + std::string(column)), {}};
 	}
 	
 	// Tokenize query
@@ -1737,8 +1738,7 @@ SecondaryIndexManager::scanFulltext(
 	const double b = 0.75;
 
 	// Score für jede PK in der Schnittmenge berechnen
-	struct Scored { std::string pk; double score; };
-	std::vector<Scored> scored;
+	std::vector<FulltextResult> scored;
 	for (const auto& pk : intersectionSet) {
 		double dl = docLen.count(pk) ? docLen[pk] : 0.0;
 		double s = 0.0;
@@ -1767,18 +1767,51 @@ SecondaryIndexManager::scanFulltext(
 	}
 
 	// Sortieren nach Score absteigend
-	std::sort(scored.begin(), scored.end(), [](const Scored& a, const Scored& b){
+	std::sort(scored.begin(), scored.end(), [](const FulltextResult& a, const FulltextResult& b){
 		return a.score > b.score;
 	});
 
-	// Top-k PKs extrahieren
-	std::vector<std::string> finalResults;
+	// Top-k Ergebnisse extrahieren
+	std::vector<FulltextResult> finalResults;
 	finalResults.reserve(std::min(scored.size(), limit));
 	for (size_t i = 0; i < scored.size() && i < limit; ++i) {
-		finalResults.push_back(scored[i].pk);
+		finalResults.push_back(scored[i]);
 	}
 
 	return {Status::OK(), std::move(finalResults)};
+}
+
+// Public API: returns PKs only (deprecated, use scanFulltextWithScores for scores)
+std::pair<SecondaryIndexManager::Status, std::vector<std::string>>
+SecondaryIndexManager::scanFulltext(
+	std::string_view table,
+	std::string_view column,
+	std::string_view query,
+	size_t limit
+) const {
+	auto [status, results] = computeBM25Scores_(table, column, query, limit);
+	if (!status.ok) {
+		return {status, {}};
+	}
+	
+	std::vector<std::string> pks;
+	pks.reserve(results.size());
+	for (const auto& result : results) {
+		pks.push_back(result.pk);
+	}
+	
+	return {Status::OK(), std::move(pks)};
+}
+
+// Public API: returns PKs with BM25 scores
+std::pair<SecondaryIndexManager::Status, std::vector<SecondaryIndexManager::FulltextResult>>
+SecondaryIndexManager::scanFulltextWithScores(
+	std::string_view table,
+	std::string_view column,
+	std::string_view query,
+	size_t limit
+) const {
+	return computeBM25Scores_(table, column, query, limit);
 }
 
 bool SecondaryIndexManager::isNullOrEmpty_(const std::optional<std::string>& value) {
