@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils/pii_detector.h"
+#include "utils/audit_logger.h"
 #include "security/encryption.h"
 #include "storage/rocksdb_wrapper.h"
 #include <memory>
@@ -34,10 +35,12 @@ public:
      * @param db RocksDB wrapper (must have "pii_mapping" column family)
      * @param enc Field encryption for PII values
      * @param detector PII detector for automatic detection
+     * @param audit_logger Audit logger for PII access/erasure events (optional)
      */
     PIIPseudonymizer(std::shared_ptr<themis::RocksDBWrapper> db,
                      std::shared_ptr<FieldEncryption> enc,
-                    std::shared_ptr<PIIDetector> detector);
+                     std::shared_ptr<PIIDetector> detector,
+                     std::shared_ptr<AuditLogger> audit_logger = nullptr);
     
     /**
      * @brief Pseudonymize detected PII in JSON object
@@ -86,6 +89,7 @@ private:
     std::shared_ptr<themis::RocksDBWrapper> db_;
     std::shared_ptr<FieldEncryption> enc_;
     std::shared_ptr<PIIDetector> detector_;
+    std::shared_ptr<AuditLogger> audit_logger_;
     
     std::mutex mu_;
     std::string key_id_ = "pii_mapping_key";

@@ -10,10 +10,12 @@ namespace utils {
 
 PIIPseudonymizer::PIIPseudonymizer(std::shared_ptr<themis::RocksDBWrapper> db,
                                   std::shared_ptr<FieldEncryption> enc,
-                                  std::shared_ptr<PIIDetector> detector)
+                                  std::shared_ptr<PIIDetector> detector,
+                                  std::shared_ptr<AuditLogger> audit_logger)
     : db_(std::move(db))
     , enc_(std::move(enc))
-    , detector_(std::move(detector)) {
+    , detector_(std::move(detector))
+    , audit_logger_(std::move(audit_logger)) {
     
     // Ensure encryption key exists
     auto key_provider = enc_->getKeyProvider();
@@ -130,13 +132,15 @@ std::optional<std::string> PIIPseudonymizer::revealPII(const std::string& pii_uu
         auto blob = themis::EncryptedBlob::fromJson(encrypted_json);
         auto original = enc_->decrypt(blob);
         
-        // TODO: Add audit log for PII reveal
-        // audit_logger->logEvent({
-        //     {"action", "PII_REVEAL"},
-        //     {"pii_uuid", pii_uuid},
-        //     {"user_id", user_id},
-        //     {"timestamp", std::time(nullptr)}
-        // });
+        // Audit PII reveal (DSGVO Art. 30 compliance)
+        if (audit_logger_) {
+            audit_logger_->logEvent({
+                {"action", "PII_REVEAL"},
+                {"pii_uuid", pii_uuid},
+                {"user_id", user_id},
+                {"timestamp", std::time(nullptr)}
+            });
+        }
         
         return original;
         
@@ -157,12 +161,14 @@ bool PIIPseudonymizer::erasePII(const std::string& pii_uuid) {
     // Delete mapping
     db_->del(dbKey(pii_uuid));
     
-    // TODO: Add audit log for PII erasure
-    // audit_logger->logEvent({
-    //     {"action", "PII_ERASE"},
-    //     {"pii_uuid", pii_uuid},
-    //     {"timestamp", std::time(nullptr)}
-    // });
+    // Audit PII erasure (DSGVO Art. 17 & Art. 30 compliance)
+    if (audit_logger_) {
+        audit_logger_->logEvent({
+            {"action", "PII_ERASE"},
+            {"pii_uuid", pii_uuid},
+            {"timestamp", std::time(nullptr)}
+        });
+    }
     
     return true;
 }
