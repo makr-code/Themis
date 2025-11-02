@@ -66,6 +66,20 @@ find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
+find_package(yaml-cpp CONFIG REQUIRED)
+# Optional ZSTD for content compression wrappers
+find_package(zstd CONFIG)
+if(zstd_FOUND)
+    set(THEMIS_ZSTD_TARGET zstd::libzstd_shared)
+    if(NOT TARGET zstd::libzstd_shared AND TARGET zstd::libzstd)
+        set(THEMIS_ZSTD_TARGET zstd::libzstd)
+    endif()
+elseif(NOT zstd_FOUND)
+    find_package(ZSTD CONFIG)
+    if(ZSTD_FOUND)
+        set(THEMIS_ZSTD_TARGET ZSTD::ZSTD)
+    endif()
+endif()
 
 # Optional: HNSW (if not using Faiss)
 find_package(hnswlib CONFIG)
@@ -117,6 +131,15 @@ set(THEMIS_CORE_SOURCES
     
     src/server/http_server.cpp
     src/server/sse_connection_manager.cpp
+    src/server/audit_api_handler.cpp
+    src/server/saga_api_handler.cpp
+    src/server/pii_api_handler.cpp
+    src/server/retention_api_handler.cpp
+    src/server/keys_api_handler.cpp
+    src/server/classification_api_handler.cpp
+    src/server/reports_api_handler.cpp
+    src/server/ranger_adapter.cpp
+    src/server/policy_engine.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp
@@ -135,6 +158,20 @@ set(THEMIS_CORE_SOURCES
     src/utils/logger.cpp
     src/utils/cursor.cpp
     src/utils/tracing.cpp
+    src/utils/zstd_codec.cpp
+    src/utils/pki_client.cpp
+    src/utils/audit_logger.cpp
+    src/utils/pii_detection_engine.cpp
+    src/utils/regex_detection_engine.cpp
+    src/utils/pii_detector.cpp
+    src/utils/retention_manager.cpp
+    src/utils/hkdf_helper.cpp
+    src/utils/saga_logger.cpp
+    src/utils/lek_manager.cpp
+    src/utils/pii_pseudonymizer.cpp
+    src/security/pki_key_provider.cpp
+    src/auth/jwt_validator.cpp
+    src/governance/policy_engine.cpp
 )
 
 # Main library
@@ -151,9 +188,16 @@ target_link_libraries(themis_core
         Boost::system
         nlohmann_json::nlohmann_json
         CURL::libcurl
+        yaml-cpp::yaml-cpp
     OpenSSL::SSL
     OpenSSL::Crypto
 )
+
+# Link ZSTD if available and define compile flag
+if(DEFINED THEMIS_ZSTD_TARGET)
+    target_link_libraries(themis_core PUBLIC ${THEMIS_ZSTD_TARGET})
+    target_compile_definitions(themis_core PUBLIC THEMIS_HAS_ZSTD)
+endif()
 
 if(THEMIS_ENABLE_GPU)
     target_link_libraries(themis_core PUBLIC faiss)
@@ -207,6 +251,7 @@ if(THEMIS_BUILD_TESTS)
     find_package(GTest CONFIG REQUIRED)
     
     add_executable(themis_tests
+        tests/test_env.cpp
         tests/test_base_entity.cpp
         tests/test_secondary_index.cpp
         tests/test_composite_index.cpp
@@ -236,6 +281,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_content.cpp
         tests/test_http_changefeed.cpp
         tests/test_http_changefeed_sse.cpp
+        tests/test_http_timeseries.cpp
+        tests/test_http_governance.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
@@ -258,6 +305,12 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_adaptive_index.cpp
         tests/test_encryption.cpp
         tests/test_vault_key_provider.cpp
+        tests/test_audit_logger.cpp
+        tests/test_pii_detector.cpp
+        tests/test_retention_manager.cpp
+        tests/test_saga_logger.cpp
+        tests/test_http_retention_api.cpp
+        tests/test_policy_yaml.cpp
     )
     
     target_link_libraries(themis_tests
@@ -266,8 +319,26 @@ if(THEMIS_BUILD_TESTS)
             GTest::gtest
             GTest::gtest_main
     )
-    
-    add_test(NAME ThemisTests COMMAND themis_tests)
+
+    # Discover individual GoogleTest tests for better CTest integration
+    include(GoogleTest)
+    # On multi-config generators (MSVC), ensure correct working dir for runtime assets
+    if(CMAKE_CONFIGURATION_TYPES)
+        set(_gtest_workdir "$<TARGET_FILE_DIR:themis_tests>")
+    else()
+        set(_gtest_workdir ${CMAKE_CURRENT_BINARY_DIR})
+    endif()
+    gtest_discover_tests(themis_tests
+        DISCOVERY_MODE PRE_TEST
+        WORKING_DIRECTORY ${_gtest_workdir}
+        EXTRA_ARGS --gtest_color=yes
+    )
+
+    # Note: Do not add an aggregate test that runs the entire suite again.
+    # gtest_discover_tests already registers each test case with CTest. Adding
+    # an extra `add_test(NAME ThemisTests COMMAND themis_tests ...)` would run
+    # the full suite a second time and can make CI appear to hang on the last
+    # test (previously "Test #619: ThemisTests").
 endif()
 
 # Benchmarks

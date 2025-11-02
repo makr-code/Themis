@@ -20,12 +20,18 @@
 #include "index/vector_index.h"
 #include "transaction/transaction_manager.h"
 #include "utils/logger.h"
+
 #include "utils/logger_impl.h"
 #include "utils/tracing.h"
 #include "utils/cursor.h"
+#include "utils/pii_detector.h"
+#include "security/key_provider.h"
+#include "security/mock_key_provider.h"
+#include "security/encryption.h"
+#include "utils/audit_logger.h"
 #include "content/content_manager.h"
 #include "content/content_processor.h"
-// F�r Graph-Kanten-Entities
+// Fuer Graph-Kanten-Entities
 #include "storage/key_schema.h"
 
 // Sprint A features - include BEFORE http_server.h to have complete types
@@ -34,12 +40,19 @@
 
 // Sprint B features
 #include "timeseries/timeseries.h"
+#include "timeseries/tsstore.h"
+#include "timeseries/continuous_agg.h"
 
 // Sprint C features
 #include "index/adaptive_index.h"
 
 // Now include http_server.h which has forward declarations
 #include "server/http_server.h"
+#include "server/keys_api_handler.h"
+#include "server/classification_api_handler.h"
+#include "server/reports_api_handler.h"
+#include "server/auth_middleware.h"
+#include "server/ranger_adapter.h"
 
 #include "query/query_engine.h"
 #include "query/query_optimizer.h"
@@ -58,6 +71,9 @@
 #include <functional>
 #include <unordered_map>
 #include <limits>
+#include <optional>
+#include <cstdlib>
+#include <filesystem>
 
 using json = nlohmann::json;
 
@@ -120,6 +136,8 @@ HttpServer::HttpServer(
     if (config_.feature_cdc) {
         cdc_cf_handle_ = nullptr; // Use default CF
         changefeed_ = std::make_shared<Changefeed>(
+            VectorBatchInsertPost,
+            VectorDeleteByFilterDelete,
             storage_->getRawDB(),
             cdc_cf_handle_
         );
@@ -130,6 +148,7 @@ HttpServer::HttpServer(
         sse_config.heartbeat_interval_ms = 15000;
         sse_config.max_buffered_events = 1000;
         sse_config.event_poll_interval_ms = 500;
+        sse_config.max_events_per_second = config_.sse_max_events_per_second; // from server config
         
         sse_manager_ = std::make_unique<SseConnectionManager>(
             changefeed_,
@@ -142,7 +161,7 @@ HttpServer::HttpServer(
     // Initialize Time-Series Store (Sprint B) if feature enabled
     if (config_.feature_timeseries) {
         ts_cf_handle_ = nullptr; // Use default CF
-        timeseries_ = std::make_unique<TimeSeriesStore>(
+        timeseries_ = std::make_unique<TSStore>(
             storage_->getRawDB(),
             ts_cf_handle_
         );
@@ -152,6 +171,121 @@ HttpServer::HttpServer(
     // Initialize Adaptive Index Manager (Sprint C) - always enabled
     adaptive_index_ = std::make_unique<AdaptiveIndexManager>(storage_->getRawDB());
     THEMIS_INFO("Adaptive Index Manager initialized");
+
+    // Initialize Authorization middleware (MVP: tokens via env)
+    auth_ = std::make_unique<themis::AuthMiddleware>();
+    auto get_env = [](const char* name) -> std::optional<std::string> {
+        const char* v = std::getenv(name);
+        if (v && *v) return std::string(v);
+        return std::nullopt;
+    };
+    // Admin token
+    if (auto t = get_env("THEMIS_TOKEN_ADMIN")) {
+        themis::AuthMiddleware::TokenConfig cfg;
+        cfg.token = *t;
+        cfg.user_id = "admin";
+        cfg.scopes = {
+            "admin","config:read","config:write","cdc:read","cdc:admin",
+            "metrics:read","data:read","data:write"
+        };
+        auth_->addToken(cfg);
+        THEMIS_INFO("Auth: ADMIN token configured via env");
+    }
+    // Read-only token
+    if (auto t = get_env("THEMIS_TOKEN_READONLY")) {
+        themis::AuthMiddleware::TokenConfig cfg;
+        cfg.token = *t;
+        cfg.user_id = "readonly";
+        cfg.scopes = {"metrics:read","config:read","data:read","cdc:read"};
+        auth_->addToken(cfg);
+        THEMIS_INFO("Auth: READONLY token configured via env");
+    }
+    // Analyst token (read access incl. vectors/query)
+    if (auto t = get_env("THEMIS_TOKEN_ANALYST")) {
+        themis::AuthMiddleware::TokenConfig cfg;
+        cfg.token = *t;
+        cfg.user_id = "analyst";
+        cfg.scopes = {"metrics:read","data:read","cdc:read"};
+        auth_->addToken(cfg);
+        THEMIS_INFO("Auth: ANALYST token configured via env");
+    }
+
+    // Initialize security components  
+    auto key_provider = std::make_shared<themis::MockKeyProvider>();
+    key_provider->createKey("default", 1);  // Create a default key for testing
+    THEMIS_INFO("MockKeyProvider initialized");
+    
+    // Initialize Keys API Handler with KeyProvider
+    keys_api_ = std::make_unique<themis::server::KeysApiHandler>(key_provider);
+    THEMIS_INFO("Keys API Handler initialized");
+    
+    // Initialize PII Detector for Classification API (simplified - no PKI for now)
+    auto pii_detector = std::make_shared<themis::utils::PIIDetector>();
+    THEMIS_INFO("PII Detector initialized");
+    
+    // Initialize Classification API Handler with PIIDetector
+    classification_api_ = std::make_unique<themis::server::ClassificationApiHandler>(pii_detector);
+    THEMIS_INFO("Classification API Handler initialized");
+    
+    // Initialize Reports API Handler
+    reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
+    THEMIS_INFO("Reports API Handler initialized");
+
+    // Initialize Policy Engine (Governance)
+    policy_engine_ = std::make_unique<themis::PolicyEngine>();
+    try {
+        // Try YAML first, then JSON
+        std::vector<std::filesystem::path> candidates = {
+            std::filesystem::path("config") / "policies.yaml",
+            std::filesystem::path("config") / "policies.yml",
+            std::filesystem::path("config") / "policies.json"
+        };
+        bool loaded_any = false;
+        for (const auto& policies_path : candidates) {
+            if (std::filesystem::exists(policies_path)) {
+                std::string err;
+                if (policy_engine_->loadFromFile(policies_path.string(), &err)) {
+                    THEMIS_INFO("PolicyEngine: loaded policies from {}", policies_path.string());
+                    loaded_any = true;
+                    break;
+                } else {
+                    THEMIS_WARN("PolicyEngine: failed to load {}: {}", policies_path.string(), err);
+                }
+            }
+        }
+        if (!loaded_any) {
+            THEMIS_INFO("PolicyEngine: no policies file found (config/policies.yaml|yml|json), default allow when empty");
+        }
+    } catch (const std::exception& e) {
+        THEMIS_WARN("PolicyEngine initialization warning: {}", e.what());
+    }
+
+    // Initialize Ranger client (optional), configured via environment for secrets
+    auto get_env = [](const char* name) -> std::optional<std::string> {
+        const char* v = std::getenv(name);
+        if (v && *v) return std::string(v);
+        return std::nullopt;
+    };
+    if (auto base = get_env("THEMIS_RANGER_BASE_URL")) {
+        themis::server::RangerClientConfig rcfg;
+        rcfg.base_url = *base;
+        rcfg.policies_path = std::getenv("THEMIS_RANGER_POLICIES_PATH") ? std::getenv("THEMIS_RANGER_POLICIES_PATH") : "/service/public/v2/api/policy";
+        rcfg.service_name = std::getenv("THEMIS_RANGER_SERVICE") ? std::getenv("THEMIS_RANGER_SERVICE") : "themisdb";
+        rcfg.bearer_token = std::getenv("THEMIS_RANGER_BEARER") ? std::getenv("THEMIS_RANGER_BEARER") : "";
+        rcfg.tls_verify = true;
+        if (auto tlsv = get_env("THEMIS_RANGER_TLS_VERIFY")) {
+            if (*tlsv == "0" || *tlsv == "false" || *tlsv == "False") rcfg.tls_verify = false;
+        }
+        if (auto ca = get_env("THEMIS_RANGER_CA_CERT")) rcfg.ca_cert_path = *ca;
+        if (auto cc = get_env("THEMIS_RANGER_CLIENT_CERT")) rcfg.client_cert_path = *cc;
+        if (auto ck = get_env("THEMIS_RANGER_CLIENT_KEY")) rcfg.client_key_path = *ck;
+        try {
+            ranger_client_ = std::make_unique<themis::server::RangerClient>(std::move(rcfg));
+            THEMIS_INFO("Ranger client configured for {}", *base);
+        } catch (...) {
+            THEMIS_WARN("Failed to initialize Ranger client; integration disabled");
+        }
+    }
 }
 
 HttpServer::~HttpServer() {
@@ -349,6 +483,12 @@ namespace {
         ContentFilterSchemaPut,
         EdgeWeightConfigGet,
         EdgeWeightConfigPut,
+        // Keys / Classification / Reports
+        KeysListGet,
+        KeysRotatePost,
+        ClassificationRulesGet,
+        ClassificationTestPost,
+        ReportsComplianceGet,
         NotFound
     };
 
@@ -362,7 +502,7 @@ namespace {
 
         if (target == "/" || target == "/health") return Route::Health;
         if (target == "/stats" && method == http::verb::get) return Route::Stats;
-        if (target == "/metrics" && method == http::verb::get) return Route::Metrics;
+    if (target == "/metrics" && method == http::verb::get) return Route::Metrics;
     if (target == "/config" && (method == http::verb::get || method == http::verb::post)) return Route::Config;
     if (target == "/admin/backup" && method == http::verb::post) return Route::AdminBackupPost;
     if (target == "/admin/restore" && method == http::verb::post) return Route::AdminRestorePost;
@@ -413,6 +553,17 @@ namespace {
         if (target == "/vector/index/config" && method == http::verb::get) return Route::VectorIndexConfigGet;
         if (target == "/vector/index/config" && method == http::verb::put) return Route::VectorIndexConfigPut;
     if (target == "/vector/index/stats" && method == http::verb::get) return Route::VectorIndexStatsGet;
+        // Keys API
+        if (path_only == "/keys" && method == http::verb::get) return Route::KeysListGet;
+        if (path_only == "/keys/rotate" && method == http::verb::post) return Route::KeysRotatePost;
+        // Classification API
+        if (path_only == "/classification/rules" && method == http::verb::get) return Route::ClassificationRulesGet;
+        if (path_only == "/classification/test" && method == http::verb::post) return Route::ClassificationTestPost;
+        // Reports API
+    if (path_only == "/reports/compliance" && method == http::verb::get) return Route::ReportsComplianceGet;
+    // Policies (Ranger integration)
+    if (path_only == "/policies/import/ranger" && method == http::verb::post) return Route::PoliciesImportRangerPost;
+    if (path_only == "/policies/export/ranger" && method == http::verb::get) return Route::PoliciesExportRangerGet;
         if (target == "/transaction" && method == http::verb::post) return Route::TransactionPost;
         if (target == "/transaction/begin" && method == http::verb::post) return Route::TransactionBeginPost;
         if (target == "/transaction/commit" && method == http::verb::post) return Route::TransactionCommitPost;
@@ -590,6 +741,21 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::VectorIndexStatsGet:
             response = handleVectorIndexStats(req);
             break;
+        case Route::KeysListGet:
+            response = handleKeysListKeys(req);
+            break;
+        case Route::KeysRotatePost:
+            response = handleKeysRotateKey(req);
+            break;
+        case Route::ClassificationRulesGet:
+            response = handleClassificationListRules(req);
+            break;
+        case Route::ClassificationTestPost:
+            response = handleClassificationTest(req);
+            break;
+        case Route::ReportsComplianceGet:
+            response = handleReportsCompliance(req);
+            break;
         case Route::TransactionPost:
             response = handleTransaction(req);
             break;
@@ -632,6 +798,12 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::EdgeWeightConfigPut:
             response = handleEdgeWeightConfigPut(req);
             break;
+        case Route::PoliciesImportRangerPost:
+            response = handlePoliciesImportRanger(req);
+            break;
+        case Route::PoliciesExportRangerGet:
+            response = handlePoliciesExportRanger(req);
+            break;
         case Route::NotFound:
         default:
             response = makeErrorResponse(http::status::not_found, "Endpoint not found", req);
@@ -652,6 +824,137 @@ http::response<http::string_body> HttpServer::routeRequest(
 
     return response;
 }
+
+// -----------------------------------------------------------------------------
+// Keys / Classification / Reports API Handlers
+// -----------------------------------------------------------------------------
+
+http::response<http::string_body> HttpServer::handleKeysListKeys(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!keys_api_) {
+            return makeErrorResponse(http::status::service_unavailable, "Keys API not available", req);
+        }
+        auto result = keys_api_->listKeys();
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleKeysRotateKey(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!keys_api_) {
+            return makeErrorResponse(http::status::service_unavailable, "Keys API not available", req);
+        }
+        // Parse key_id from body or query string
+        std::string key_id;
+        try {
+            if (!req.body().empty()) {
+                auto body = json::parse(req.body());
+                if (body.contains("key_id")) key_id = body.value("key_id", "");
+            }
+        } catch (...) {
+            // ignore body parse errors; fallback to query param
+        }
+        if (key_id.empty()) {
+            std::string target = std::string(req.target());
+            auto qpos = target.find('?');
+            if (qpos != std::string::npos) {
+                auto qs = target.substr(qpos + 1);
+                std::istringstream iss(qs);
+                std::string kv;
+                while (std::getline(iss, kv, '&')) {
+                    auto eq = kv.find('=');
+                    if (eq != std::string::npos) {
+                        auto k = kv.substr(0, eq);
+                        auto v = kv.substr(eq + 1);
+                        if (k == "key_id") { key_id = v; break; }
+                    }
+                }
+            }
+        }
+        if (key_id.empty()) {
+            return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+        }
+        // Pass original body if JSON else empty
+        json body_json;
+        try { if (!req.body().empty()) body_json = json::parse(req.body()); } catch (...) {}
+        auto result = keys_api_->rotateKey(key_id, body_json);
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleClassificationListRules(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!classification_api_) {
+            return makeErrorResponse(http::status::service_unavailable, "Classification API not available", req);
+        }
+        auto result = classification_api_->listRules();
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleClassificationTest(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!classification_api_) {
+            return makeErrorResponse(http::status::service_unavailable, "Classification API not available", req);
+        }
+        if (req.body().empty()) {
+            return makeErrorResponse(http::status::bad_request, "Missing JSON body", req);
+        }
+        auto body = json::parse(req.body());
+        auto result = classification_api_->testClassification(body);
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleReportsCompliance(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!reports_api_) {
+            return makeErrorResponse(http::status::service_unavailable, "Reports API not available", req);
+        }
+        std::string report_type = "overview";
+        std::string target = std::string(req.target());
+        auto qpos = target.find('?');
+        if (qpos != std::string::npos) {
+            auto qs = target.substr(qpos + 1);
+            std::istringstream iss(qs);
+            std::string kv;
+            while (std::getline(iss, kv, '&')) {
+                auto eq = kv.find('=');
+                if (eq != std::string::npos) {
+                    auto k = kv.substr(0, eq);
+                    auto v = kv.substr(eq + 1);
+                    if (k == "type" && !v.empty()) { report_type = v; break; }
+                }
+            }
+        }
+        auto result = reports_api_->generateComplianceReport(report_type);
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Existing handlers
+// -----------------------------------------------------------------------------
 
 http::response<http::string_body> HttpServer::handleHealthCheck(
     const http::request<http::string_body>& req
@@ -715,6 +1018,17 @@ http::response<http::string_body> HttpServer::handleStats(
 http::response<http::string_body> HttpServer::handleConfig(
     const http::request<http::string_body>& req
 ) {
+    // GET -> config:read, POST -> config:write (if auth enabled)
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (req.method() == http::verb::post) {
+            if (auto resp = requireAccess(req, "config:write", "config.write", path_only)) return *resp;
+        } else {
+            if (auto resp = requireAccess(req, "config:read", "config.read", path_only)) return *resp;
+        }
+    }
     try {
         // Allow POST to update runtime config (Hot-Reload)
         if (req.method() == http::verb::post) {
@@ -863,6 +1177,13 @@ http::response<http::string_body> HttpServer::handleConfig(
 http::response<http::string_body> HttpServer::handleMetrics(
     const http::request<http::string_body>& req
 ) {
+    // Require metrics:read scope when auth is enabled
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "metrics:read", "metrics.read", path_only)) return *resp;
+    }
     try {
         auto uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - start_time_
@@ -906,9 +1227,36 @@ http::response<http::string_body> HttpServer::handleMetrics(
         out += "# TYPE vccdb_errors_total counter\n";
         out += "vccdb_errors_total " + std::to_string(total_errors) + "\n";
 
-        out += "# HELP vccdb_qps Queries per second (approx)\n";
+    out += "# HELP vccdb_qps Queries per second (approx)\n";
         out += "# TYPE vccdb_qps gauge\n";
         out += "vccdb_qps " + std::to_string(qps) + "\n";
+        // Auth metrics (if enabled)
+        if (auth_ && auth_->isEnabled()) {
+            const auto& m = auth_->getMetrics();
+            out += "# HELP vccdb_authz_success_total Successful authorizations\n";
+            out += "# TYPE vccdb_authz_success_total counter\n";
+            out += "vccdb_authz_success_total " + std::to_string(m.authz_success_total.load()) + "\n";
+            out += "# HELP vccdb_authz_denied_total Denied authorizations (forbidden)\n";
+            out += "# TYPE vccdb_authz_denied_total counter\n";
+            out += "vccdb_authz_denied_total " + std::to_string(m.authz_denied_total.load()) + "\n";
+            out += "# HELP vccdb_authz_invalid_token_total Invalid or missing tokens\n";
+            out += "# TYPE vccdb_authz_invalid_token_total counter\n";
+            out += "vccdb_authz_invalid_token_total " + std::to_string(m.authz_invalid_token_total.load()) + "\n";
+        }
+
+        // Policy Engine metrics (if enabled)
+        if (policy_engine_) {
+            const auto& pm = policy_engine_->getMetrics();
+            out += "# HELP vccdb_policy_eval_total Total policy evaluations\n";
+            out += "# TYPE vccdb_policy_eval_total counter\n";
+            out += "vccdb_policy_eval_total " + std::to_string(pm.policy_eval_total.load()) + "\n";
+            out += "# HELP vccdb_policy_allow_total Allow decisions by policy engine\n";
+            out += "# TYPE vccdb_policy_allow_total counter\n";
+            out += "vccdb_policy_allow_total " + std::to_string(pm.policy_allow_total.load()) + "\n";
+            out += "# HELP vccdb_policy_deny_total Deny decisions by policy engine\n";
+            out += "# TYPE vccdb_policy_deny_total counter\n";
+            out += "vccdb_policy_deny_total " + std::to_string(pm.policy_deny_total.load()) + "\n";
+        }
 
         out += "# HELP rocksdb_block_cache_usage_bytes RocksDB block cache usage in bytes\n";
         out += "# TYPE rocksdb_block_cache_usage_bytes gauge\n";
@@ -1046,6 +1394,26 @@ http::response<http::string_body> HttpServer::handleMetrics(
             }
         }
 
+        // SSE/Changefeed streaming metrics
+        if (sse_manager_) {
+            auto sstats = sse_manager_->getStats();
+            out += "# HELP vccdb_sse_active_connections Number of active SSE connections\n";
+            out += "# TYPE vccdb_sse_active_connections gauge\n";
+            out += "vccdb_sse_active_connections " + std::to_string(sstats.active_connections) + "\n";
+
+            out += "# HELP vccdb_sse_events_sent_total Total SSE events sent\n";
+            out += "# TYPE vccdb_sse_events_sent_total counter\n";
+            out += "vccdb_sse_events_sent_total " + std::to_string(sstats.total_events_sent) + "\n";
+
+            out += "# HELP vccdb_sse_heartbeats_total Total SSE heartbeats sent\n";
+            out += "# TYPE vccdb_sse_heartbeats_total counter\n";
+            out += "vccdb_sse_heartbeats_total " + std::to_string(sstats.total_heartbeats_sent) + "\n";
+
+            out += "# HELP vccdb_sse_dropped_events_total Total buffered SSE events dropped due to backpressure\n";
+            out += "# TYPE vccdb_sse_dropped_events_total counter\n";
+            out += "vccdb_sse_dropped_events_total " + std::to_string(sstats.total_dropped_events) + "\n";
+        }
+
         // Build plain text response with proper content-type
         http::response<http::string_body> res{http::status::ok, req.version()};
         res.set(http::field::server, "THEMIS/0.1.0");
@@ -1058,6 +1426,146 @@ http::response<http::string_body> HttpServer::handleMetrics(
         error_count_.fetch_add(1, std::memory_order_relaxed);
         return makeErrorResponse(http::status::internal_server_error, std::string("metrics error: ") + e.what(), req);
     }
+}
+
+// Authorization helper: returns optional error response if unauthorized
+std::optional<http::response<http::string_body>> HttpServer::requireScope(
+    const http::request<http::string_body>& req,
+    std::string_view scope
+) {
+    if (!auth_ || !auth_->isEnabled()) return std::nullopt; // No auth configured
+
+    auto it = req.find(http::field::authorization);
+    if (it == req.end()) {
+        http::response<http::string_body> res{http::status::unauthorized, req.version()};
+        res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+        res.set(http::field::content_type, "application/json");
+        res.keep_alive(req.keep_alive());
+        res.body() = R"({"error":"missing_authorization","message":"Missing Authorization header"})";
+        res.prepare_payload();
+        return res;
+    }
+    auto token = themis::AuthMiddleware::extractBearerToken(std::string_view(it->value().data(), it->value().size()));
+    if (!token) {
+        http::response<http::string_body> res{http::status::unauthorized, req.version()};
+        res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+        res.set(http::field::content_type, "application/json");
+        res.keep_alive(req.keep_alive());
+        res.body() = R"({"error":"invalid_authorization","message":"Invalid Bearer token format"})";
+        res.prepare_payload();
+        return res;
+    }
+    auto ar = auth_->authorize(*token, scope);
+    if (!ar.authorized) {
+        http::response<http::string_body> res{http::status::forbidden, req.version()};
+        res.set(http::field::content_type, "application/json");
+        res.keep_alive(req.keep_alive());
+        std::string body = std::string("{\"error\":\"forbidden\",\"message\":\"") + ar.reason + "\"}";
+        res.body() = std::move(body);
+        res.prepare_payload();
+        return res;
+    }
+    return std::nullopt;
+}
+
+// Combined scope + policy authorization
+std::optional<http::response<http::string_body>> HttpServer::requireAccess(
+    const http::request<http::string_body>& req,
+    std::string_view required_scope,
+    std::string_view action,
+    std::string_view resource_path
+) {
+    // If auth is disabled and no policy engine configured, allow
+    bool auth_enabled = (auth_ && auth_->isEnabled());
+    bool policy_enabled = (policy_engine_ != nullptr);
+    if (!auth_enabled && !policy_enabled) return std::nullopt;
+
+    // Normalize resource path (strip query string) if empty passed
+    std::string resource = std::string(resource_path);
+    if (resource.empty()) {
+        resource = std::string(req.target());
+    }
+    auto qpos = resource.find('?');
+    if (qpos != std::string::npos) resource = resource.substr(0, qpos);
+
+    // 1) Scope-based authorization (if auth enabled)
+    std::string user_id = "";
+    if (auth_enabled) {
+        auto it = req.find(http::field::authorization);
+        if (it == req.end()) {
+            http::response<http::string_body> res{http::status::unauthorized, req.version()};
+            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = R"({"error":"missing_authorization","message":"Missing Authorization header"})";
+            res.prepare_payload();
+            return res;
+        }
+        auto token = themis::AuthMiddleware::extractBearerToken(std::string_view(it->value().data(), it->value().size()));
+        if (!token) {
+            http::response<http::string_body> res{http::status::unauthorized, req.version()};
+            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = R"({"error":"invalid_authorization","message":"Invalid Bearer token format"})";
+            res.prepare_payload();
+            return res;
+        }
+        auto ar = auth_->authorize(*token, required_scope);
+        if (!ar.authorized) {
+            http::response<http::string_body> res{http::status::forbidden, req.version()};
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            std::string body = std::string("{\"error\":\"forbidden\",\"message\":\"") + ar.reason + "\"}";
+            res.body() = std::move(body);
+            res.prepare_payload();
+            return res;
+        }
+        user_id = ar.user_id;
+    }
+
+    // 2) Policy evaluation (if enabled)
+    if (policy_enabled) {
+        // Extract client IP from headers (X-Forwarded-For or X-Real-IP)
+        std::optional<std::string> client_ip;
+        for (const auto& h : req) {
+            auto name = h.name_string();
+            if (beast::iequals(name, "x-forwarded-for")) {
+                std::string v = std::string(h.value());
+                // take first value before ','
+                auto comma = v.find(',');
+                if (comma != std::string::npos) v = v.substr(0, comma);
+                // trim spaces
+                auto start = v.find_first_not_of(" \t");
+                auto end = v.find_last_not_of(" \t");
+                if (start != std::string::npos) {
+                    v = v.substr(start, end - start + 1);
+                    client_ip = v;
+                }
+                break;
+            } else if (beast::iequals(name, "x-real-ip")) {
+                std::string v = std::string(h.value());
+                client_ip = v;
+            }
+        }
+
+        auto decision = policy_engine_->authorize(user_id, std::string(action), resource, client_ip);
+        if (!decision.allowed) {
+            http::response<http::string_body> res{http::status::forbidden, req.version()};
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            nlohmann::json j = {
+                {"error", "policy_denied"},
+                {"message", decision.reason},
+            };
+            if (!decision.policy_id.empty()) j["policy_id"] = decision.policy_id;
+            res.body() = j.dump();
+            res.prepare_payload();
+            return res;
+        }
+    }
+
+    return std::nullopt;
 }
 
 // ===================== Sprint A beta handlers =====================
@@ -1386,6 +1894,12 @@ http::response<http::string_body> HttpServer::handleLlmInteractionGet(
 http::response<http::string_body> HttpServer::handleChangefeedGet(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "cdc:read", "cdc.read", path_only)) return *resp;
+    }
     if (!config_.feature_cdc) {
         return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
     }
@@ -1467,6 +1981,12 @@ http::response<http::string_body> HttpServer::handleChangefeedGet(
 http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "cdc:read", "cdc.read", path_only)) return *resp;
+    }
     if (!config_.feature_cdc) {
         return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
     }
@@ -1478,9 +1998,11 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
         // Parse query parameters
         uint64_t from_seq = 0;
         std::string key_prefix;
-    bool keep_alive = true; // New parameter for production streaming
-    int max_seconds = 30;   // New optional limit for testability
-    int heartbeat_ms_override = -1; // Optional per-request heartbeat interval
+        bool keep_alive = true; // New parameter for production streaming
+        int max_seconds = 30;   // Optional limit for testability
+        int heartbeat_ms_override = -1; // Optional per-request heartbeat interval
+    int retry_ms = 3000;
+        size_t max_events_per_poll = 100; // Backpressure: limit events consumed per poll
         
         std::string target = std::string(req.target());
         size_t query_pos = target.find('?');
@@ -1543,17 +2065,60 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
                     // ignore parse error
                 }
             }
+
+            // Parse retry_ms
+            size_t r_pos = query_str.find("retry_ms=");
+            if (r_pos != std::string::npos) {
+                size_t r_end = query_str.find('&', r_pos);
+                std::string r_str = query_str.substr(r_pos + 9,
+                    r_end == std::string::npos ? std::string::npos : r_end - r_pos - 9);
+                try {
+                    int v = std::stoi(r_str);
+                    if (v < 100) v = 100; if (v > 120000) v = 120000;
+                    retry_ms = v;
+                } catch (...) {}
+            }
+
+            // Parse max_events_per_poll
+            size_t me_pos = query_str.find("max_events=");
+            if (me_pos != std::string::npos) {
+                size_t me_end = query_str.find('&', me_pos);
+                std::string me_str = query_str.substr(me_pos + 11,
+                    me_end == std::string::npos ? std::string::npos : me_end - me_pos - 11);
+                try {
+                    int v = std::stoi(me_str);
+                    if (v < 1) v = 1; if (v > 1000) v = 1000;
+                    max_events_per_poll = static_cast<size_t>(v);
+                } catch (...) {}
+            }
+        }
+
+        // Support Last-Event-ID header for resume
+        // Search case-insensitively
+        for (const auto& h : req) {
+            auto name = h.name_string();
+            if (beast::iequals(name, "Last-Event-ID")) {
+                try {
+                    uint64_t last_id = std::stoull(std::string(h.value()));
+                    if (from_seq == 0) from_seq = last_id;
+                } catch (...) {}
+                break;
+            }
         }
         
         // Build SSE response
         http::response<http::string_body> res{http::status::ok, req.version()};
         res.set(http::field::server, "THEMIS/0.1.0");
-        res.set(http::field::content_type, "text/event-stream");
-        res.set(http::field::cache_control, "no-cache");
+    res.set(http::field::content_type, "text/event-stream");
+    res.set(http::field::cache_control, "no-cache, no-transform");
         res.set(http::field::connection, "keep-alive");
+    // Best-effort proxies
+    res.set(http::field::access_control_allow_origin, "*");
         res.keep_alive(true);
         
         std::ostringstream body;
+    // Advise client reconnect delay
+    body << "retry: " << retry_ms << "\n\n";
         
         if (keep_alive && sse_manager_) {
             // Production mode: Register connection for streaming
@@ -1572,7 +2137,7 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
             auto last_hb = start;
             while (std::chrono::steady_clock::now() - start < max_duration) {
                 // Poll for new events
-                auto events = sse_manager_->pollEvents(conn_id, 100);
+                auto events = sse_manager_->pollEvents(conn_id, max_events_per_poll);
                 
                 if (!events.empty()) {
                     for (const auto& event_line : events) {
@@ -1626,8 +2191,9 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
             
             auto events = changefeed_->listEvents(options);
             
-            for (const auto& event : events) {
-                body << "data: " << event.toJson().dump() << "\n\n";
+            for (const auto& ev : events) {
+                body << "id: " << ev.sequence << "\n";
+                body << "data: " << ev.toJson().dump() << "\n\n";
             }
             
             if (events.empty()) {
@@ -1654,6 +2220,12 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
 http::response<http::string_body> HttpServer::handleChangefeedStats(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "cdc:admin", "cdc.admin", path_only)) return *resp;
+    }
     if (!config_.feature_cdc) {
         return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
     }
@@ -1682,6 +2254,12 @@ http::response<http::string_body> HttpServer::handleChangefeedStats(
 http::response<http::string_body> HttpServer::handleChangefeedRetention(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "cdc:admin", "cdc.admin", path_only)) return *resp;
+    }
     if (!config_.feature_cdc) {
         return makeErrorResponse(http::status::not_found, "Feature 'cdc' disabled", req);
     }
@@ -1748,6 +2326,12 @@ void HttpServer::recordPageFetch(std::chrono::milliseconds duration_ms) {
 http::response<http::string_body> HttpServer::handleGetEntity(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:read", "read", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("GET /entities/:key");
     
     try {
@@ -1793,6 +2377,12 @@ http::response<http::string_body> HttpServer::handleGetEntity(
 http::response<http::string_body> HttpServer::handlePutEntity(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:write", "write", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("PUT /entities/:key");
     
     try {
@@ -1894,6 +2484,12 @@ http::response<http::string_body> HttpServer::handlePutEntity(
 http::response<http::string_body> HttpServer::handleDeleteEntity(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:write", "delete", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("DELETE /entities/:key");
     
     try {
@@ -1960,6 +2556,12 @@ http::response<http::string_body> HttpServer::handleDeleteEntity(
 http::response<http::string_body> HttpServer::handleQuery(
     const http::request<http::string_body>& req
 ) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:read", "query", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("POST /query");
     
     try {
@@ -4136,6 +4738,12 @@ http::response<http::string_body> HttpServer::handleGraphTraverse(
 http::response<http::string_body> HttpServer::handleVectorSearch(
     const http::request<http::string_body>& req
 ) {
+    if (auth_) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:read", "vector.search", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("handleVectorSearch");
     span.setAttribute("http.method", "POST");
     span.setAttribute("http.path", "/vector/search");
@@ -4422,6 +5030,12 @@ http::response<http::string_body> HttpServer::handleVectorIndexStats(
 http::response<http::string_body> HttpServer::handleVectorBatchInsert(
     const http::request<http::string_body>& req
 ) {
+    if (auth_) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:write", "vector.write", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("handleVectorBatchInsert");
     span.setAttribute("http.method", "POST");
     span.setAttribute("http.path", "/vector/batch_insert");
@@ -4522,6 +5136,12 @@ http::response<http::string_body> HttpServer::handleVectorBatchInsert(
 http::response<http::string_body> HttpServer::handleVectorDeleteByFilter(
     const http::request<http::string_body>& req
 ) {
+    if (auth_) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "data:write", "vector.write", path_only)) return *resp;
+    }
     auto span = Tracer::startSpan("handleVectorDeleteByFilter");
     span.setAttribute("http.method", "DELETE");
     span.setAttribute("http.path", "/vector/by-filter");
@@ -4856,6 +5476,69 @@ http::response<http::string_body> HttpServer::handleEdgeWeightConfigPut(
         return makeErrorResponse(http::status::bad_request, std::string("config write error: ") + e.what(), req);
     } catch (...) {
         return makeErrorResponse(http::status::bad_request, "config write error", req);
+    }
+}
+
+// ===================== Policies: Ranger Import/Export =====================
+
+http::response<http::string_body> HttpServer::handlePoliciesImportRanger(
+    const http::request<http::string_body>& req
+) {
+    // Require admin scope + policy action
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "admin", "admin", path_only)) return *resp;
+    }
+    if (!ranger_client_) {
+        return makeErrorResponse(http::status::service_unavailable, "Ranger client not configured", req);
+    }
+    try {
+        std::string err;
+        auto jsonOpt = ranger_client_->fetchPolicies(&err);
+        if (!jsonOpt) {
+            return makeErrorResponse(http::status::bad_gateway, std::string("Ranger fetch failed: ") + err, req);
+        }
+        auto internal = themis::server::RangerClient::convertFromRanger(*jsonOpt);
+        if (internal.empty()) {
+            return makeErrorResponse(http::status::bad_request, "No policies converted from Ranger response", req);
+        }
+        if (!policy_engine_) policy_engine_ = std::make_unique<themis::PolicyEngine>();
+        policy_engine_->setPolicies(internal);
+        // Persist to local file
+        std::string save_err;
+        bool saved = policy_engine_->saveToFile("config/policies.json", &save_err);
+        nlohmann::json resp = {
+            {"imported", internal.size()},
+            {"saved", saved}
+        };
+        if (!saved) resp["save_error"] = save_err;
+        return makeResponse(http::status::ok, resp.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePoliciesExportRanger(
+    const http::request<http::string_body>& req
+) {
+    if (auth_ && auth_->isEnabled()) {
+        std::string path_only = std::string(req.target());
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (auto resp = requireAccess(req, "admin", "admin", path_only)) return *resp;
+    }
+    try {
+        if (!policy_engine_) {
+            return makeErrorResponse(http::status::service_unavailable, "Policy engine not initialized", req);
+        }
+        auto list = policy_engine_->listPolicies();
+        std::string service = "themisdb";
+        auto out = themis::server::RangerClient::convertToRanger(list, service);
+        return makeResponse(http::status::ok, out.dump(2), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
 }
 
@@ -5434,11 +6117,20 @@ http::response<http::string_body> HttpServer::handleTimeSeriesPut(
             ).count());
         point.metadata = body.value("metadata", json::object());
         
-        bool success = timeseries_->put(metric, entity, point);
+        // Build TSStore DataPoint
+        TSStore::DataPoint ts_point;
+        ts_point.metric = metric;
+        ts_point.entity = entity;
+        ts_point.timestamp_ms = point.timestamp_ms;
+        ts_point.value = point.value;
+        ts_point.tags = point.metadata;
         
-        if (!success) {
+        auto status = timeseries_->putDataPoint(ts_point);
+        
+        if (!status.ok) {
             span.setStatus(false, "put_failed");
-            return makeErrorResponse(http::status::internal_server_error, "Failed to store data point", req);
+            return makeErrorResponse(http::status::internal_server_error, 
+                status.message.empty() ? "Failed to store data point" : status.message, req);
         }
         
         json response = {
@@ -5482,13 +6174,20 @@ http::response<http::string_body> HttpServer::handleTimeSeriesQuery(
         std::string metric = body["metric"];
         std::string entity = body["entity"];
         
-        TimeSeriesStore::RangeQuery query;
-        query.from_ms = body.value("from_ms", int64_t(0));
-        query.to_ms = body.value("to_ms", INT64_MAX);
-        query.limit = body.value("limit", size_t(1000));
-        query.descending = body.value("descending", false);
+        TSStore::QueryOptions query_opts;
+        query_opts.metric = metric;
+        query_opts.entity = entity;
+        query_opts.from_timestamp_ms = body.value("from_ms", int64_t(0));
+        query_opts.to_timestamp_ms = body.value("to_ms", INT64_MAX);
+        query_opts.limit = body.value("limit", size_t(1000));
         
-        auto points = timeseries_->query(metric, entity, query);
+        auto [status, points] = timeseries_->query(query_opts);
+        
+        if (!status.ok) {
+            span.setStatus(false, "query_failed");
+            return makeErrorResponse(http::status::internal_server_error, 
+                status.message.empty() ? "Query failed" : status.message, req);
+        }
         
         json response = {
             {"metric", metric},
@@ -5498,10 +6197,15 @@ http::response<http::string_body> HttpServer::handleTimeSeriesQuery(
         };
         
         for (const auto& p : points) {
-            response["data"].push_back(p.toJson());
+            json point_json = {
+                {"timestamp_ms", p.timestamp_ms},
+                {"value", p.value},
+                {"tags", p.tags}
+            };
+            response["data"].push_back(point_json);
         }
         
-        span.setAttribute("points.count", static_cast<int64_t>(points.size()));
+        span.setAttribute("points_count", static_cast<int64_t>(points.size()));
         span.setStatus(true);
         return makeResponse(http::status::ok, response.dump(), req);
         
@@ -5536,20 +6240,36 @@ http::response<http::string_body> HttpServer::handleTimeSeriesAggregate(
         std::string metric = body["metric"];
         std::string entity = body["entity"];
         
-        TimeSeriesStore::RangeQuery query;
-        query.from_ms = body.value("from_ms", int64_t(0));
-        query.to_ms = body.value("to_ms", INT64_MAX);
-        query.limit = body.value("limit", size_t(1000000)); // No limit for aggregation
+        TSStore::QueryOptions query_opts;
+        query_opts.metric = metric;
+        query_opts.entity = entity;
+        query_opts.from_timestamp_ms = body.value("from_ms", int64_t(0));
+        query_opts.to_timestamp_ms = body.value("to_ms", INT64_MAX);
+        query_opts.limit = body.value("limit", size_t(1000000)); // No limit for aggregation
         
-        auto agg = timeseries_->aggregate(metric, entity, query);
+        auto [status, agg] = timeseries_->aggregate(query_opts);
+        
+        if (!status.ok) {
+            span.setStatus(false, "aggregate_failed");
+            return makeErrorResponse(http::status::internal_server_error, 
+                status.message.empty() ? "Aggregation failed" : status.message, req);
+        }
         
         json response = {
             {"metric", metric},
             {"entity", entity},
-            {"aggregation", agg.toJson()}
+            {"aggregation", {
+                {"min", agg.min},
+                {"max", agg.max},
+                {"avg", agg.avg},
+                {"sum", agg.sum},
+                {"count", agg.count},
+                {"first_timestamp_ms", agg.first_timestamp_ms},
+                {"last_timestamp_ms", agg.last_timestamp_ms}
+            }}
         };
         
-        span.setAttribute("points.count", static_cast<int64_t>(agg.count));
+        span.setAttribute("agg_count", static_cast<int64_t>(agg.count));
         span.setStatus(true);
         return makeResponse(http::status::ok, response.dump(), req);
         

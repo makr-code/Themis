@@ -1,6 +1,22 @@
 ﻿# Themis Multi-Model Database System
 
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0a7ea4)](https://makr-code.github.io/ThemisDB/)
+[![Print](https://img.shields.io/badge/print-Gesamtansicht-555)](https://makr-code.github.io/ThemisDB/print_page/)
+[![PDF](https://img.shields.io/badge/PDF-Gesamtdoku-blueviolet)](https://makr-code.github.io/ThemisDB/themisdb-docs-complete.pdf)
+[![Wiki](https://img.shields.io/badge/wiki-GitHub%20Wiki-0366d6)](https://github.com/makr-code/ThemisDB/wiki)
+
+[![CI](https://github.com/makr-code/ThemisDB/actions/workflows/ci.yml/badge.svg)](https://github.com/makr-code/ThemisDB/actions/workflows/ci.yml)
+[![Code Quality](https://github.com/makr-code/ThemisDB/actions/workflows/code-quality.yml/badge.svg)](https://github.com/makr-code/ThemisDB/actions/workflows/code-quality.yml)
+[![Coverage](https://img.shields.io/badge/coverage-view%20report-brightgreen)](https://makr-code.github.io/ThemisDB/coverage/)
+
 Ein performantes Multi‑Modell Datenbanksystem mit einheitlicher Speicher‑Schicht für Relational, Graph, Vector und Dokument/Filesystem.
+
+Weitere Ressourcen:
+
+- Online‑Doku: https://makr-code.github.io/ThemisDB/
+- Druckansicht: https://makr-code.github.io/ThemisDB/print_page/
+- Gesamt‑PDF: https://makr-code.github.io/ThemisDB/themisdb-docs-complete.pdf
+- GitHub Wiki: https://github.com/makr-code/ThemisDB/wiki
 
 ## Quick Start
 
@@ -214,8 +230,14 @@ Core libraries managed via vcpkg:
 After building, start the server:
 
 ```powershell
+# YAML config (recommended)
+.\build\Release\themis_server.exe --config config.yaml
+
+# Or JSON
 .\build\Release\themis_server.exe --config config.json
 ```
+
+**Configuration Format:** THEMIS supports both YAML and JSON configuration files. YAML is recommended for better readability. See `config/config.json` or create `config.yaml` for examples.
 
 ### Docker
 
@@ -600,12 +622,43 @@ Hinweise:
 - `raw_stats` ist ein menschenlesbarer Textblock (z. B. Compaction-, Cache- und DB-Stats), nützlich für Debugging und Tuning.
 
 Troubleshooting:
-- Fehler „Database not open": Prüfen Sie `storage.rocksdb_path` in `config/config.json`. Unter Windows relative Pfade wie `./data/themis_server` verwenden.
+- Fehler „Database not open": Prüfen Sie `storage.rocksdb_path` in `config.yaml` oder `config.json`. Unter Windows relative Pfade wie `./data/themis_server` verwenden.
 - Kein Zugriff auf `/stats` oder `/metrics`: Server läuft? `GET /health` prüfen. Firewall/Port 8765 freigeben.
 
 ## Configuration
 
-Create a `config.json` file:
+THEMIS supports **YAML** (recommended) and **JSON** configuration files.
+
+**YAML Example** (`config.yaml`):
+
+```yaml
+storage:
+  rocksdb_path: ./data/rocksdb
+  memtable_size_mb: 256
+  block_cache_size_mb: 1024
+  enable_blobdb: true
+  compression:
+    default: lz4
+    bottommost: zstd
+
+server:
+  host: 0.0.0.0
+  port: 8765
+  worker_threads: 8
+
+vector_index:
+  engine: hnsw
+  hnsw_m: 16
+  hnsw_ef_construction: 200
+  use_gpu: false
+
+features:
+  semantic_cache: true
+  llm_store: true
+  cdc: true
+```
+
+**JSON Example** (`config.json`):
 
 ```json
 {
@@ -632,6 +685,12 @@ Create a `config.json` file:
   }
 }
 ```
+
+**Policy Configuration:**
+
+Policies for fine-grained authorization can be configured in YAML or JSON:
+- `config/policies.yaml` (recommended) or `config/policies.json`
+- See `docs/security/policies.md` for details
 
 ## Documentation
 
@@ -866,6 +925,32 @@ MIT License - See LICENSE file for details.
 
 This is currently a research/prototype project. Contributions are welcome!
 
+### Code Quality
+
+ThemisDB maintains high code quality standards through automated CI checks:
+
+- **Static Analysis**: clang-tidy with modern C++17 best practices
+- **Linting**: cppcheck for additional C++ quality checks
+- **Code Coverage**: Comprehensive test coverage reporting
+- **Secret Scanning**: Gitleaks prevents accidental credential commits
+
+**Run checks locally before pushing:**
+
+```bash
+# Linux/macOS
+./scripts/check-quality.sh
+
+# Windows
+.\scripts\check-quality.ps1
+```
+
+**View detailed guide:** [Code Quality Documentation](docs/code_quality.md)
+
+**CI Workflows:**
+- `.github/workflows/ci.yml` - Build and test
+- `.github/workflows/code-quality.yml` - Static analysis, linting, coverage, secret scanning
+- `.github/workflows/coverage-badge.yml` - Coverage reporting and badge generation
+
 ## References
 
 Based on the architectural analysis in:
@@ -875,3 +960,24 @@ Inspired by systems like:
 - ArangoDB (Multi-model architecture)
 - CozoDB (Hybrid relational-graph-vector)
 - Azure Cosmos DB (Multi-model with ARS format)
+
+## Admin Tools Übersicht
+
+Sieben WPF-Tools mit einheitlichem Themis-Layout unterstützen Betrieb und Compliance:
+
+- Audit Log Viewer
+- SAGA Verifier
+- PII Manager
+- Key Rotation Dashboard
+- Retention Manager
+- Classification Dashboard
+- Compliance Reports
+
+Build/Publish:
+- Skript: `publish-all.ps1` (Release, self-contained win-x64)
+- Artefakte: `dist/<ToolName>/`
+
+Dokumentation:
+- Benutzerhandbuch: `docs/admin_tools_user_guide.md`
+- Admin-Guide: `docs/admin_tools_admin_guide.md`
+- OpenAPI: `openapi/openapi.yaml`

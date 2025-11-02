@@ -15,13 +15,22 @@
 #include "index/vector_index.h"
 #include "transaction/transaction_manager.h"
 #include "server/http_server.h"
+#include "utils/retention_manager.h"
+#include "utils/audit_logger.h"
+#include "utils/pki_client.h"
+#include "security/encryption.h"
+#include "security/mock_key_provider.h"
 
 #include <iostream>
 #include <fstream>
 #include <csignal>
 #include <memory>
 #include <optional>
+#include <thread>
+#include <atomic>
+#include <functional>
 #include <nlohmann/json.hpp>
+#include <yaml-cpp/yaml.h>
 
 using namespace themis;
 using json = nlohmann::json;
@@ -72,18 +81,53 @@ int main(int argc, char* argv[]) {
                           << "  --host HOST     Server host (default: 0.0.0.0)\n"
                           << "  --port PORT     Server port (default: 8765)\n"
                           << "  --threads N     Number of worker threads (default: auto)\n"
-                          << "  --config FILE   Load server/storage config from JSON file\n"
+                          << "  --config FILE   Load server/storage config from JSON or YAML file\n"
                           << "  --help, -h      Show this help message\n";
                 return 0;
             }
         }
         
-        // Load config.json if provided or in default locations
+        // Load config (JSON or YAML) if provided or in default locations
         auto load_config = [&](const std::string& path) -> std::optional<json> {
             try {
-                std::ifstream f(path);
-                if (!f.is_open()) return std::nullopt;
-                json j; f >> j; return j;
+                auto ends_with = [](const std::string& s, const std::string& suffix){
+                    return s.size() >= suffix.size() && s.compare(s.size()-suffix.size(), suffix.size(), suffix) == 0;
+                };
+
+                if (ends_with(path, ".yaml") || ends_with(path, ".yml")) {
+                    YAML::Node root = YAML::LoadFile(path);
+                    // recursive conversion YAML -> JSON
+                    std::function<json(const YAML::Node&)> to_json = [&](const YAML::Node& n) -> json {
+                        if (!n) return nullptr;
+                        if (n.IsScalar()) {
+                            // Try boolean
+                            try { return n.as<bool>(); } catch (...) {}
+                            // Try integer
+                            try { return n.as<long long>(); } catch (...) {}
+                            // Try double
+                            try { return n.as<double>(); } catch (...) {}
+                            // Fallback string
+                            return n.as<std::string>("");
+                        } else if (n.IsSequence()) {
+                            json arr = json::array();
+                            for (const auto& it : n) arr.push_back(to_json(it));
+                            return arr;
+                        } else if (n.IsMap()) {
+                            json obj = json::object();
+                            for (auto it = n.begin(); it != n.end(); ++it) {
+                                const auto& k = it->first.as<std::string>();
+                                obj[k] = to_json(it->second);
+                            }
+                            return obj;
+                        }
+                        return nullptr;
+                    };
+                    return to_json(root);
+                } else {
+                    std::ifstream f(path);
+                    if (!f.is_open()) return std::nullopt;
+                    json j; f >> j; return j;
+                }
             } catch (...) { return std::nullopt; }
         };
 
@@ -95,8 +139,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         } else {
-            // default search paths
-            for (const auto& p : {std::string("./config.json"), std::string("./config/config.json"), std::string("/etc/vccdb/config.json")}) {
+            // default search paths (prefer YAML)
+            for (const auto& p : {
+                    std::string("./config.yaml"), std::string("./config.yml"), std::string("./config.json"),
+                    std::string("./config/config.yaml"), std::string("./config/config.yml"), std::string("./config/config.json"),
+                    std::string("/etc/vccdb/config.yaml"), std::string("/etc/vccdb/config.yml"), std::string("/etc/vccdb/config.json")}) {
                 cfg = load_config(p);
                 if (cfg) { THEMIS_INFO("Loaded config from {}", p); break; }
             }
@@ -218,7 +265,7 @@ int main(int argc, char* argv[]) {
             }
         }
         
-        // Create and start HTTP server
+    // Create and start HTTP server
         server::HttpServer::Config server_config(host, port, num_threads);
         // Apply feature flags
         if (cfg && cfg->contains("features")) {
@@ -227,6 +274,14 @@ int main(int argc, char* argv[]) {
             server_config.feature_llm_store = f.value("llm_store", false);
             server_config.feature_cdc = f.value("cdc", false);
             server_config.feature_timeseries = f.value("timeseries", false);
+        }
+        // SSE/CDC streaming config
+        if (cfg && cfg->contains("sse")) {
+            const auto& sse = (*cfg)["sse"];
+            server_config.sse_max_events_per_second = sse.value("max_events_per_second", uint32_t(0));
+            if (server_config.sse_max_events_per_second > 0) {
+                THEMIS_INFO("SSE rate limit: {} events/second per connection", server_config.sse_max_events_per_second);
+            }
         }
         g_server = std::make_shared<server::HttpServer>(
             server_config,
@@ -241,6 +296,192 @@ int main(int argc, char* argv[]) {
         std::signal(SIGINT, signalHandler);
         std::signal(SIGTERM, signalHandler);
         
+        // Retention worker (optional, runs in background if enabled in config)
+        std::atomic<bool> retention_stop{false};
+        std::thread retention_thread;
+        bool retention_enabled = false;
+        int retention_interval_hours = 24;
+        std::string retention_policies_path = "./config/retention_policies.yaml";
+        
+        if (cfg && cfg->contains("features") && (*cfg)["features"].contains("retention")) {
+            const auto& ret_cfg = (*cfg)["features"]["retention"];
+            retention_enabled = ret_cfg.value("enabled", false);
+            retention_interval_hours = ret_cfg.value("interval_hours", 24);
+            retention_policies_path = ret_cfg.value("policies_path", std::string("./config/retention_policies.yaml"));
+        }
+        
+        if (retention_enabled) {
+            try {
+                // Instantiate retention manager with configured YAML path
+                auto retention_mgr = std::make_shared<vcc::RetentionManager>(retention_policies_path);
+                
+                // Setup audit logging for retention actions
+                auto key_provider = std::make_shared<themis::MockKeyProvider>();
+                key_provider->createKey("retention_audit_key", 32);
+                auto field_enc = std::make_shared<themis::FieldEncryption>(key_provider);
+                
+                themis::utils::PKIConfig pki_cfg;
+                pki_cfg.service_id = "themis-retention";
+                pki_cfg.endpoint = "https://pki.example.com";
+                pki_cfg.signature_algorithm = "RSA-SHA256";
+                auto pki_client = std::make_shared<themis::utils::VCCPKIClient>(pki_cfg);
+                
+                themis::utils::AuditLoggerConfig audit_cfg;
+                audit_cfg.enabled = true;
+                audit_cfg.encrypt_then_sign = true;
+                audit_cfg.log_path = "data/logs/retention_audit.jsonl";
+                audit_cfg.key_id = "retention_audit_key";
+                auto audit_logger = std::make_shared<themis::utils::AuditLogger>(field_enc, pki_client, audit_cfg);
+                
+                // Capture db and secondary_index for entity enumeration
+                auto db_ptr = db;
+                auto sec_idx_ptr = secondary_index;
+                
+                retention_thread = std::thread([retention_mgr, &retention_stop, retention_interval_hours, db_ptr, sec_idx_ptr, audit_logger]() {
+                    using namespace std::chrono;
+                    auto interval = hours(retention_interval_hours);
+                    auto next_run = system_clock::now();
+                    
+                    while (!retention_stop.load(std::memory_order_relaxed)) {
+                        auto now_tp = system_clock::now();
+                        if (now_tp >= next_run) {
+                            // Entity provider: enumerate entities per policy from DB
+                            auto entity_provider = [db_ptr, sec_idx_ptr](const std::string& policy_name) 
+                                -> std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> {
+                                std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> entities;
+                                
+                                // Map policy names to collections (example heuristic)
+                                // In production: use policy metadata or a mapping table
+                                std::string collection;
+                                if (policy_name.find("user") != std::string::npos || policy_name.find("personal") != std::string::npos) {
+                                    collection = "users";
+                                } else if (policy_name.find("transaction") != std::string::npos) {
+                                    collection = "transactions";
+                                } else if (policy_name.find("audit") != std::string::npos) {
+                                    collection = "audit_logs";
+                                } else if (policy_name.find("session") != std::string::npos) {
+                                    collection = "sessions";
+                                } else if (policy_name.find("analytics") != std::string::npos) {
+                                    collection = "analytics";
+                                } else if (policy_name.find("backup") != std::string::npos) {
+                                    collection = "backups";
+                                } else {
+                                    // Skip unknown policies
+                                    return entities;
+                                }
+                                
+                                // Scan collection for entities with created_at timestamps
+                                // Use range scan if created_at index exists, otherwise skip
+                                try {
+                                    if (sec_idx_ptr->hasRangeIndex(collection, "created_at")) {
+                                        // Scan all entries in created_at index (unbounded range)
+                                        auto [status, pks] = sec_idx_ptr->scanKeysRange(
+                                            collection, "created_at",
+                                            std::nullopt, std::nullopt,
+                                            false, false,
+                                            10000, false
+                                        );
+                                        
+                                        if (status.ok) {
+                                            for (const auto& pk : pks) {
+                                                // Fetch entity to get created_at
+                                                auto entity_opt = db_ptr->get(pk);
+                                                if (entity_opt) {
+                                                    try {
+                                                        std::string entity_str(entity_opt->begin(), entity_opt->end());
+                                                        auto j = nlohmann::json::parse(entity_str);
+                                                        if (j.contains("created_at")) {
+                                                            // Parse ISO8601 or epoch timestamp
+                                                            int64_t ts_epoch = 0;
+                                                            if (j["created_at"].is_number()) {
+                                                                ts_epoch = j["created_at"].get<int64_t>();
+                                                            } else if (j["created_at"].is_string()) {
+                                                                // Simple epoch string parse
+                                                                ts_epoch = std::stoll(j["created_at"].get<std::string>());
+                                                            }
+                                                            auto tp = std::chrono::system_clock::time_point(std::chrono::seconds(ts_epoch));
+                                                            entities.emplace_back(pk, tp);
+                                                        }
+                                                    } catch (...) {
+                                                        // Skip malformed entities
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (...) {
+                                    // Index may not exist; silent fallback
+                                }
+                                
+                                return entities;
+                            };
+                            
+                            auto archive_handler = [db_ptr, audit_logger](const std::string& entity_id) -> bool {
+                                THEMIS_INFO("[Retention] Archive entity {}", entity_id);
+                                
+                                // Audit log the archival action
+                                try {
+                                    nlohmann::json audit_event;
+                                    audit_event["action"] = "RETENTION_ARCHIVE";
+                                    audit_event["entity_id"] = entity_id;
+                                    audit_event["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                        std::chrono::system_clock::now().time_since_epoch()
+                                    ).count();
+                                    audit_event["classification"] = "retention_lifecycle";
+                                    audit_logger->logEvent(audit_event);
+                                } catch (...) {
+                                    THEMIS_WARN("[Retention] Failed to audit-log archive for {}", entity_id);
+                                }
+                                
+                                // TODO: Move to cold storage (e.g., export to S3, tape, or separate DB)
+                                // For now, mark as archived or export to file
+                                return true;
+                            };
+                            
+                            auto purge_handler = [db_ptr, audit_logger](const std::string& entity_id) -> bool {
+                                THEMIS_INFO("[Retention] Purge entity {}", entity_id);
+                                
+                                // Audit log the purge action
+                                try {
+                                    nlohmann::json audit_event;
+                                    audit_event["action"] = "RETENTION_PURGE";
+                                    audit_event["entity_id"] = entity_id;
+                                    audit_event["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                        std::chrono::system_clock::now().time_since_epoch()
+                                    ).count();
+                                    audit_event["classification"] = "retention_lifecycle";
+                                    audit_logger->logEvent(audit_event);
+                                } catch (...) {
+                                    THEMIS_WARN("[Retention] Failed to audit-log purge for {}", entity_id);
+                                }
+                                
+                                // Delete from DB
+                                return db_ptr->del(entity_id);
+                            };
+                            
+                            auto stats = retention_mgr->runRetentionCheck(entity_provider, archive_handler, purge_handler);
+                            THEMIS_INFO("[Retention] Completed: scanned={}, archived={}, purged={}, retained={}, errors={}",
+                                stats.total_entities_scanned, stats.archived_count, stats.purged_count, stats.retained_count, stats.error_count);
+                            next_run = now_tp + interval;
+                        }
+                        
+                        // Sleep in small chunks to react quickly on shutdown
+                        int sleep_minutes = std::max(1, retention_interval_hours * 60 / 60); // at least 1min chunks
+                        for (int i = 0; i < sleep_minutes && !retention_stop.load(std::memory_order_relaxed); ++i) {
+                            std::this_thread::sleep_for(std::chrono::minutes(1));
+                        }
+                    }
+                });
+                THEMIS_INFO("Retention worker started (interval: {}h)", retention_interval_hours);
+            } catch (const std::exception& e) {
+                THEMIS_WARN("Failed to start retention worker: {}", e.what());
+            } catch (...) {
+                THEMIS_WARN("Failed to start retention worker: unknown error");
+            }
+        } else {
+            THEMIS_INFO("Retention worker disabled (enable via config.json features.retention.enabled)");
+        }
+
         THEMIS_INFO("Starting HTTP server...");
         g_server->start();
         
@@ -288,21 +529,31 @@ int main(int argc, char* argv[]) {
         THEMIS_INFO("Initiating graceful shutdown sequence...");
         THEMIS_INFO("=================================================");
         
-        // Step 1: Shutdown tracing (no more traces)
-        THEMIS_INFO("[1/4] Shutting down distributed tracing...");
+        // Step 1: Stop retention worker
+        THEMIS_INFO("[1/5] Stopping retention worker...");
+        try {
+            retention_stop.store(true, std::memory_order_relaxed);
+            if (retention_thread.joinable()) retention_thread.join();
+            THEMIS_INFO("Retention worker stopped");
+        } catch (...) {
+            THEMIS_WARN("Error stopping retention worker (continuing shutdown)");
+        }
+
+    // Step 2: Shutdown tracing (no more traces)
+    THEMIS_INFO("[2/5] Shutting down distributed tracing...");
         Tracer::shutdown();
         
-        // Step 2: Save vector index before closing DB
+        // Step 3: Save vector index before closing DB
         if (vector_index && !vector_save_path.empty()) {
-            THEMIS_INFO("[2/4] Saving vector index to disk...");
+            THEMIS_INFO("[3/5] Saving vector index to disk...");
             vector_index->shutdown();
         } else {
-            THEMIS_INFO("[2/4] Vector index save skipped (not configured)");
+            THEMIS_INFO("[3/5] Vector index save skipped (not configured)");
         }
         
-        // Step 3: Database is already closed by server->stop()
+        // Step 4: Database is already closed by server->stop()
         // but we ensure cleanup here
-        THEMIS_INFO("[3/4] Database cleanup...");
+        THEMIS_INFO("[4/5] Database cleanup...");
         if (db && db->isOpen()) {
             db->close();
             THEMIS_INFO("Database closed cleanly");
@@ -310,8 +561,8 @@ int main(int argc, char* argv[]) {
             THEMIS_INFO("Database already closed by server");
         }
         
-        // Step 4: Clear shared pointers
-        THEMIS_INFO("[4/4] Releasing resources...");
+        // Step 5: Clear shared pointers
+        THEMIS_INFO("[5/5] Releasing resources...");
         g_server.reset();
         tx_manager.reset();
         vector_index.reset();
