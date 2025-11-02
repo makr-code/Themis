@@ -10,8 +10,9 @@ namespace utils {
 struct PKIConfig {
     std::string service_id;
     std::string endpoint;           // e.g. https://localhost:8443/api/v1
-    std::string cert_path;          // optional: client cert path
-    std::string key_path;           // optional: client key path
+    std::string cert_path;          // optional: certificate path (PEM)
+    std::string key_path;           // optional: private key path (PEM)
+    std::string key_passphrase;     // optional: private key passphrase
     std::string signature_algorithm = "RSA-SHA256";
 };
 

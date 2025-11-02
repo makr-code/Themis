@@ -23,6 +23,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <cstdlib>
 #include <csignal>
 #include <memory>
 #include <optional>
@@ -324,6 +325,9 @@ int main(int argc, char* argv[]) {
                 pki_cfg.service_id = "themis-retention";
                 pki_cfg.endpoint = "https://pki.example.com";
                 pki_cfg.signature_algorithm = "RSA-SHA256";
+                if (const char* k = std::getenv("THEMIS_PKI_PRIVATE_KEY")) { pki_cfg.key_path = k; }
+                if (const char* c = std::getenv("THEMIS_PKI_CERTIFICATE")) { pki_cfg.cert_path = c; }
+                if (const char* p = std::getenv("THEMIS_PKI_PRIVATE_KEY_PASSPHRASE")) { pki_cfg.key_passphrase = p; }
                 auto pki_client = std::make_shared<themis::utils::VCCPKIClient>(pki_cfg);
                 
                 themis::utils::AuditLoggerConfig audit_cfg;
