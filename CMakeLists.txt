@@ -139,6 +139,7 @@ set(THEMIS_CORE_SOURCES
     src/server/reports_api_handler.cpp
     src/server/ranger_adapter.cpp
     src/server/policy_engine.cpp
+    src/server/auth_middleware.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp

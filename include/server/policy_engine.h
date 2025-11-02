@@ -82,7 +82,7 @@ private:
 
     mutable std::mutex mutex_;
     std::vector<Policy> policies_;
-    Metrics metrics_;
+    mutable Metrics metrics_;
 };
 
 } // namespace themis

@@ -135,9 +135,9 @@ HttpServer::HttpServer(
     // Initialize Changefeed (Sprint A CDC) if feature enabled
     if (config_.feature_cdc) {
         cdc_cf_handle_ = nullptr; // Use default CF
+        // Changefeed constructor signature accepts (TransactionDB*, ColumnFamilyHandle*)
+        // previous code attempted to pass Route identifiers which no longer apply.
         changefeed_ = std::make_shared<Changefeed>(
-            VectorBatchInsertPost,
-            VectorDeleteByFilterDelete,
             storage_->getRawDB(),
             cdc_cf_handle_
         );
@@ -261,11 +261,7 @@ HttpServer::HttpServer(
     }
 
     // Initialize Ranger client (optional), configured via environment for secrets
-    auto get_env = [](const char* name) -> std::optional<std::string> {
-        const char* v = std::getenv(name);
-        if (v && *v) return std::string(v);
-        return std::nullopt;
-    };
+    // Reuse the earlier `get_env` lambda defined above (tokens); avoid duplicate definition.
     if (auto base = get_env("THEMIS_RANGER_BASE_URL")) {
         themis::server::RangerClientConfig rcfg;
         rcfg.base_url = *base;
@@ -502,6 +498,8 @@ namespace {
         ClassificationRulesGet,
         ClassificationTestPost,
         ReportsComplianceGet,
+    PoliciesImportRangerPost,
+    PoliciesExportRangerGet,
         NotFound
     };
 

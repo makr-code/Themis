@@ -5,9 +5,7 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 
-namespace themis {
-class PolicyEngine; // forward
-}
+#include "server/policy_engine.h" // provides themis::PolicyEngine and nested Policy
 
 namespace themis { namespace server {
 

@@ -4,8 +4,11 @@
 #include <string_view>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <optional>
 #include <functional>
+#include <atomic>
+#include <mutex>
 
 namespace themis {
 
