@@ -488,6 +488,7 @@ namespace {
         ContentBlobGet,
         ContentChunksGet,
         HybridSearchPost,
+        FusionSearchPost,
         FulltextSearchPost,
         ContentFilterSchemaGet,
         ContentFilterSchemaPut,
@@ -592,6 +593,9 @@ namespace {
 
     // Hybrid Search
         if (target == "/search/hybrid" && method == http::verb::post) return Route::HybridSearchPost;
+        
+        // Fusion Search (Text+Vector with RRF/Weighted)
+        if (target == "/search/fusion" && method == http::verb::post) return Route::FusionSearchPost;
         
         // Fulltext Search
         if (target == "/search/fulltext" && method == http::verb::post) return Route::FulltextSearchPost;
@@ -800,6 +804,9 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::HybridSearchPost:
             response = handleHybridSearch(req);
+            break;
+        case Route::FusionSearchPost:
+            response = handleFusionSearch(req);
             break;
         case Route::FulltextSearchPost:
             response = handleFulltextSearch(req);
@@ -5473,6 +5480,187 @@ http::response<http::string_body> HttpServer::handleFulltextSearch(
         return makeErrorResponse(http::status::internal_server_error, std::string("Fulltext search error: ") + e.what(), req);
     } catch (...) {
         return makeErrorResponse(http::status::internal_server_error, "Unknown fulltext search error", req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleFusionSearch(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!secondary_index_) return makeErrorResponse(http::status::service_unavailable, "SecondaryIndexManager not initialized", req);
+        if (!vector_index_) return makeErrorResponse(http::status::service_unavailable, "VectorIndexManager not initialized", req);
+        
+        json body = json::parse(req.body());
+        
+        // Validate required fields
+        if (!body.contains("table") || !body["table"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing or invalid 'table' field", req);
+        }
+        
+        std::string table = body["table"];
+        int k = body.value("k", 10);
+        std::string fusionMode = body.value("fusion_mode", "rrf"); // "rrf" or "weighted"
+        
+        // Text search parameters (optional)
+        std::vector<SecondaryIndexManager::FulltextResult> textResults;
+        bool hasTextQuery = body.contains("text_query") && body.contains("text_column");
+        
+        if (hasTextQuery) {
+            std::string textColumn = body["text_column"];
+            std::string textQuery = body["text_query"];
+            int textLimit = body.value("text_limit", 1000);
+            
+            if (!secondary_index_->hasFulltextIndex(table, textColumn)) {
+                return makeErrorResponse(http::status::bad_request, 
+                    "No fulltext index on " + table + "." + textColumn, req);
+            }
+            
+            auto [textStatus, textRes] = secondary_index_->scanFulltextWithScores(table, textColumn, textQuery, textLimit);
+            if (!textStatus.ok) {
+                return makeErrorResponse(http::status::internal_server_error, "Text search failed: " + textStatus.message, req);
+            }
+            textResults = std::move(textRes);
+        }
+        
+        // Vector search parameters (optional)
+        std::vector<VectorIndexManager::Result> vectorResults;
+        bool hasVectorQuery = body.contains("vector_query");
+        
+        if (hasVectorQuery) {
+            if (!body["vector_query"].is_array()) {
+                return makeErrorResponse(http::status::bad_request, "vector_query must be array of floats", req);
+            }
+            
+            std::vector<float> vectorQuery;
+            for (const auto& val : body["vector_query"]) {
+                if (val.is_number()) {
+                    vectorQuery.push_back(val.get<float>());
+                }
+            }
+            
+            if (vectorQuery.empty()) {
+                return makeErrorResponse(http::status::bad_request, "vector_query array is empty", req);
+            }
+            
+            int vectorLimit = body.value("vector_limit", 1000);
+            auto [vecStatus, vecRes] = vector_index_->searchKnn(vectorQuery, vectorLimit);
+            if (!vecStatus.ok) {
+                return makeErrorResponse(http::status::internal_server_error, "Vector search failed: " + vecStatus.message, req);
+            }
+            vectorResults = std::move(vecRes);
+        }
+        
+        // Require at least one query type
+        if (!hasTextQuery && !hasVectorQuery) {
+            return makeErrorResponse(http::status::bad_request, "At least one of text_query or vector_query required", req);
+        }
+        
+        // Fusion logic
+        std::vector<std::pair<std::string, double>> fusedResults;
+        
+        if (fusionMode == "rrf") {
+            // Reciprocal Rank Fusion: score = sum(1 / (k + rank))
+            int kRrf = body.value("k_rrf", 60);
+            std::unordered_map<std::string, double> scores;
+            
+            // Text contributions
+            for (size_t i = 0; i < textResults.size(); ++i) {
+                scores[textResults[i].pk] += 1.0 / (kRrf + i + 1);
+            }
+            
+            // Vector contributions
+            for (size_t i = 0; i < vectorResults.size(); ++i) {
+                scores[vectorResults[i].pk] += 1.0 / (kRrf + i + 1);
+            }
+            
+            // Convert to vector and sort
+            fusedResults.reserve(scores.size());
+            for (const auto& [pk, score] : scores) {
+                fusedResults.emplace_back(pk, score);
+            }
+            std::sort(fusedResults.begin(), fusedResults.end(), 
+                [](const auto& a, const auto& b) { return a.second > b.second; });
+            
+        } else if (fusionMode == "weighted") {
+            // Weighted fusion: alpha * normalize(text_score) + (1 - alpha) * normalize(vector_sim)
+            double alpha = body.value("weight_text", 0.5);
+            alpha = std::clamp(alpha, 0.0, 1.0);
+            
+            // Normalize text scores (min-max)
+            double textMin = textResults.empty() ? 0.0 : textResults.back().score;
+            double textMax = textResults.empty() ? 1.0 : textResults.front().score;
+            double textRange = (textMax - textMin) > 1e-9 ? (textMax - textMin) : 1.0;
+            
+            // Normalize vector distances (convert to similarity: 1 - normalized_dist)
+            // Assuming L2 or COSINE metric; smaller distance = better
+            double vecMin = vectorResults.empty() ? 0.0 : vectorResults.front().distance;
+            double vecMax = vectorResults.empty() ? 1.0 : vectorResults.back().distance;
+            double vecRange = (vecMax - vecMin) > 1e-9 ? (vecMax - vecMin) : 1.0;
+            
+            std::unordered_map<std::string, double> scores;
+            
+            // Text contributions
+            for (const auto& res : textResults) {
+                double normScore = (res.score - textMin) / textRange;
+                scores[res.pk] += alpha * normScore;
+            }
+            
+            // Vector contributions (convert distance to similarity)
+            for (const auto& res : vectorResults) {
+                double normDist = (res.distance - vecMin) / vecRange;
+                double similarity = 1.0 - normDist;
+                scores[res.pk] += (1.0 - alpha) * similarity;
+            }
+            
+            // Convert to vector and sort
+            fusedResults.reserve(scores.size());
+            for (const auto& [pk, score] : scores) {
+                fusedResults.emplace_back(pk, score);
+            }
+            std::sort(fusedResults.begin(), fusedResults.end(), 
+                [](const auto& a, const auto& b) { return a.second > b.second; });
+            
+        } else {
+            return makeErrorResponse(http::status::bad_request, 
+                "Invalid fusion_mode: " + fusionMode + " (must be 'rrf' or 'weighted')", req);
+        }
+        
+        // Limit to top-k
+        if (fusedResults.size() > static_cast<size_t>(k)) {
+            fusedResults.resize(k);
+        }
+        
+        // Build response
+        json resp = json::array();
+        for (const auto& [pk, score] : fusedResults) {
+            resp.push_back({
+                {"pk", pk},
+                {"score", score}
+            });
+        }
+        
+        json out = {
+            {"count", resp.size()},
+            {"fusion_mode", fusionMode},
+            {"table", table},
+            {"results", resp}
+        };
+        
+        if (hasTextQuery) {
+            out["text_count"] = textResults.size();
+        }
+        if (hasVectorQuery) {
+            out["vector_count"] = vectorResults.size();
+        }
+        
+        return makeResponse(http::status::ok, out.dump(), req);
+        
+    } catch (const json::exception& e) {
+        return makeErrorResponse(http::status::bad_request, std::string("JSON parse error: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, std::string("Fusion search error: ") + e.what(), req);
+    } catch (...) {
+        return makeErrorResponse(http::status::internal_server_error, "Unknown fusion search error", req);
     }
 }
 
