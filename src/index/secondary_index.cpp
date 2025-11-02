@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
 #include <cmath>
 #include <cstdio>
 #include <cctype>
@@ -21,6 +22,39 @@ inline std::vector<uint8_t> toBytes(std::string_view sv) {
 	return std::vector<uint8_t>(sv.begin(), sv.end());
 }
 } // namespace
+// static
+std::string SecondaryIndexManager::makeFulltextTFKey(std::string_view table, std::string_view column, std::string_view token, std::string_view pk) {
+	std::string key = "fttf:";
+	key += std::string(table);
+	key += ":";
+	key += std::string(column);
+	key += ":";
+	key += std::string(token);
+	key += ":";
+	key += std::string(pk);
+	return key;
+}
+
+// static
+std::string SecondaryIndexManager::makeFulltextDocLenKey(std::string_view table, std::string_view column, std::string_view pk) {
+	std::string key = "ftdlen:";
+	key += std::string(table);
+	key += ":";
+	key += std::string(column);
+	key += ":";
+	key += std::string(pk);
+	return key;
+}
+
+// static
+std::string SecondaryIndexManager::makeFulltextDocLenPrefix(std::string_view table, std::string_view column) {
+	std::string key = "ftdlen:";
+	key += std::string(table);
+	key += ":";
+	key += std::string(column);
+	key += ":";
+	return key;
+}
 
 SecondaryIndexManager::SecondaryIndexManager(RocksDBWrapper& db) : db_(db) {}
 
@@ -835,12 +869,22 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForPut_(std::s
 		
 		// Tokenize text
 		auto tokens = tokenize(*maybeText);
+		std::unordered_map<std::string, uint32_t> tf;
+		for (const auto& t : tokens) { if (!t.empty()) tf[t]++; }
+		const std::string dkey = makeFulltextDocLenKey(table, fcol, pk);
+		{
+			std::string s = std::to_string(tokens.size());
+			std::vector<uint8_t> val(s.begin(), s.end());
+			batch.put(dkey, val);
+		}
 		std::vector<uint8_t> pkBytes = toBytes(pk);
-		
-		for (const auto& token : tokens) {
-			if (token.empty()) continue;
+		for (const auto& [token, count] : tf) {
 			const std::string ftKey = makeFulltextIndexKey(table, fcol, token, pk);
 			batch.put(ftKey, pkBytes);
+			const std::string tfKey = makeFulltextTFKey(table, fcol, token, pk);
+			std::string s = std::to_string(count);
+			std::vector<uint8_t> tfVal(s.begin(), s.end());
+			batch.put(tfKey, tfVal);
 		}
 	}
 
@@ -1028,12 +1072,17 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForDelete_(std
 			
 			// Tokenize old text
 			auto tokens = tokenize(*maybeText);
-			
-			for (const auto& token : tokens) {
+			std::unordered_set<std::string> uniqueTokens(tokens.begin(), tokens.end());
+			for (const auto& token : uniqueTokens) {
 				if (token.empty()) continue;
 				const std::string ftKey = makeFulltextIndexKey(table, fcol, token, pk);
 				batch.del(ftKey);
+				const std::string tfKey = makeFulltextTFKey(table, fcol, token, pk);
+				batch.del(tfKey);
 			}
+			// DocLength löschen
+			const std::string dkey = makeFulltextDocLenKey(table, fcol, pk);
+			batch.del(dkey);
 		}
 	}
 
@@ -1618,7 +1667,7 @@ SecondaryIndexManager::scanFulltext(
 		return {Status::OK(), {}};
 	}
 	
-	// For each token, get PKs from inverted index
+	// For each token, get PKs from inverted index (doc frequency sets)
 	std::vector<std::unordered_set<std::string>> tokenResults;
 	for (const auto& token : tokens) {
 		std::string prefix = makeFulltextIndexPrefix(table, column, token);
@@ -1641,27 +1690,94 @@ SecondaryIndexManager::scanFulltext(
 		return {Status::OK(), {}};
 	}
 	
-	std::unordered_set<std::string> result = tokenResults[0];
+	std::unordered_set<std::string> intersectionSet = tokenResults[0];
 	for (size_t i = 1; i < tokenResults.size(); ++i) {
 		std::unordered_set<std::string> intersection;
-		for (const auto& pk : result) {
+		for (const auto& pk : intersectionSet) {
 			if (tokenResults[i].count(pk)) {
 				intersection.insert(pk);
 			}
 		}
-		result = std::move(intersection);
+		intersectionSet = std::move(intersection);
 	}
-	
-	// Convert to vector and apply limit
+
+	// BM25 Ranking über die Schnittmenge berechnen
+	// Annahmen (v1 minimal):
+	// - N ~ Anzahl Dokumente im Kandidaten-Universum (Vereinigung aller Token-Sets)
+	// - avgdl ~ durchschnittliche DocLength über die Kandidaten (Vereinigung)
+	std::unordered_set<std::string> universe;
+	for (const auto& s : tokenResults) {
+		for (const auto& pk : s) universe.insert(pk);
+	}
+	const double N = static_cast<double>(std::max<size_t>(1, universe.size()));
+
+	// DocLength laden für Kandidaten (für avgdl)
+	std::unordered_map<std::string, double> docLen;
+	double totalLen = 0.0;
+	for (const auto& pk : universe) {
+		const std::string dkey = makeFulltextDocLenKey(table, column, pk);
+		auto v = db_.get(dkey);
+		double dl = 0.0;
+		if (v && !v->empty()) {
+			std::string s(reinterpret_cast<const char*>(v->data()), v->size());
+			try { dl = static_cast<double>(std::stoull(s)); } catch (...) { dl = 0.0; }
+		}
+		docLen.emplace(pk, dl);
+		totalLen += dl;
+	}
+	const double avgdl = (universe.empty() ? 1.0 : std::max(1.0, totalLen / static_cast<double>(universe.size())));
+
+	// Vorbereiten: df je Token
+	std::vector<double> dfs;
+	dfs.reserve(tokens.size());
+	for (const auto& s : tokenResults) dfs.push_back(static_cast<double>(s.size()));
+
+	// BM25 Parameter
+	const double k1 = 1.2;
+	const double b = 0.75;
+
+	// Score für jede PK in der Schnittmenge berechnen
+	struct Scored { std::string pk; double score; };
+	std::vector<Scored> scored;
+	for (const auto& pk : intersectionSet) {
+		double dl = docLen.count(pk) ? docLen[pk] : 0.0;
+		double s = 0.0;
+		for (size_t i = 0; i < tokens.size(); ++i) {
+			const auto& token = tokens[i];
+			const double df = std::max(1.0, dfs[i]);
+			// IDF wie BM25 mit +1 Stabilisierung
+			double idf = std::log((N - df + 0.5) / (df + 0.5) + 1.0);
+			// tf laden
+			const std::string tfKey = makeFulltextTFKey(table, column, token, pk);
+			auto tfv = db_.get(tfKey);
+			double tf = 0.0;
+			if (tfv && !tfv->empty()) {
+				std::string sTF(reinterpret_cast<const char*>(tfv->data()), tfv->size());
+				try { tf = static_cast<double>(std::stoul(sTF)); } catch (...) { tf = 1.0; }
+			} else {
+				// Fallback: wenn kein TF gespeichert ist, minimal 1
+				tf = 1.0;
+			}
+			double denom = tf + k1 * (1.0 - b + b * (dl / avgdl));
+			if (denom <= 0.0) denom = tf + k1; // Guard
+			double term = idf * ((tf * (k1 + 1.0)) / denom);
+			s += term;
+		}
+		scored.push_back({pk, s});
+	}
+
+	// Sortieren nach Score absteigend
+	std::sort(scored.begin(), scored.end(), [](const Scored& a, const Scored& b){
+		return a.score > b.score;
+	});
+
+	// Top-k PKs extrahieren
 	std::vector<std::string> finalResults;
-	finalResults.reserve(std::min(result.size(), limit));
-	size_t count = 0;
-	for (const auto& pk : result) {
-		if (count >= limit) break;
-		finalResults.push_back(pk);
-		count++;
+	finalResults.reserve(std::min(scored.size(), limit));
+	for (size_t i = 0; i < scored.size() && i < limit; ++i) {
+		finalResults.push_back(scored[i].pk);
 	}
-	
+
 	return {Status::OK(), std::move(finalResults)};
 }
 
@@ -2481,12 +2597,22 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForPut_(
 		
 		// Tokenize text
 		auto tokens = tokenize(*maybeText);
+		std::unordered_map<std::string, uint32_t> tf;
+		for (const auto& t : tokens) { if (!t.empty()) tf[t]++; }
+		const std::string dkey = makeFulltextDocLenKey(table, fcol, pk);
+		{
+			std::string s = std::to_string(tokens.size());
+			std::vector<uint8_t> val(s.begin(), s.end());
+			txn.put(dkey, val);
+		}
 		std::vector<uint8_t> pkBytes = toBytes(pk);
-		
-		for (const auto& token : tokens) {
-			if (token.empty()) continue;
+		for (const auto& [token, count] : tf) {
 			const std::string ftKey = makeFulltextIndexKey(table, fcol, token, pk);
 			txn.put(ftKey, pkBytes);
+			const std::string tfKey = makeFulltextTFKey(table, fcol, token, pk);
+			std::string s = std::to_string(count);
+			std::vector<uint8_t> tfVal(s.begin(), s.end());
+			txn.put(tfKey, tfVal);
 		}
 	}
 
@@ -2676,12 +2802,17 @@ SecondaryIndexManager::Status SecondaryIndexManager::updateIndexesForDelete_(
 			
 			// Tokenize old text
 			auto tokens = tokenize(*maybeText);
-			
-			for (const auto& token : tokens) {
+			std::unordered_set<std::string> uniqueTokens(tokens.begin(), tokens.end());
+			for (const auto& token : uniqueTokens) {
 				if (token.empty()) continue;
 				const std::string ftKey = makeFulltextIndexKey(table, fcol, token, pk);
 				txn.del(ftKey);
+				const std::string tfKey = makeFulltextTFKey(table, fcol, token, pk);
+				txn.del(tfKey);
 			}
+			// DocLength löschen
+			const std::string dkey = makeFulltextDocLenKey(table, fcol, pk);
+			txn.del(dkey);
 		}
 	}
 

@@ -1452,8 +1452,8 @@ Vector (Semantic Search über Chunks)
 **Aufwand:** 10-14 Tage  
 
 - [ ] Invertierter Index mit Analyzers (Stemming, N-Grams)
-- [ ] BM25/TF-IDF Scoring
-- [ ] Hybrid-Search (Vektor + Text)
+- [ ] BM25/TF-IDF Scoring (Status: nicht implementiert; siehe development/search_gap_analysis.md)
+- [ ] Hybrid-Search (Vektor + Text) (Status: nicht implementiert; siehe development/search_gap_analysis.md)
 
 ---
 

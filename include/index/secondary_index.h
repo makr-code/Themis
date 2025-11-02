@@ -286,6 +286,10 @@ private:
     // token: Einzelnes Wort aus tokenisiertem Text (lowercase)
     static std::string makeFulltextIndexKey(std::string_view table, std::string_view column, std::string_view token, std::string_view pk);
     static std::string makeFulltextIndexPrefix(std::string_view table, std::string_view column, std::string_view token);
+    // Fulltext Zusatz-Schlüssel für Scoring
+    static std::string makeFulltextTFKey(std::string_view table, std::string_view column, std::string_view token, std::string_view pk); // fttf:table:column:token:PK
+    static std::string makeFulltextDocLenKey(std::string_view table, std::string_view column, std::string_view pk); // ftdlen:table:column:PK
+    static std::string makeFulltextDocLenPrefix(std::string_view table, std::string_view column); // ftdlen:table:column:
 
     // Prüft ob Index unique ist
     bool isUniqueIndex_(std::string_view table, std::string_view column) const;
