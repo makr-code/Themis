@@ -1,8 +1,5 @@
 name: Sync Docs to GitHub Wiki
 
-env:
-  THEMIS_TOKEN: ${{ secrets.THEMIS_TOKEN }}
-
 on:
   push:
     branches: [ main ]
@@ -32,6 +29,7 @@ jobs:
       - name: Push to Wiki repo
         env:
           REPO: ${{ github.repository }}
+          THEMIS_TOKEN: ${{ secrets.THEMIS_TOKEN }}
         run: |
           set -e
           git config --global user.name "github-actions[bot]"
