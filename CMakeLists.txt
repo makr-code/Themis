@@ -60,16 +60,23 @@ endif()
 # CMake helper function to safely link required targets
 # This function checks if a target exists before attempting to link it
 # and provides a clear error message if the target is missing.
-# Usage: link_required(target_name [PUBLIC|PRIVATE|INTERFACE] dependency_target)
+# Usage: link_required(target_name <PRIVATE|PUBLIC|INTERFACE> dependency_target [additional_targets...])
 # Example: link_required(themis_core PRIVATE SomePackage::component)
 # Note: This helper is provided for future use. Current code uses explicit target
 # checks before target_link_libraries to maintain minimal changes to existing code.
-function(link_required target_name dependency_target)
+function(link_required target_name visibility dependency_target)
     if(NOT TARGET ${dependency_target})
         message(FATAL_ERROR "Required CMake target '${dependency_target}' not found for '${target_name}'. "
                             "Ensure the corresponding package was found successfully and the target is available.")
     endif()
-    target_link_libraries(${target_name} ${ARGN} ${dependency_target})
+    # Check additional targets in ARGN if any
+    foreach(extra_target IN LISTS ARGN)
+        if(NOT TARGET ${extra_target})
+            message(FATAL_ERROR "Required CMake target '${extra_target}' not found for '${target_name}'. "
+                                "Ensure the corresponding package was found successfully and the target is available.")
+        endif()
+    endforeach()
+    target_link_libraries(${target_name} ${visibility} ${dependency_target} ${ARGN})
 endfunction()
 
 # Find required packages
