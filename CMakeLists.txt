@@ -189,8 +189,9 @@ target_link_libraries(themis_core
         nlohmann_json::nlohmann_json
         CURL::libcurl
         yaml-cpp::yaml-cpp
-    OpenSSL::SSL
-    OpenSSL::Crypto
+    PRIVATE
+        OpenSSL::SSL
+        OpenSSL::Crypto
 )
 
 # Link ZSTD if available and define compile flag
