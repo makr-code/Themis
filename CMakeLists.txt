@@ -57,6 +57,17 @@ if(THEMIS_ENABLE_ASAN)
     add_link_options(-fsanitize=address)
 endif()
 
+# CMake helper function to safely link required targets
+# This function checks if a target exists before attempting to link it
+# and provides a clear error message if the target is missing.
+function(link_required target_name dependency_target)
+    if(NOT TARGET ${dependency_target})
+        message(FATAL_ERROR "Required CMake target '${dependency_target}' not found for '${target_name}'. "
+                            "Ensure the corresponding package was found successfully and the target is available.")
+    endif()
+    target_link_libraries(${target_name} ${ARGN} ${dependency_target})
+endfunction()
+
 # Find required packages
 find_package(RocksDB CONFIG REQUIRED)
 find_package(simdjson CONFIG REQUIRED)
@@ -67,7 +78,15 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(yaml-cpp CONFIG REQUIRED)
+
+# Defensive check: Ensure Boost::system target exists after find_package
+if(NOT TARGET Boost::system)
+    message(FATAL_ERROR "Required CMake target 'Boost::system' not found. "
+                        "Ensure Boost was found and the 'system' component is available.")
+endif()
 # Optional ZSTD for content compression wrappers
+# Note: ZSTD packages may expose different target names depending on the build system
+# This defensive logic checks for multiple possible target names
 find_package(zstd CONFIG)
 if(zstd_FOUND)
     set(THEMIS_ZSTD_TARGET zstd::libzstd_shared)
@@ -208,6 +227,16 @@ elseif(hnswlib_FOUND)
 endif()
 
 if(THEMIS_ENABLE_TRACING)
+    # Defensive checks: Ensure OpenTelemetry targets exist before linking
+    if(NOT TARGET opentelemetry-cpp::trace)
+        message(FATAL_ERROR "Required CMake target 'opentelemetry-cpp::trace' not found. "
+                            "Ensure opentelemetry-cpp was found successfully.")
+    endif()
+    if(NOT TARGET opentelemetry-cpp::otlp_http_exporter)
+        message(FATAL_ERROR "Required CMake target 'opentelemetry-cpp::otlp_http_exporter' not found. "
+                            "Ensure opentelemetry-cpp was found successfully with otlp-http feature.")
+    endif()
+    
     target_link_libraries(themis_core PUBLIC
         opentelemetry-cpp::trace
         opentelemetry-cpp::otlp_http_exporter
