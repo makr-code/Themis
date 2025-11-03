@@ -1,5 +1,8 @@
 name: Sync Docs to GitHub Wiki
 
+env:
+  THEMIS_TOKEN: ${{ secrets.THEMIS_TOKEN }}
+
 on:
   push:
     branches: [ main ]
@@ -34,7 +37,7 @@ jobs:
           set -e
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git" wiki
+          git clone "https://x-access-token:${THEMIS_TOKEN}@github.com/${REPO}.wiki.git" wiki
           rm -rf wiki/*
           cp -R wiki_out/* wiki/
           cd wiki
