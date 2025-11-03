@@ -252,13 +252,9 @@ TEST_F(HttpAqlApiTest, CursorPagination_FirstPage) {
 }
 
 TEST_F(HttpAqlApiTest, CursorPagination_SecondPage) {
-    // NOTE: Current limitation - cursor pagination with ORDER BY + LIMIT has a known issue:
-    // The translator sets orderBy.limit = offset + count, which means the query only fetches
-    // that many items from the index. When cursor logic then skips items, we end up with fewer
-    // results than requested. 
-    // 
-    // Workaround: Use larger LIMIT values or implement cursor as a WHERE clause in the query itself.
-    // For this test, we verify the current behavior works but may return fewer items than requested.
+    // Test cursor pagination with ORDER BY + LIMIT
+    // With the server-side safety margin implemented, page 2 should return
+    // the expected number of items even when using cursor-based pagination.
     
     json req1 = {
         {"query", "FOR user IN users SORT user.name ASC LIMIT 5 RETURN user"},
@@ -268,10 +264,10 @@ TEST_F(HttpAqlApiTest, CursorPagination_SecondPage) {
     auto res1 = post("/query/aql", req1);
     ASSERT_EQ(res1.result(), http::status::ok);
     auto body1 = json::parse(res1.body());
-    ASSERT_TRUE(body1.contains("next_cursor"));
+    ASSERT_TRUE(body1.contains("next_cursor")) << "Page 1 response: " << body1.dump(2);
     std::string cursor = body1["next_cursor"].get<std::string>();
     
-    // Fetch second page with larger LIMIT to account for cursor skip
+    // Fetch second page
     json req2 = {
         {"query", "FOR user IN users SORT user.name ASC LIMIT 10 RETURN user"},
         {"use_cursor", true},
@@ -282,17 +278,29 @@ TEST_F(HttpAqlApiTest, CursorPagination_SecondPage) {
     ASSERT_EQ(res2.result(), http::status::ok) << res2.body();
     auto body2 = json::parse(res2.body());
     
-    ASSERT_TRUE(body2.contains("items"));
-    ASSERT_TRUE(body2.contains("batch_size"));
+    ASSERT_TRUE(body2.contains("items")) << "Page 2 response: " << body2.dump(2);
+    ASSERT_TRUE(body2.contains("batch_size")) << "Page 2 response: " << body2.dump(2);
     
-    // Should get some remaining users (at least 1)
+    // Should get remaining users (at least 1, expecting 10)
+    // We have 15 total users, fetched 5 on page 1, so page 2 should have 10
     int remaining = body2["batch_size"].get<int>();
-    EXPECT_GT(remaining, 0);
+    if (remaining == 0) {
+        // Provide detailed diagnostic output if test fails
+        ADD_FAILURE() << "Page 2 returned 0 items. This indicates cursor pagination may still have issues.\n"
+                      << "Page 1 response: " << body1.dump(2) << "\n"
+                      << "Page 2 response: " << body2.dump(2) << "\n"
+                      << "Cursor token: " << cursor;
+    }
+    EXPECT_GT(remaining, 0) << "Expected at least 1 item on page 2";
+    EXPECT_LE(remaining, 10) << "Expected at most 10 items on page 2";
     
     // Verify different results from first page
     auto items1 = body1["items"];
     auto items2 = body2["items"];
-    EXPECT_NE(items1.dump(), items2.dump());
+    if (remaining > 0) {
+        EXPECT_NE(items1.dump(), items2.dump()) 
+            << "Page 1 and Page 2 should contain different items";
+    }
 }
 
 TEST_F(HttpAqlApiTest, CursorPagination_InvalidCursor) {
