@@ -189,7 +189,6 @@ target_link_libraries(themis_core
         nlohmann_json::nlohmann_json
         CURL::libcurl
         yaml-cpp::yaml-cpp
-    PRIVATE
         OpenSSL::SSL
         OpenSSL::Crypto
 )
