@@ -28,15 +28,15 @@ jobs:
 
       - name: Push to Wiki repo
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          THEMIS_TOKEN: ${{ secrets.THEMIS_TOKEN }}
         run: |
           set -e
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git" wiki
+          git clone "https://x-access-token:${THEMIS_TOKEN}@github.com/${REPO}.wiki.git" wiki
           rm -rf wiki/*
-          cp -R wiki_out/* wiki/
+          cp -R wiki_out/* wiki/ || true
           cd wiki
           git add -A
           if git diff --cached --quiet; then
