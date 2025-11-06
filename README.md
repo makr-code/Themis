@@ -1,4 +1,4 @@
-﻿# Themis Multi-Model Database System
+# ThemisDB - Multi-Model Database System
 
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0a7ea4)](https://makr-code.github.io/ThemisDB/)
 [![Print](https://img.shields.io/badge/print-Gesamtansicht-555)](https://makr-code.github.io/ThemisDB/print_page/)
@@ -9,420 +9,49 @@
 [![Code Quality](https://github.com/makr-code/ThemisDB/actions/workflows/code-quality.yml/badge.svg)](https://github.com/makr-code/ThemisDB/actions/workflows/code-quality.yml)
 [![Coverage](https://img.shields.io/badge/coverage-view%20report-brightgreen)](https://makr-code.github.io/ThemisDB/coverage/)
 
-
-The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Database System Based on LSM Tree
-
-
-Part 1: The Canonical Storage Architecture: The “Base Entity” Foundation of ThemisDB
-
-
-1.1. The “Base Entity” paradigm as a unified multi-model core
-
-The fundamental architectural challenge of modern data platforms is the efficient storage and querying of disparate data models. Many systems follow the approach of "polyglot persistence" (multi-memory persistence).1, in which separate, specialized databases (e.g., a relational database, a graph database, and a vector database) are bundled together. However, this approach shifts the complexity of data consistency, transaction management, and query federation to the application layer.1
-ThemisDB avoids this by implementing a "true" multi-model database (MMDBMS).1The architecture is based on a unified storage layer and a model translation layer.1The core of this design, as described in the documents VCCDB Design.md and base_entity.md2The “Base Entity” has been confirmed.2
-This “Base Entity” is defined as the atomic, “canonical storage unit” of the system.2Each logical entity – be it a relational row, a graph node, a vector object, or a document – ​​is stored as a single JSON-like document (referred to as a "blob").1This design is inspired by leading MMDBMS such as ArangoDB or Cosmos DB.1, is the crucial architectural enabler. It creates a single, canonical representation that unites all four models in one structure. The base_entity.md document confirms that this layer provides multi-format support (binary/JSON) as well as mechanisms for "Fast Field Extraction".2provides – a crucial capability, which will be discussed in more detail in Part 1.5.
-
-1.2. Mapping logical models to the physical “Base Entity” in ThemisDB
-
-Choosing a blob as the "base entity" necessitates a specific mapping of logical constructs to the physical key-value schema. The ThemisDB architecture follows the one outlined in the theoretical blueprint.1presented mapping strategy:
-Relational & Dokument:A row from a table or a JSON document from a collection is stored 1:1 as a "Base Entity" blob.1
-Graph:The Labeled Property Graph (LPG) model is represented by treating nodes and edges as separate "Base Entity" blobs. An edge is a specialized document containing _from and _to references.1
-Vector:The vector embedding (e.g., an array of floats) is used as an attribute.withinstored of the "Base Entity" blob.1
-The following table summarizes ThemisDB's mapping strategy and serves as a reference for physical data organization.
-Table 1: ThemisDB Multi-Model Data Mapping (Architectural Blueprint)
-
-Logical model
-Logical entity
-Physical memory (key-value pair)
-Key-Format (Byte-Array)
-Value-Format (Byte-Array)
-Relational
-One line
-(PK, Blob)
-String("table_name:pk_value")
-VelocyPack/Bincode (Serialized Document)1
-Document
-A JSON document
-(PK, Blob)
-String("collection_name:pk_value")
-VelocyPack/Bincode (Serialized Document)1
-Graph (nodes)
-A knot
-(PK, Blob)
-String("node:pk_value")
-VelocyPack/Bincode (Serialized Node Document)1
-Graph (Kante)
-An edge
-(PK, Blob)
-String("edge:pk_value")
-VelocyPack/Bincode(Serialized edge document incl. _from/_to)1
-Vector
-An object
-(PK, Blob)
-String("object_name:pk_value")
-VelocyPack/Bincode(document including vector array)1
-
-Note: The serialization formats (VelocyPack/Bincode) are those in1recommended high-performance binary formats suitable for implementing ThemisDB blob storage.
-
-1.3. The physical storage engine: RocksDB as the transactional foundation
-
-Storing these "Base Entity" blobs requires an embedded key-value storage engine (KV store). The ThemisDB documentation confirms the choice of RocksDB as the underlying storage layer.2RocksDB is a high-performance library written in C++, based on a Log-Structured-Merge-Tree (LSM-Tree) and optimized for write-intensive workloads.1
-The theoretical architecture1However, RocksDB primarily treats it as a pure kvf storage. The ThemisDB implementation takes a crucial step further towards production readiness. As explained in Part 2, updating a single logical entity (e.g., UPDATE users SET age = 31) requires an atomic change.severalPhysical key-value pairs: The "Base Entity" blob must be updated, and at the same time, the associated secondary index entries (e.g., deleting idx:age:30 and inserting idx:age:31) must be changed.1
-Standard RocksDB does not offer atomicity across multiple keys. To address this issue and provide true ACID guarantees, the mvcc_design.md document reveals...2ThemisDB uses the RocksDB TransactionDB variant. This implementation is considered "production ready".2characterized and offers:
-Snapshot Isolation:Each transaction operates on a consistent snapshot of the database.2
-Conflict Detection:Parallel transactions that process the same keys are detected.2
-Atomare Rollbacks:Failing transactions are completely rolled back, thus maintaining consistency between the "Base Entity" blobs and all associated projection layers (indices).2
-This decision is of fundamental importance. It elevates ThemisDB from a loose collection of indices.1to a true, transactionally consistent multi-model database (TMM-DB).1
-
-1.4. Performance analysis of the LSM tree approach: Maximizing write throughput (C/U/D)
-
-Choosing an LSM tree (RocksDB) as the foundation is a deliberate compromise that maximizes write performance (create, update, delete). LSM trees are inherently "append-only." Every write/update/delete operation is an extremely fast, sequential write to an in-memory structure (the memtable). This data is only later asynchronously "fed" and compacted into sorted files (SSTables) on the SSD.1
-This architecture maximizes write throughput (ingestion rate). The ThemisDB documentation demonstrates a deep awareness of optimizing this write path. The document compression_benchmarks.md2analyzes the writing performance under different compression algorithms (LZ4, ZSTD, Snappy).2The memory_tuning.md2explicitly recommends LZ4 or ZSTD. This demonstrates the active balancing of CPU costs (for compression) and I/O load (when flushing to the SSD).
-However, the downside of this architecture is the reading performance.
-
-1.5. The Parsing Challenge: Serialization and On-the-Fly Extraction
-
-While the LSM tree design speeds up copy/subtract/distribute operations, it introduces an inherent weakness in read operations. A simple point query using the primary key (Get(PK)) is fast. However, a query that applies filters to attributes (e.g., SELECT * FROM users WHERE age > 30) would, as in1(Part 1.2) described as “catastrophically” slow.1It would require a full scan of all "Base Entity" blobs in the users table. Each individual blob would have to be read from the SSD, deserialized (parsed), and filtered.1
-This inherent reading weaknessforcesarchitecturally, the need for the “layers” (indices) described in Part 2.
-However, this leads to a new “critical system bottleneck”1: the CPU speed of deserialization. AteachDuring the write operation (C/U), the blob must be parsed to extract the fields to be indexed (e.g., age) and to update the secondary indexes (part 2). See the ThemisDB documentation base_entity.md.2This is directly addressed by the requirement of "Fast Field Extraction". This implies the use of high-performance parsing libraries such as simdjson (C++) or serde (Rust), which can process JSON at rates of several gigabytes per second, often bypassing the complete deserialization of the entire object.1
-
-Part 2: The Multi-Model Projection Layers: Implementing the “Layers” in ThemisDB
-
-The request1The aforementioned "layers" are not separate storage systems. They are read-optimized index projections derived from the "Base Entity" blobs defined in Part 1. They are physically stored in the same RocksDB storage and serve solely to accelerate read operations (the 'R' in CRUD). Each layer provides a "view" of the canonical data optimized for the respective query language (SQL, graph traversal, ANN search).1
-
-2.1. Relational Projections: Analysis of the ThemisDB Secondary Indices
-
-Problem:Speeding up an SQL-like query, e.g., SELECT * FROM users WHERE age = 30. As outlined in 1.4, a table scan of the blobs is unacceptable.1
-Architectural design1A classic secondary index. Physically, this is a separate set of key-value pairs within RocksDB that maps an attribute value to the primary key of the "Base Entity" blob.1
-Key: String("idx:users:age:30:PK_des_Users_123")
-Value: (empty) or PK_of_Users_123
-Implementation (ThemisDB):The ThemisDB implementation goes far beyond this theoretical basic case. The document indexes.md2ThemisDB has confirmed that it has implemented a comprehensive suite of secondary index types:
-Single-Column & Composite:Standard indices across one or more fields.
-Range:Essential for resolving queries with inequalities (e.g., age > 30). The query optimizer would perform a RocksDB Seek() on the prefix idx:users:age:30: and iterate over all subsequent keys.1
-Sparse:Indexes that only create entries for documents that actually contain the indexed field.
-Geo:A significant functional enhancement. In combination with geo_relational_schema.md2(which defines tables for points, lines, polygons) this index type offers a specialized, fast spatial search.
-TTL (Time-To-Live):Indicates operational maturity. This index allows the system to automatically expire data (e.g., caching entries or session data) after a certain period of time.
-Full text:Implements a full-text search index, probably by creating an inverted index (Token -> PK list) within the RocksDB storage.
-
-2.2. Native Graph Projections: Simulated Adjacency and Recursive Path Queries
-
-Problem:Acceleration of graph traversals (e.g., friends-of-friends queries). Native graph databases use "index-free adjacency" ($O(1)$) for this, which is based on direct memory pointers. This is impossible in an abstracted KV store like RocksDB.1
-Architectural design1: The adjacency mustsimulatedBuilding upon the model from Part 1 (nodes and edges are separate blobs), two dedicated secondary indices (projections) are created to quickly resolve edge relationships.1:
-Outdex:
-Key: String("graph:out:PK_des_Startknotens:PK_der_Kante")
-Value: PK_des_Zielknotens
-Incoming edges (index):
-Key: String("graph:in:PK_of_target_node:PK_of_edge")
-Value: PK_des_Startknotens
-A traversal (e.g., "find all neighbors of user/123") becomes a highly efficient RocksDB prefix scan: Seek("graph:out:user/123:"). While this is not an $O(1)$ pointer lookup, it is an $O(k \cdot \log N)$ scan (where $k$ is the number of neighbors), which represents optimal performance on an LSM tree.1
-Implementation (ThemisDB):ThemisDB has implemented this projection layer and built a powerful abstraction layer on top of it.
-Layer 1 (projection):The graph:out/graph:in prefix structure described above.1
-Layer 2 (Query Engine):ThemisDB's Advanced Query Language (AQL) uses this projection. aql_syntax.md2confirms “Graph Traversals” as a core function.
-Layer 3 (Features):The document recursive_path_queries.md2confirms the implementation of high-performance graphing algorithms that build upon this projection, including:
-Traverses with variable depth (e.g. 1-5 hops).
-Shortest Path.
-Latitude search (BFS).
-Temporal graph queries.
-Additionally, path_constraints.md describes2Mechanisms for pruning the search space during traversal (e.g., Last-Edge, No-Vertex Constraints), which further increases query efficiency.
-
-2.3. Vector Projections: The HNSW Index and Vector Operations
-
-Problem:Acceleration of the similarity search (Approximate Nearest Neighbor, ANN) for the vectors stored in the "Base Entity" blobs.1
-Architectural design1The HNSW (Hierarchical Navigable Small World) algorithm is the de facto standard.1The ANN index is a separate projection layer. It storesnotnot the vectors themselves, but a complex graph structure that relies on thePrimary keythe “Base Entity” is referenced. When a query is made, the engine searches the HNSW graph, obtains a list of PKs (e.g., [PK_7, PK_42]), and then performs a multi-get on RocksDB to retrieve the complete blobs.1
-Implementation (ThemisDB):ThemisDB has implemented this vector projection layer exactly.
-vector_ops.md 2describes the core operations provided via this layer: “Batch Insertion”, “Targeted Deletion” and “KNN Search” (K-Nearest Neighbors).
-The PRIORITIES.md document2Provides the crucial information regarding production readiness: The "HNSW Persistence" feature is 100% complete (P0/P1 Feature).
-This is a crucial point. A purely in-memory HNSW index is relatively easy to implement.persistAn HNSW index that survives crashes and remains transactionally consistent with the RocksDB storage layer (via the MVCC transactions described in 1.3) is extremely complex. The completion of this feature demonstrates that ThemisDB's vector layer has reached production readiness.2
-
-2.4. File/Blob Projections: The “Content Architecture” of ThemisDB
-
-Problem:Efficient storage of large binary files (e.g., images, PDFs) that would inflate the "Base Entity" blobs and impair the scan performance of the LSM tree.1
-Architectural design1The theoretical blueprint proposes two passive solutions: (1) RocksDB BlobDB, which automatically extracts large values ​​from the LSM tree, or (2) storing a URI (e.g., S3 path) in the blob.1
-Implementation (ThemisDB):The ThemisDB implementation is far more intelligent and comprehensive than the1-Suggestion. Instead of passively storing blobs, ThemisDB has developed a content-intelligent platform. The document content_architecture.md2describes a “Content Manager System” with a “unified ingestion pipeline” and “processor routing”.2
-The processing flow is as follows:
-A client uploads a file via the HTTP API (defined in ingestion.md).2).
-Das ContentTypeRegistry 2Identifies the blob type (e.g., image/jpeg or application/gpx).
-The “processor routing”2forwards the blob to a specialized, domain-specific processor.
-Specialized processors (image_processor_design.md2, geo_processor_design.md 2) analyzethe content:
-The Image processorextracts EXIF ​​metadata, creates thumbnails and generates "3x3 Tile-Grid Chunking" (probably for creating vector embeddings for image parts).2
-The GeoprocessorExtracts, normalizes and chunks data from GeoJSON or GPX files.2
-First afterFollowing this enrichment, the “Base Entity” blob – now filled with valuable metadata (and possibly vectors) – is stored in the RocksDB storage layer (part 1) along with the derived artifacts (such as thumbnails).
-This architecture is a massive extension of the1-Plans and transforms ThemisDB from a passive database into an active, content-intelligent processing platform.
-
-2.5. Transactional Consistency: ACID Guarantees vs. SAGA Verifiers
-
-Problem:How is consistency between the canonical "Base Entity" blob (part 1) and all its index projections (part 2) ensured during a write operation?1
-Architectural design1: 1(Part 2.5) represents the critical compromise:
-ACID (Within a TMM database):The blob and indexes are updated within a single atomic transaction. This provides strong consistency.1
-Saga Pattern (Distributed):A sequence of local transactions (e.g., 1. Write blob, 2. Write index). If a step fails, compensating transactions must undo the previous steps. This leads to eventual consistency (BASE).1
-Implementation (ThemisDB):As outlined in Part 1.3, ThemisDB has distinguished itself through the use of RocksDB TransactionDB and a "production-ready" MVCC design.2clear for theinternalACID guarantee decided.
-Nevertheless, the admin_tools_user_guide.md lists2A tool called SAGA Verifier was introduced. The existence of this tool alongside an ACID kernel is a sign of deep architectural understanding of real-world enterprise environments. The logical chain of cause and effect is as follows:
-ThemisDB itself is ACID-compliant for allinternalOperations (Blob + Index Updates).
-However, ThemisDB likely exists within an ecosystem of microservices thatouterSaga patterns are used for distributed transactions (e.g.Step A: Create user in ThemisDB; Step B: Send email; Step C: Provision S3 bucket).
-It strikesexternalIf a step (e.g., step B) is missing, the saga must...Compensating Transaction an ThemisDB senden (z. B. Delete the user created in step A).
-What happens when theseCompensating TransactionDoes it fail or get lost? The entire system is in an inconsistent state (an "orphaned" user exists in ThemisDB).
-The SAGA Verifier2is therefore most likely not a runtime consistency mechanism, but aadministrative Audit-ToolIt scans the database to find such "orphaned" entities that were created byexternal, failed sagascaused. It is a compliance and repair tool that acknowledges the internal ACID guarantee, but also addresses the realities of distributed systems.
-
-Part 3: Detailed design of the memory hierarchy: CRUD performance optimization in ThemisDB
-
-Maximizing CRUD performance requires intelligent placement of data components on the standard storage hierarchy (RAM, NVMe SSD, HDD).1The ThemisDB documentation, especially memory_tuning.md2, confirms that this theoretical optimization is a central component of the system design.
-
-3.1. Analysis of the storage hierarchy (HDD, NVMe SSD, RAM, VRAM)
-
-The theoretical analysis1defines the roles of storage media:
-HDD (Hard Disk Drives):Due to extremely high latency during random access, it is unsuitable for primary CRUD operations. It is intended solely for cold backups and long-term archiving.1
-NVMe-SSD (Solid State Drives):The "workhorse" layer. Offers fast random read access and high throughput, ideal for main data (SSTables) and critical, latency-sensitive write operations (WAL).1
-DRAM (Main RAM):The "hot" layer. Latencies that are orders of magnitude lower than those of SSDs, crucial for caching and in-memory processing.1
-VRAM (Graphics RAM):A co-processor memory on a GPU that is used exclusively for massively parallel computations (especially ANN searches).1
-
-3.2. Optimization strategies in ThemisDB: WAL placement, block cache and compression
-
-The ThemisDB documentation (memory_tuning.md)2) confirms exactly the in1Theoretical optimization blueprint for a RocksDB-based engine presented below:
-Write-Ahead Log (WAL) on NVMe:The WAL is the most critical component for C/U/D latency. Every transactionmustThe changes must be written synchronously to the WAL before they are considered "committed." The ThemisDB policy "WAL on NVMe"2ensures the lowest possible latency for this sequential write operation.1
-LSM-Tree Block Cache im RAM:The “block cache in RAM”2This is the equivalent of the buffer cache in relational databases. It stores hot, recently read data blocks (SSTable blocks) from the SSD to speed up repeated read accesses (CRUDs R) and avoid expensive I/O operations.1
-LSM-Tree Memtable im RAM:All new write operations (C/U/D) first land in the memtable, an in-memory data structure that lives entirely in RAM and enables the fastest ingestion of data.1
-LSM-Tree SStables on SSD:The persistent, sorted main data files (SSTables), which contain the "Base Entity" blobs (part 1) and all secondary indexes (part 2), reside on the SSD fleet.1
-Compression (LZ4/ZSTD):As mentioned in 1.4, memory_tuning.md is recommended.2The use of LZ4 or ZSTD reduces the storage space required on the SSD and, more importantly, the I/O throughput required when reading blocks from the SSD to the RAM block cache, at the cost of a slight CPU load for decompression.
-Bloom-Filter: memory_tuning.md 2It also mentions a "bloom filter." This is a crucial detail that is in1Bloom filters are probabilistic in-memory structures that can quickly determine whether a keypossibly notThis is present in a specific SSTable file on the SSD. This drastically reduces read I/O for point fetches of non-existent keys and avoids unnecessary SSD accesses.
-
-3.3. RAM Management: Caching of HNSW Index Layers and Graph Topology
-
-For high-performance vector and graph queries, the general RocksDB block cache (3.2) is often insufficient.1(Part 3.3) postulates advanced RAM caching strategies that are necessary for the implementation of the ThemisDB features (Parts 2.2, 2.3):
-Vector (HNSW):For vector indices that are too large for RAM, a hybrid approach is used. The "upper layers" of the HNSW graph (the "highways" for navigation) are sparse and are used when...everyoneThe search process is complete. Therefore, the data must be permanently held in RAM ("pinned") to avoid navigation hotspots. The denser "lower layers" (the "local roads") can be loaded from the SSD into the block cache as needed.1The high-performance KNN search of ThemisDB (vector_ops.md)2) is dependent on such a strategy.
-Graph (Topologie):For graph traversals with sub-millisecond latency requirements, even the $O(k \cdot \log N)$ SSD scan (from 2.2) is too slow. In this "high-performance" mode, theentireThe graph topology (i.e., the adjacency lists/indices graph:out:* and graph:in:*) is proactively loaded from the SSD into RAM at system startup. This in-memory topology is implemented as a native C++ (std::vector<std::vector<...>>) or Rust (petgraph or Vec<Vec<usize>>) topology.1) Data structure maintained to allow $O(k)$ lookups in RAM.1The implementation of "shortest path" algorithms in ThemisDB (recursive_path_queries.md)2) is hardly conceivable as performant without such an in-memory caching strategy for "hot" subgraphs.
-
-Table 2: ThemisDB storage hierarchy strategy (Updated)
-
-The following table summarizes the strategy developed in Part 3 and integrates the specific implementation details of ThemisDB.
-
-Data component
-Physical storage
-Primary optimized operation
-Justification (latency/throughput)
-Write-Ahead Log (WAL)
-NVMe SSD (fastest persistent)2
-Create, Update, Delete
-Minimum latency for synchronous, sequential write operations. Defines the write commit time.1
-LSM-Tree Memtable
-RAM (DRAM)
-Create, Update, Delete
-In-memory buffering of write operations; fastest ingestion.1
-LSM-Tree Block Cache
-RAM (DRAM) 2
-Read
-Caching of hot data blocks (base entities, indexes) from the SSD. Reduces random read I/O.1
-Bloom-Filter
-RAM (DRAM) 2
-Read
-Probabilistic check whether a keynotExists on the SSD. Avoids unnecessary read I/O.2
-LSM-Tree SSTables (Core Data & Indices)
-SSD (NVMe/SATA)
-Read (Cache Miss)
-Persistent storage (compressed with LZ4/ZSTD)2Requires fast random read I/O.1
-HNSW Index (Upper Classes)
-RAM (DRAM)
-Read (vector search)
-The graph's "highways" must be in memory for every search to avoid navigation hotspots.1
-HNSW Index (Lower Classes)
-SSD (NVMe)
-Read (vector search)
-Too large for RAM. Optimized for SSD-based random read accesses during the final phase of the ANN search.1
-Graph-Topologie (Hot)
-RAM (DRAM)
-Read (Graph-Traversal)
-Simulated "index-free adjacency". Topology is held in RAM for $O(k)$ traversals.1
-ANN Index (GPU Copy)
-VRAM (Graphics RAM)
-Read (Batch vector search)
-Temporary copy for massively parallel acceleration of distance calculation (Faiss GPU).1
-Cold Blobs / Backups
-HDD / Cloud Storage
-(Offline)
-Cost-effective storage for data with no latency requirements.1
-
-
-Part 4: The Hybrid Query Engine: ThemisDB's "Advanced Query Language" (AQL)
-
-The components described in Parts 1, 2, and 3 are the "muscles" of the system—the storage and index layers. ThemisDB's Advanced Query Language (AQL) is its "brain."1, which orchestrates these components and combines them into a coherent, hybrid query engine.2
-
-4.1. Analysis of AQL Syntax and Semantics
-
-The ThemisDB documentation confirms that AQL is the primary interface to the database.2 aql_syntax.md 2reveals that AQL is a declarative language (similar to SQL, ArangoDB's AQL, or Neo4js Cypher) that unifies operations across all data models:
-Relational/document operations: FOR, FILTER, SORT, LIMIT, RETURN, Joins.2
-Analytical operations:COLLECT/GROUP BY (confirmed in PRIORITIES.md)2as a completed P0/P1 feature).
-Graph operations: „Graph-Traversals“ 2, which use the projection described in 2.2.
-Vector operations:Implied by hybrid_search_design.md2, probably implemented as AQL functions such as NEAR(...) or SIMILARITY(...), which use the HNSW projection from 2.3.
-The following table demystifies AQL by showing which AQL constructs control which of the complex backend projection layers (from Part 2).
-Table 4: AQL Function Overview (Mapping of AQL to Physical Layers)
-
-AQL construct (example)
-Target data model
-Underlying projection layer (implementation from Part 2)
-FOR u IN users FILTER u.age > 30
-Relational
-Secondary index scan (range index on age) [2.1]
-FOR u IN users FILTER u.location NEAR [...]
-Geo
-Geo-Index Scan (Spatial Search) [2.1]
-FOR v IN 1..3 OUTBOUND 'user/123' GRAPH 'friends'
-Graph
-“Outdex” prefix scan (graph:out:user/123:...) [2.2]
-RETURN SHORTEST_PATH(...)
-Graph
-RAM-based or SSD-based Dijkstra/BFS scan [2.2]
-FOR d IN docs SORT SIMILARITY(d.vec, [...]) LIMIT 10
-Vector
-HNSW Index Search (KNN) [2.3]
-RETURN AVG(u.age) COLLECT status = u.status
-Analytical
-Parallel table scanning and deserialization in Apache Arrow (4.4)
-
-
-4.2. The Hybrid Query Optimizer: Analysis of AQL EXPLAIN & PROFILE
-
-1(Part 4.3) explainsWhyAn optimizer is needed by describing the compromise between "Plan A" (start: relational filter, then vector search on a small set) and "Plan B" (start: global vector search, then filter on a large set).1The optimizer must decide, based on costs, which plan is the most efficient.
-The ThemisDB documentationprovesThat this optimizer exists. The existence of the document aql_explain_profile.md2is the proof of this "brain".2
-AQL EXPLAIN:Shows theplannedExecution path chosen by the optimizer (e.g., "Index Scan" instead of "Table Scan").
-AQL PROFILE:Executes the query and displays theactualRuntime metrics to identify performance bottlenecks.2
-The aql_explain_profile.md2It even provides specific profiling metrics: edges_expanded and prune_last_level. This is a remarkably deep insight. It means that a developer not onlysees, that its graph query is slow, butWhyPROFILE quantitatively shows (edges_expanded) the explosion rate of its traverse and (pruned_last_level) how effectively the constraints in path_constraints.md are applied.2defined pruning rules. This is an expert-level debugging tool.
-
-4.3. Implementation of “Hybrid Search”: Fusion of vector, graph and relational predicates
-
-The most powerful form of hybrid search, which is in1(Part 2.3) describes the “pre-filtering”. Instead of performing a global vector search and the resultsthereafterTo filter (post-filtering), this approach reverses the process:
-Phase 1 (Relational):The relational index (from 2.1) is scanned (e.g. year > 2020) to create a candidate list of PKs (typically represented as a bitset).
-Phase 2 (Vector):The HNSW graph traverse1will be modified. At each navigation steponlynavigated to nodes whose primary keys are present in the candidate bitset from Phase 1.
-The ThemisDB document hybrid_search_design.md2This is the "as-built" specification for precisely this function. It describes the "combination of vector similarity with graph expansion and filtering".2
-The status of this document – ​​“Phase 4”2– is also informative. IMPLEMENTATION_STATUS.md2shows that P0/P1 features (theindividualLayers such as HNSW are 100% complete. This reveals the logical development strategy of ThemisDB:
-P0/P1 (Completed):Build the columns (relational index, graph index, vector index) independently of each other.
-Phase 4 (In progress):Now build theBridges(hybrid_search_design.md) between the columns to enable true hybrid queries.
-
-4.4. The analytical in-memory format (Apache Arrow) and task-based parallelism (TBB/Rayon)
-
-Once the AQL optimizer (4.2) has created a plan, the engine must implement it.carry out. 1(Parts 4.1 and 4.2) propose two crucial technologies for execution:
-Parallelism (TBB/Rayon):A hybrid query (e.g., relational scan + vector search) consists of multiple tasks. These should be executed in parallel on N CPU cores. Instead of using OpenMP (for loop parallelism), task-based runtime systems like Intel Threading Building Blocks (TBB) are recommended.1(C++) oder Rayon1(Rust) ideal. They use a "work-stealing" scheduler to efficiently distribute tasks (e.g., the parallel execution of task_A (filter) and task_B (graph traversal)) across all cores.1
-OLAP-Format (Apache Arrow):For analytical queries (e.g., AVG(age)) that scan millions of entities, retrieving and deserializing (OLTP style) millions of blobs row by row would be a performance disaster (the “catastrophic” problem from 1.4).1The high-performance solution involves using Apache Arrow1as canonicalIn-Memory-Formatto use. Worker threads read the RocksDB blocks and deserialize them (using simdjson/serde).directly into column-based Apache Arrow RecordBatches. All further aggregations (AVG, GROUP BY) then take place with high performance on these CPU cache-friendly, SIMD-optimized arrays.1
-The ThemisDB documentation (PRIORITIES.md)2) confirms that COLLECT/GROUP BY (an analytical operation) is a self-contained P0/P1 feature. To provide this functionality efficiently,mustthe engine a strategy like that of1Use the suggested method (deserialization of blobs in Apache Arrow).
-
-Table 3: ThemisDB C++/Rust Implementation Toolkit (Recommended Building Blocks)
-
-Based on the in1recommended and the in2/3Based on the implied functions, the following table shows the most likely technology toolkit that is or should be used for the implementation of the ThemisDB core.
-
-Components
-C++ library(ies)
-Rust Library(s)
-Reason
-Key-Value Storage Engine
-RocksDB 1
-rocksdb (Wrapper), redb, sled 1
-RocksDB is the C++ standard and is endorsed by ThemisDB.2Rust alternatives are available.1
-Parallel Execution Engine
-Intel TBB (Tasking) 1
-Rayon (Tasking/Loops), Tokio (Async I/O) 1
-TBB (C++) and Rayon (Rust) offer task-based work stealing, ideal for query engines.1
-JSON/Binary Parsing
-simdjson, VelocyPack 1
-serde / serde_json, bycode1
-simdjson (C++) or serde (Rust) are used for “Fast Field Extraction” (1.5)2indispensable.1
-In-Memory Graph-Topologie
-C++ Backend von graph-tool, Boost.Graph 1
-petgraph, Custom Thing<Thing>1
-Required for high-performance RAM caching (3.3) to implement recursive_path_queries.md.2
-Vector Index (ANN)
-Faiss (CPU/GPU), HNSWlib 1
-hnsw (native Rust) or wrapper for Faiss1
-The C++ ecosystem (Faiss) is unsurpassed, especially when it comes to GPU acceleration.1
-In-Memory Analytics & IPC
-Apache Arrow, Apache DataFusion 1
-arrow-rs, datafusion 1
-Arrow and DataFusion (Rust) are the backbone for high-performance OLAP workloads (GROUP BY).2
-
-
-Part 5: Implementation Toolkit, Status and Operational Management
-
-
-5.1. C++ vs. Rust: A strategic analysis in the context of ThemisDB
-
-The source document1It is titled "Hybrid Database Architecture C++/Rust".1The ThemisDB Documents2 and 3They do not reveal which language was ultimately chosen for the core message. This choice represents a fundamental strategic compromise that is reflected in1(Part 7.2) is explained and analyzed here in the context of the specific ThemisDB functions:
-Argument for C++:C++ currently offers thismost mature ecosystemsfor the key components. In particular, Faiss's GPU integration.1(to speed up vector_ops.md)2) and the established stability of RocksDB1and TBB1are unsurpassed. For a prototype that needs to demonstrate raw performance (especially GPU-accelerated vector search), the C++ stack is superior.1
-Argument for Rust:Rust offersguaranteed storage security. For the development of a robust, highly concurrent database kernel – such as that of ThemisDB, which supports parallel queries (Part 4.4), complex caching (Part 3.3) and transactional index updates (Part 1.3, mvcc_design.md)2Managing this level of complexity is a tremendous strategic advantage. Avoiding buffer overflows, use-after-free behavior, and data races in a system of this complexity is crucial for long-term maintainability and stability.1The Rust ecosystem (Rayon, DataFusion, Tokyo)1is also excellent.
-Recommendation:For a long-term, robust and maintainable production system, where the correctness of the mvcc_design.md2If the primary concern is raw, GPU-accelerated vector performance for hybrid_search_design.md, then the Rust stack is the strategically superior choice.2In that case, the C++ stack is more pragmatic.
-
-5.2. Current Implementation Status and Roadmap Analysis
-
-The ThemisDB documentation provides a clear snapshot of the project's progress (as of the end of October 2025):
-Status: IMPLEMENTATION_STATUS.md 2reports a "total progress ~52%" and, more importantly, "P0 features 100%".2
-Tracing:OpenTelemetry Tracing is considered complete (✅)2Marked. This is a strong signal of production readiness, as it is essential for debugging and performance monitoring in distributed systems.
-Priorities: PRIORITIES.md 2confirms that all P0/P1 features are complete, including critical components such as “HNSW Persistence” (2.3) and “COLLECT/GROUP BY” (4.1).
-This outlines a clear development narrative:
-Past (Completed):The foundation is in place. The core (RocksDB + MVCC), the individual storage pillars (persistent HNSW, graph, indices) and the basic AQL are "production-ready".2
-Present day (“Phase 4”):The "smart" features are being built. These include the bridges.betweenthe pillars (hybrid_search_design.md2) and the domain-specific ingestion intelligence (image_processor_design.md, geo_processor_design.md)2).
-Future (“Design Phase”):The next wave of features, which are not yet implemented, concerns data-level security, as described in column_encryption.md.2(Part 6.2) described.
-
-5.3. Ingestion Architecture and Administrative Tools
-
-ThemisDB is designed not just as a library, but as a fully functional server.
-Ingestion:Primary data input is via an HTTP API (ingestion.md).2, developers.md 2). The document json_ingestion_spec.md2describes a standardized ETL process (Extract, Transform, Load)3, which proposes a “unified contract for heterogeneous sources”2provides and manages mappings, transformations and data provenance.
-Operations:The admin_tools_user_guide.md2lists the crucial Day 2 Operations tools that demonstrate the system is built for operators and compliance officers:
-Audit Log Viewer (see section 6.3)
-SAGA Verifier (see part 2.5)
-PII Manager (see part 6.3)
-Deployment:A deployment.md2describes deployment via binary, Docker, or from source code.2
-
-Part 6: Security Architecture and Compliance in ThemisDB
-
-
-6.1. Authentication and Authorization: A Strategic Gap
-
-The theoretical blueprint1(Part 5) recommends a robust security model based on Kerberos/GSSAPI (authentication) and RBAC (role-based access control)1based.
-An analysis of the ThemisDB documents2 and 3shows asignificant gapin this area. The documentation (as of November 2025)does not mention these conceptsThe focus is on theData security(Encryption, PII), but not on theAccess security(Authentication, authorization).
-This is the most obvious difference between the1-blueprint and the2/3Implementation. A database system without a granular RBAC model is not production-ready in an enterprise environment. Implementing a robust RBAC model is essential.11This should be considered a critical priority for the next phase of the ThemisDB roadmap.
-
-6.2. Encryption at rest: Analysis of the “Column-Level Encryption Design”
-
-In the area of ​​data-at-rest encryption, ThemisDB is planning a far more granular and superior solution than the one in1(Part 5.3) proposed general approach to file system encryption.
-The document column_encryption.md2(Status: “Design Phase”) describes a “Column-Level Encryption”.2In the context of the “Base Entity” blobs (Part 1.1), this means aAttribute-level encryption.
-This approach is far superior to full database or file system encryption. It allows PII fields (e.g., {"ssn": "ENCRYPTED(...)"}) to be encrypted, while non-sensitive fields (e.g., {"age": 30}) remain in plaintext. The crucial advantage is that the high-performance secondary indexes (from Part 2.1) can still be created on the non-sensitive fields (age) and used for queries. Full encryption would prevent this.
-The design of ThemisDB also includes2:
-Transparent use:The encryption and decryption process is transparent to the application user.
-Key Rotation:A mechanism for regularly updating encryption keys.
-Pluggable Key Management:This signals the intention to enable integration with external Key Management Systems (KMS), such as those offered by1 recommended.
-
-6.3. Auditing and Compliance: The ThemisDB Tool Suite
-
-1(Part 2.5, 5.4) identifies auditing and traceability as crucial for compliance with regulations such as the GDPR and the EU AI Act.1The ThemisDB implementation provides the necessary tools to meet these requirements:
-Audit Log Viewer:As described in admin_tools_user_guide.md2Listed here, this is the direct implementation of a centralized audit system. It logs access and modification events and makes them searchable for compliance audits.2
-PII Manager:This in2The aforementioned tool is a specialized tool, likely based on the column_encryption.md design (6.2). It is used to manage requests related to personally identifiable information, such as the implementation of the GDPR's "right to be forgotten".
-Together, the audit log viewer, the PII manager, and the planned column-level encryption design form a coherent "compliance nexus" that meets the theoretical requirements of1surpasses expectations and is tailored to the practical needs of corporate compliance departments.
-
-Part 7: Strategic Summary and Critical Evaluation
-
-
-7.1. Synthesis of the ThemisDB design: A coherent multi-model architecture
-
-Analysis of the ThemisDB documentation2in comparison with the theoretical architectural blueprint1This results in the picture of a coherent, well-thought-out and advanced multi-model database system.
-ThemisDB is a faithful and, in many areas, enhanced implementation of the1The outlined TMM-DB architecture is correctly based on a canonical, write-optimized "Base Entity" blob stored in an LSM-Tree KV engine (RocksDB).1
-The inherent reading weakness of this approach is mitigated by a rich set oftransactionally consistentProjection layers are compensated. The crucial step for using RocksDB TransactionDB to ensure ACID/MVCC warranties.2This is proof of the core's technical maturity. These layers include not only simple relational indexes, but also advanced geo- and full-text indexes.2, persistent HNSW vector indices2and efficient, simulated graph adjacency indices.1
-ThemisDB's "Advanced Query Language" (AQL) combines these layers and provides a declarative interface.2for true hybrid queries. The development of EXPLAIN/PROFILE tools2This shows that the focus is on optimized, cost-based query execution.
-Furthermore, ThemisDB has the1-Design through the implementation of aContent-intelligent ingestion pipeline (content_architecture.md 2) and a suite ofoperativen Compliance-Tools (admin_tools_user_guide.md 2) significantly expanded. The project is logically evolving from a completed "Core-DB" foundation (P0/P1 completed) to an "intelligent platform" (Phase 4, Hybrid Search, Content Processors).2
-
-7.2. Identified strengths and architectural compromises
-
-Strengthen:ThemisDB's greatest strength is therealhybrid query capability, especially that described in hybrid_search_design.md2The described fusion of vector, graph, and relational predicates. Internal ACID/MVCC consistency.2This is a massive advantage over polyglot persistence approaches.1The operational maturity achieved through tools such as OpenTelemetry Tracing, Audit Log Viewer, and deployment options2Demonstrating this is also a strength.
-Architectural compromises:The system accepts the fundamental LSM tree compromise: high write performance at the cost of read overhead and index maintenance. All the system complexity that previously resided in distributed systems has now been successfully integrated into theQuery optimizer(4.2) shifted. The performance of the overall system now depends on the ability of this “brain” to weigh the relative costs of a relational index scan (2.1) against a graph traversal (2.2) and an HNSW search (2.3) and to choose the most efficient, hybrid execution plan.
-
-7.3. Analysis of open issues and future challenges
-
-The analysis identifies three strategic challenges for the future development of ThemisDB:
-Challenge 1: Authentication & Authorization (AuthN/AuthZ):As outlined in section 6.1, this is the most significant gap in the current documentation. The system requires a robust, granular RBAC model to be deployed in an enterprise environment. This is the most pressing requirement for production readiness beyond the core engine.
-Challenge 2: C++ vs. Rust (technology stack):The strategic decision regarding the core technology stack (5.1) must be made and documented. This decision has a fundamental impact on performance (C++/Faiss GPU).1versus safety and maintainability (Rust/Rayon).1
-Challenge 3: Distributed scaling (sharding & replication):The entire analyzed architecture1describes an extremely powerfulSingle-Node-SystemThenextThe architectural limit will be horizontal scaling (sharding, replication, distributed transactions across nodes). This increases the complexity of MVCC design, index management, and query optimization by an order of magnitude and represents the logical next evolutionary step for the ThemisDB project.
-
-Weitere Ressourcen:
-
-- Online‑Doku: https://makr-code.github.io/ThemisDB/
-- Druckansicht: https://makr-code.github.io/ThemisDB/print_page/
-- Gesamt‑PDF: https://makr-code.github.io/ThemisDB/themisdb-docs-complete.pdf
-- GitHub Wiki: https://github.com/makr-code/ThemisDB/wiki
+> **A unified multi-model database supporting relational, document, graph, and vector data models with ACID transactions, built on RocksDB LSM-Tree storage.**
+
+ThemisDB is a production-ready, high-performance database that combines multiple data models in a single, transactionally consistent system. Query across relational tables, graph relationships, and vector embeddings using a unified query language (AQL).
+
+## ✨ Key Features
+
+- **🔄 Multi-Model**: Relational, Document, Graph, and Vector data in one system
+- **💪 ACID Transactions**: Full transactional consistency across all data models
+- **🚀 High Performance**: LSM-Tree architecture optimized for write-intensive workloads
+- **🔍 Hybrid Queries**: Combine relational filters, graph traversals, and vector similarity in single queries
+- **📊 Advanced Indexing**: Secondary, Range, Geo, Full-text, TTL, and HNSW vector indexes
+- **🔐 Security & Compliance**: Audit logging, PII management, column-level encryption (planned)
+- **📈 Observability**: Prometheus metrics, OpenTelemetry tracing, detailed profiling
+
+## 📋 Table of Contents
+
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Architecture Overview](#architecture-overview)
+- [Container Images](#container-images)
+- [API Examples](#api-examples)
+- [Configuration](#configuration)
+- [Performance](#performance)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Contributing](#contributing)
+
+## 🏗️ Architecture Overview
+
+ThemisDB implements a true multi-model database based on three key architectural principles:
+
+1. **Canonical Storage**: All data (relational, graph, vector, document) is stored as "Base Entities" in RocksDB
+2. **Projection Layers**: Read-optimized indexes (secondary, graph adjacency, HNSW vector) enable fast queries
+3. **Hybrid Query Engine**: Advanced Query Language (AQL) unifies operations across all data models
+
+For a detailed technical analysis, see [docs/technical_architecture_analysis.md](docs/technical_architecture_analysis.md).
+
+**Key Components:**
+- **Storage Engine**: RocksDB LSM-Tree with ACID transactions (TransactionDB variant)
+- **Query Language**: AQL (Advanced Query Language) - declarative, multi-model
+- **Indexes**: Secondary, Range, Geo, Full-text, TTL, HNSW (persistent vector index)
+- **Execution**: Task-based parallelism (Intel TBB), Apache Arrow for analytics
+- **Observability**: OpenTelemetry tracing, Prometheus metrics
 
 ## Quick Start
 
@@ -1361,29 +990,3 @@ ThemisDB maintains high code quality standards through automated CI checks:
 
 Based on the architectural analysis in:
 - `Hybride Datenbankarchitektur C++_Rust.txt`
-
-Inspired by systems like:
-- ArangoDB (Multi-model architecture)
-- CozoDB (Hybrid relational-graph-vector)
-- Azure Cosmos DB (Multi-model with ARS format)
-
-## Admin Tools Übersicht
-
-Sieben WPF-Tools mit einheitlichem Themis-Layout unterstützen Betrieb und Compliance:
-
-- Audit Log Viewer
-- SAGA Verifier
-- PII Manager
-- Key Rotation Dashboard
-- Retention Manager
-- Classification Dashboard
-- Compliance Reports
-
-Build/Publish:
-- Skript: `publish-all.ps1` (Release, self-contained win-x64)
-- Artefakte: `dist/<ToolName>/`
-
-Dokumentation:
-- Benutzerhandbuch: `docs/admin_tools_user_guide.md`
-- Admin-Guide: `docs/admin_tools_admin_guide.md`
-- OpenAPI: `openapi/openapi.yaml`
