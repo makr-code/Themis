@@ -27,7 +27,8 @@ POST /index/create
   "type": "fulltext",
   "config": {
     "stemming_enabled": true,
-    "language": "de"
+    "language": "de",
+    "stopwords_enabled": true  // optional: Stopwords entfernen
   }
 }
 ```
@@ -64,6 +65,8 @@ When a document is indexed with stemming enabled:
 2. **Lowercase:** Tokens are converted to lowercase
 3. **Stemming:** Tokens are reduced to their stem form (if enabled)
 4. **Storage:** Stemmed tokens are stored in the inverted index
+
+Note: If stopwords are enabled, stopwords are filtered out before stemming. If umlaut normalization is enabled (German), normalization occurs before tokenization.
 
 **Example (English):**
 ```
@@ -279,7 +282,7 @@ To change stemming config:
 
 ### Planned Features
 
-- **Stopword filtering:** Remove high-frequency words ("the", "der", etc.)
+// Umlaut normalization implemented in v1.3
 - **Umlaut normalization:** ä→a, ö→o, ü→u for German
 - **More languages:** FR, ES, IT, NL via Snowball integration
 - **Custom stemmers:** Plugin interface for domain-specific rules

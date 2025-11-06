@@ -34,6 +34,8 @@
 #include "server/auth_middleware.h"
 #include "server/policy_engine.h"
 #include "server/ranger_adapter.h"
+#include "utils/pii_pseudonymizer.h"
+#include "security/encryption.h"
 
 namespace themis {
 // Forward declarations
@@ -193,8 +195,12 @@ private:
     http::response<http::string_body> handleFulltextSearch(const http::request<http::string_body>& req);
     http::response<http::string_body> handleContentFilterSchemaGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleContentFilterSchemaPut(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleContentConfigGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleContentConfigPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigPut(const http::request<http::string_body>& req);
+    // Capabilities (Core/Enterprise) endpoint
+    http::response<http::string_body> handleCapabilities(const http::request<http::string_body>& req);
 
     // Sprint A beta endpoints (feature-flagged)
     http::response<http::string_body> handleCacheQuery(const http::request<http::string_body>& req);
@@ -252,6 +258,7 @@ private:
     http::response<http::string_body> handlePiiListMappings(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePiiExportCsv(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePiiDeleteByUuid(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePiiRevealByUuid(const http::request<http::string_body>& req);
 
     // Retention API endpoints
     http::response<http::string_body> handleRetentionListPolicies(const http::request<http::string_body>& req);
@@ -343,6 +350,10 @@ private:
     
     // Audit Logger
     std::shared_ptr<themis::utils::AuditLogger> audit_logger_;
+    // Field encryption for PII mappings
+    std::shared_ptr<themis::FieldEncryption> field_encryption_;
+    // PII Pseudonymizer (for reveal/erase operations)
+    std::shared_ptr<themis::utils::PIIPseudonymizer> pii_pseudonymizer_;
     
     // SAGA Logger
     std::shared_ptr<themis::utils::SAGALogger> saga_logger_;

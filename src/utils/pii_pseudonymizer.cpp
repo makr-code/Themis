@@ -126,6 +126,11 @@ std::optional<std::string> PIIPseudonymizer::revealPII(const std::string& pii_uu
     
     try {
         auto mapping = nlohmann::json::parse(*mapping_str);
+        // Respect soft-delete flag
+        bool active = mapping.value("active", true);
+        if (!active) {
+            return std::nullopt; // hidden
+        }
         
         // Decrypt original value
         auto encrypted_json = mapping["original_value_encrypted"];
@@ -171,6 +176,32 @@ bool PIIPseudonymizer::erasePII(const std::string& pii_uuid) {
     }
     
     return true;
+}
+
+bool PIIPseudonymizer::softDeletePII(const std::string& pii_uuid, const std::string& user_id) {
+    std::scoped_lock lk(mu_);
+    auto mapping_str = db_->get(dbKey(pii_uuid));
+    if (!mapping_str) return false;
+    try {
+        auto mapping = nlohmann::json::parse(*mapping_str);
+        mapping["active"] = false;
+        mapping["deleted_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch()).count();
+        std::string out = mapping.dump();
+        std::vector<uint8_t> bytes(out.begin(), out.end());
+        db_->put(dbKey(pii_uuid), bytes);
+        if (audit_logger_) {
+            audit_logger_->logEvent({
+                {"action", "PII_SOFT_DELETE"},
+                {"pii_uuid", pii_uuid},
+                {"user_id", user_id},
+                {"timestamp", std::time(nullptr)}
+            });
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 std::vector<std::string> PIIPseudonymizer::findPIIForEntity(const std::string& entity_pk) {

@@ -201,6 +201,45 @@ TEST_F(VectorIndexTest, CosineVsL2_DifferentRanking) {
     EXPECT_EQ(results_cos[2].pk, "doc3");
 }
 
+TEST_F(VectorIndexTest, DotProductMetric_NoNormalization) {
+    // DOT metric uses raw dot product (negated for distance)
+    // Unlike COSINE, vectors are NOT normalized
+    auto st_dot = vector_mgr_->init("docs_dot", 2, themis::VectorIndexManager::Metric::DOT);
+    ASSERT_TRUE(st_dot.ok);
+    
+    // Add vectors with different magnitudes
+    themis::BaseEntity e1("doc1");
+    e1.setField("vec", std::vector<float>{1.0f, 0.0f});
+    vector_mgr_->addEntity(e1, "vec");
+    
+    themis::BaseEntity e2("doc2");
+    e2.setField("vec", std::vector<float>{10.0f, 0.0f}); // Same direction, 10x magnitude
+    vector_mgr_->addEntity(e2, "vec");
+    
+    themis::BaseEntity e3("doc3");
+    e3.setField("vec", std::vector<float>{0.5f, 0.5f}); // Different direction, smaller magnitude
+    vector_mgr_->addEntity(e3, "vec");
+    
+    // Query with [1, 0]
+    std::vector<float> query{1.0f, 0.0f};
+    auto [st_search, results] = vector_mgr_->searchKnn(query, 3);
+    ASSERT_TRUE(st_search.ok);
+    ASSERT_EQ(results.size(), 3u);
+    
+    // DOT: Higher dot product = more similar (lower distance after negation)
+    // doc2: dot = 10.0 (highest)
+    // doc1: dot = 1.0
+    // doc3: dot = 0.5 (lowest)
+    EXPECT_EQ(results[0].pk, "doc2"); // Highest dot product
+    EXPECT_EQ(results[1].pk, "doc1");
+    EXPECT_EQ(results[2].pk, "doc3");
+    
+    // Verify distances are negated dot products (lower distance = better)
+    // Distance for doc2 should be -10.0
+    EXPECT_LT(results[0].distance, results[1].distance);
+    EXPECT_LT(results[1].distance, results[2].distance);
+}
+
 TEST_F(VectorIndexTest, PersistenceRoundtrip_SaveAndLoad) {
     // Create index with some data
     auto st_init = vector_mgr_->init("docs_persist", 3, themis::VectorIndexManager::Metric::COSINE);

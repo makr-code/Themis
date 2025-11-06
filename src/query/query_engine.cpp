@@ -35,7 +35,80 @@ QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
 	span.setAttribute("query.eq_count", static_cast<int64_t>(q.predicates.size()));
 	span.setAttribute("query.range_count", static_cast<int64_t>(q.rangePredicates.size()));
 	span.setAttribute("query.order_by", q.orderBy.has_value());
+	span.setAttribute("query.fulltext", q.fulltextPredicate.has_value());
 	if (q.table.empty()) return {Status::Error("executeAndKeys: table darf nicht leer sein"), {}};
+	
+	// Handle fulltext queries
+	if (q.fulltextPredicate.has_value()) {
+		const auto& ft = *q.fulltextPredicate;
+		auto child = Tracer::startSpan("index.scanFulltext");
+		child.setAttribute("index.table", q.table);
+		child.setAttribute("index.column", ft.column);
+		child.setAttribute("index.query", ft.query);
+		child.setAttribute("index.limit", static_cast<int64_t>(ft.limit));
+		
+		auto [st, results] = secIdx_.scanFulltextWithScores(q.table, ft.column, ft.query, ft.limit);
+		if (!st.ok) {
+			child.setStatus(false, st.message);
+			return {Status::Error(st.message), {}};
+		}
+		
+		// Extract PKs from results
+		std::vector<std::string> fulltextKeys;
+		fulltextKeys.reserve(results.size());
+		for (const auto& res : results) {
+			fulltextKeys.push_back(res.pk);
+		}
+		
+		child.setAttribute("index.result_count", static_cast<int64_t>(fulltextKeys.size()));
+		child.setStatus(true);
+		
+		// If there are additional predicates (AND combination), intersect with fulltext results
+		if (!q.predicates.empty() || !q.rangePredicates.empty()) {
+			auto intersectSpan = Tracer::startSpan("query.fulltext_and_intersection");
+			intersectSpan.setAttribute("fulltext.result_count", static_cast<int64_t>(fulltextKeys.size()));
+			intersectSpan.setAttribute("additional.eq_count", static_cast<int64_t>(q.predicates.size()));
+			intersectSpan.setAttribute("additional.range_count", static_cast<int64_t>(q.rangePredicates.size()));
+			
+			// Create a temporary query with only the structural predicates
+			ConjunctiveQuery structuralQuery;
+			structuralQuery.table = q.table;
+			structuralQuery.predicates = q.predicates;
+			structuralQuery.rangePredicates = q.rangePredicates;
+			structuralQuery.orderBy = q.orderBy;
+			
+			// Execute structural predicates
+			auto [structStatus, structKeys] = executeAndKeysRangeAware_(structuralQuery);
+			if (!structStatus.ok) {
+				intersectSpan.setStatus(false, structStatus.message);
+				return {structStatus, {}};
+			}
+			
+			// Intersect fulltext results with structural predicate results
+			// Both lists should be sorted for efficient intersection
+			std::sort(fulltextKeys.begin(), fulltextKeys.end());
+			std::sort(structKeys.begin(), structKeys.end());
+			
+			std::vector<std::string> intersection;
+			std::set_intersection(
+				fulltextKeys.begin(), fulltextKeys.end(),
+				structKeys.begin(), structKeys.end(),
+				std::back_inserter(intersection)
+			);
+			
+			intersectSpan.setAttribute("intersection.result_count", static_cast<int64_t>(intersection.size()));
+			intersectSpan.setStatus(true);
+			span.setAttribute("query.result_count", static_cast<int64_t>(intersection.size()));
+			span.setStatus(true);
+			return {Status::OK(), std::move(intersection)};
+		}
+		
+		// Standalone FULLTEXT (no additional predicates)
+		span.setAttribute("query.result_count", static_cast<int64_t>(fulltextKeys.size()));
+		span.setStatus(true);
+		return {Status::OK(), std::move(fulltextKeys)};
+	}
+	
 	// Erlaube ORDER BY ohne weitere Prädikate (liefert die ersten N gemäß Range-Index)
 	if (q.predicates.empty() && q.rangePredicates.empty() && !q.orderBy.has_value()) {
 		return {Status::Error("executeAndKeys: keine Prädikate"), {}};
@@ -227,6 +300,93 @@ QueryEngine::executeOrKeys(const DisjunctiveQuery& q) const {
 	span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
 	span.setStatus(true);
 	return {Status::OK(), std::move(keys)};
+}
+
+std::pair<QueryEngine::Status, std::vector<std::string>>
+QueryEngine::executeOrKeysWithFallback(const DisjunctiveQuery& q, bool optimize) const {
+	auto span = Tracer::startSpan("QueryEngine.executeOrKeysWithFallback");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.disjuncts", static_cast<int64_t>(q.disjuncts.size()));
+	if (q.table.empty()) return {Status::Error("executeOrKeysWithFallback: table darf nicht leer sein"), {}};
+	if (q.disjuncts.empty()) return {Status::Error("executeOrKeysWithFallback: keine Disjunkte"), {}};
+
+	std::vector<std::vector<std::string>> all_lists(q.disjuncts.size());
+	tbb::task_group tg;
+	for (size_t i = 0; i < q.disjuncts.size(); ++i) {
+		const auto& disjunct = q.disjuncts[i];
+		tg.run([this, &disjunct, &all_lists, i, optimize]() {
+			auto child = Tracer::startSpan("or.disjunct.execute_fallback");
+			child.setAttribute("disjunct.eq_count", static_cast<int64_t>(disjunct.predicates.size()));
+			child.setAttribute("disjunct.range_count", static_cast<int64_t>(disjunct.rangePredicates.size()));
+			auto [st, keys] = executeAndKeysWithFallback(disjunct, optimize);
+			if (!st.ok) {
+				THEMIS_ERROR("Parallel OR (fallback) disjunct error: {}", st.message);
+				child.setStatus(false, st.message);
+				return; // Dieser Disjunkt liefert keine Ergebnisse
+			}
+			std::sort(keys.begin(), keys.end());
+			all_lists[i] = std::move(keys);
+			child.setAttribute("disjunct.result_count", static_cast<int64_t>(all_lists[i].size()));
+			child.setStatus(true);
+		});
+	}
+	tg.wait();
+
+	auto keys = unionSortedLists_(std::move(all_lists));
+	span.setAttribute("query.result_count", static_cast<int64_t>(keys.size()));
+	span.setStatus(true);
+	return {Status::OK(), std::move(keys)};
+}
+
+std::pair<QueryEngine::Status, std::vector<BaseEntity>>
+QueryEngine::executeOrEntitiesWithFallback(const DisjunctiveQuery& q, bool optimize) const {
+	auto span = Tracer::startSpan("QueryEngine.executeOrEntitiesWithFallback");
+	span.setAttribute("query.table", q.table);
+	auto [st, keys] = executeOrKeysWithFallback(q, optimize);
+	if (!st.ok) return {st, {}};
+
+	// Parallel entity loading (analog zu executeOrEntities)
+	constexpr size_t PARALLEL_THRESHOLD = 100;
+	constexpr size_t BATCH_SIZE = 50;
+
+	std::vector<BaseEntity> out;
+	out.reserve(keys.size());
+
+	if (keys.size() < PARALLEL_THRESHOLD) {
+		for (const auto& pk : keys) {
+			auto blob = db_.get(q.table + ":" + pk);
+			if (!blob) continue;
+			try { out.emplace_back(BaseEntity::deserialize(pk, *blob)); }
+			catch (...) { THEMIS_WARN("executeOrEntitiesWithFallback: Deserialisierung fehlgeschlagen für PK={}", pk); }
+		}
+	} else {
+		std::vector<std::vector<BaseEntity>> batches((keys.size() + BATCH_SIZE - 1) / BATCH_SIZE);
+		tbb::task_group tg;
+		for (size_t batch_idx = 0; batch_idx < batches.size(); ++batch_idx) {
+			tg.run([this, &q, &keys, &batches, batch_idx, BATCH_SIZE]() {
+				size_t start = batch_idx * BATCH_SIZE;
+				size_t end = std::min(start + BATCH_SIZE, keys.size());
+				std::vector<BaseEntity> local_entities;
+				local_entities.reserve(end - start);
+				for (size_t i = start; i < end; ++i) {
+					const auto& pk = keys[i];
+					auto blob = db_.get(q.table + ":" + pk);
+					if (!blob) continue;
+					try { local_entities.emplace_back(BaseEntity::deserialize(pk, *blob)); }
+					catch (...) { THEMIS_WARN("executeOrEntitiesWithFallback: Deserialisierung fehlgeschlagen für PK={}", pk); }
+				}
+				batches[batch_idx] = std::move(local_entities);
+			});
+		}
+		tg.wait();
+		for (auto& batch : batches) {
+			out.insert(out.end(), std::make_move_iterator(batch.begin()), std::make_move_iterator(batch.end()));
+		}
+	}
+
+	span.setAttribute("query.entities_count", static_cast<int64_t>(out.size()));
+	span.setStatus(true);
+	return {Status::OK(), std::move(out)};
 }
 
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
@@ -789,6 +949,44 @@ nlohmann::json QueryEngine::evaluateExpression(
 				arr.push_back(evaluateExpression(elemExpr, ctx));
 			}
 			return arr;
+		}
+
+		case ASTNodeType::FunctionCall: {
+			auto fn = std::static_pointer_cast<FunctionCallExpr>(expr);
+			std::string name = fn->name;
+			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+			// BM25(doc): Liefert den Score für das aktuell gebundene Dokument
+			if (name == "bm25") {
+				if (fn->arguments.size() != 1) {
+					return 0.0; // Falsche Arity -> neutral 0.0
+				}
+				// Argument kann Variable oder Ausdruck sein, der zu einem Objekt mit _key aufgelöst wird
+				auto obj = evaluateExpression(fn->arguments[0], ctx);
+				if (obj.is_object()) {
+					std::string pk;
+					if (obj.contains("_key") && obj["_key"].is_string()) {
+						pk = obj["_key"].get<std::string>();
+					} else if (obj.contains("_pk") && obj["_pk"].is_string()) {
+						pk = obj["_pk"].get<std::string>();
+					}
+					if (!pk.empty()) {
+						double s = ctx.getBm25ScoreForPk(pk);
+						return s;
+					}
+				}
+				return 0.0;
+			}
+			// FULLTEXT_SCORE(): Alias ohne Argument, versucht "doc" aus dem Kontext
+			if (name == "fulltext_score") {
+				// Best-Effort: nutze Variable "doc" falls vorhanden
+				auto it = ctx.bindings.find("doc");
+				if (it != ctx.bindings.end() && it->second.is_object() && it->second.contains("_key") && it->second["_key"].is_string()) {
+					return ctx.getBm25ScoreForPk(it->second["_key"].get<std::string>());
+				}
+				return 0.0;
+			}
+			// Unbekannte Funktion im MVP: kein Wert
+			return nullptr;
 		}
 		
 		default:

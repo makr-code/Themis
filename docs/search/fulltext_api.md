@@ -16,7 +16,10 @@ POST /index/create
   "type": "fulltext",
   "config": {
     "stemming_enabled": true,
-    "language": "de"  // en | de | none
+    "language": "de",  // en | de | none
+    "stopwords_enabled": true,
+    "stopwords": ["z.b."]  // optional, zusätzliche Stopwords (lowercase)
+    ,"normalize_umlauts": true  // de: ä->a, ö->o, ü->u, ß->ss
   }
 }
 ```
@@ -64,12 +67,37 @@ POST /search/fulltext
   - Aktivieren via `POST /index/create` mit `type: "fulltext"` und `config.stemming_enabled=true`
   - Unterstützte Sprachen: `en` (Porter-Subset), `de` (vereinfachtes Suffix-Stemming)
   - Query-Tokenisierung nutzt immer dieselbe Konfiguration wie der Index
+  
+- Optionales Stopword-Filtering (pro Index konfigurierbar):
+  - Aktivieren via `config.stopwords_enabled=true`
+  - Standard-Listen für `en` und `de`; bei `language: "none"` wird nur die Custom-Liste angewendet
+  - Eigene Stopwords via `config.stopwords: ["foo", "bar"]`
+  - Stopwords werden vor dem Stemming entfernt
+
+- Optionale Normalisierung (DE):
+  - Aktivieren via `config.normalize_umlauts=true`
+  - Ersetzt `ä→a`, `ö→o`, `ü→u`, `ß→ss` vor Tokenisierung/Stemming
+  - Beispiel: "läuft" → "lauft" (erleichtert Suchanfragen ohne Sonderzeichen)
 
 ## Query-Semantik
 
 - **AND-Logik**: Alle Query-Tokens müssen im Dokument vorkommen (Schnittmenge)
 - **Scoring**: Dokumente mit höherer Termfrequenz und besserer Übereinstimmung erhalten höhere Scores
 - **Sortierung**: Ergebnisse absteigend nach BM25-Score sortiert
+
+### Phrasensuche ("…")
+
+- Quoted Phrases im Query werden als exakte Phrasen interpretiert, z. B.:
+  - `"deep learning" optimization`
+- Kandidatenbildung erfolgt weiterhin über Tokens außerhalb der Anführungszeichen (AND-Logik).
+- Danach werden Kandidaten per Post-Filter behalten, wenn alle Phrasen im Originalfeldtext als Substring vorkommen.
+  - Case-insensitive Vergleich
+  - Optional mit `normalize_umlauts=true`: `ä→a`, `ö→o`, `ü→u`, `ß→ss`
+- Phrasen sind von Stemming/Stopwords nicht betroffen (Vergleich gegen den Feld-String, nicht gegen Tokens).
+
+Einschränkungen (v1):
+- Keine Positionslisten im Index – die Phrasenprüfung ist ein nachgelagerter Substring-Check und daher langsamer bei sehr großen Kandidatenmengen.
+- Keine Wortgrenzen-/Satzzeichen-Logik; die Suche prüft eine einfache Teilzeichenkette nach Normalisierung/Lowercasing.
 
 ## Index-Struktur
 
@@ -93,8 +121,9 @@ Die alte API `scanFulltext()` (C++ intern) liefert weiterhin nur PKs ohne Scores
 - ✅ BM25 v1 mit HTTP API
 - ✅ Hybrid Search: Text + Vector Fusion (RRF/Weighted)
 - ✅ Analyzer: Stemming (EN/DE) pro Index konfigurierbar
-- 🔲 AQL Integration: `SORT BM25(doc) DESC`
-- 🔲 Phrase Search: "exact match" Queries
+- ✅ Umlaut-/ß-Normalisierung (DE) optional pro Index
+- ✅ Phrase Search: "exact match" Queries (v1, ohne Positionsindex)
+- ✅ AQL Integration v1.3: `FILTER FULLTEXT(...) AND <predicates>`, `SORT BM25(doc) DESC`, `RETURN {doc, score: BM25(doc)}`
 - 🔲 Highlighting: Matched Terms in Response markieren
 
 ## Beispiel-Workflow
@@ -118,3 +147,86 @@ POST /search/fulltext {
 
 # Ergebnis: doc2 > doc1 > doc3 (nach BM25 Score sortiert)
 ```
+
+---
+
+## AQL-Integration (v1.3)
+
+**Status:** ✅ Implementiert (03.11.2025)
+
+Fulltext-Suche kann auch über die AQL-Query-Language verwendet werden:
+
+### Syntax
+
+```aql
+FOR doc IN table
+  FILTER FULLTEXT(doc.column, "query" [, limit])
+  // optional weitere Prädikate per AND
+  // z. B. AND doc.year >= 2023
+  RETURN doc
+```
+
+### Beispiele
+
+**Einfache Suche:**
+```aql
+FOR article IN articles
+  FILTER FULLTEXT(article.content, "machine learning")
+  LIMIT 10
+  RETURN {title: article.title, abstract: article.abstract}
+```
+
+**Phrasensuche:**
+```aql
+FOR paper IN research_papers
+  FILTER FULLTEXT(paper.abstract, '"neural networks"')
+  LIMIT 20
+  RETURN paper
+```
+
+**Mit benutzerdefiniertem Limit:**
+```aql
+FOR doc IN documents
+  FILTER FULLTEXT(doc.body, "AI optimization", 50)
+  RETURN doc.title
+```
+
+**Sortierung nach Relevanz (BM25 in AQL):**
+```aql
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "machine learning")
+  SORT BM25(doc) DESC
+  LIMIT 10
+  RETURN {title: doc.title, score: BM25(doc)}
+```
+
+**HTTP API-Aufruf:**
+```bash
+POST /query/aql
+{
+  "query": "FOR doc IN articles FILTER FULLTEXT(doc.content, \"machine learning\") LIMIT 10 RETURN doc"
+}
+```
+
+### Funktionsdetails
+
+- **Argumente:**
+  - `field`: Spaltenname (muss Fulltext-Index haben)
+  - `query`: Suchquery (Multi-Term mit AND-Logik, oder `"phrase"` für exakte Phrasen)
+  - `limit`: Optional, default 1000 (max. Kandidaten für BM25-Ranking)
+  
+- **Ranking:** Automatisch nach BM25-Score sortiert (höchster zuerst)
+- **Index-Requirement:** Fulltext-Index muss via `POST /index/create` erstellt sein
+- **Features:** Nutzt Index-Konfiguration (Stemming, Stopwords, Normalisierung)
+
+### Hinweise (v1.3)
+
+- FULLTEXT kann mit AND kombiniert werden. OR-Kombinationen werden über DNF-Übersetzung unterstützt (ein FULLTEXT pro Disjunkt).
+- BM25-Scores sind in AQL über `BM25(doc)` zugreifbar; sie werden bereitgestellt, wenn die Query den FULLTEXT-Ausführungspfad nutzt. Die End-to-End-Verdrahtung im AQL-Handler stellt dies sicher.
+
+### Siehe auch
+
+- **AQL-Syntax:** `docs/aql_syntax.md` - Vollständige AQL-Dokumentation
+- **Index-Erstellung:** Abschnitt "Index-Erstellung" oben
+- **Performance:** Abschnitt "Roadmap" unten für geplante Optimierungen
+

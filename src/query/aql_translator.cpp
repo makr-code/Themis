@@ -46,9 +46,215 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
     
     // Process FILTER clauses
     std::string error;
+    
+    // Check if any filter contains OR - if so, use DisjunctiveQuery
+    bool hasOr = false;
+    for (const auto& filter : ast->filters) {
+        if (filter && filter->condition && containsOr(filter->condition)) {
+            hasOr = true;
+            break;
+        }
+    }
+    
+    if (hasOr) {
+        // Build DisjunctiveQuery using DNF conversion
+        DisjunctiveQuery disjQuery;
+        disjQuery.table = ast->for_node.collection;
+        
+        // Convert all filters to DNF and merge
+        for (const auto& filter : ast->filters) {
+            if (!filter || !filter->condition) {
+                return TranslationResult::Error("Invalid filter node");
+            }
+            
+            auto disjuncts = convertToDNF(filter->condition, disjQuery.table, error);
+            if (!error.empty()) {
+                return TranslationResult::Error("OR filter translation failed: " + error);
+            }
+            
+            // Merge disjuncts (for now, just append - proper DNF merge would distribute)
+            if (disjQuery.disjuncts.empty()) {
+                disjQuery.disjuncts = std::move(disjuncts);
+            } else {
+                // Multiple filters with OR: combine via cartesian product (DNF expansion)
+                // For simplicity in v1, require single FILTER with OR
+                if (ast->filters.size() > 1) {
+                    return TranslationResult::Error("Multiple FILTER clauses with OR not yet supported - combine into single FILTER");
+                }
+            }
+        }
+        
+        // Process SORT + LIMIT
+        if (ast->sort) {
+            disjQuery.orderBy = extractOrderBy(ast->sort, ast->limit);
+        }
+        
+        return TranslationResult::SuccessDisjunctive(std::move(disjQuery));
+    }
+    
+    // No OR: Standard conjunctive query
     for (const auto& filter : ast->filters) {
         if (!filter || !filter->condition) {
             return TranslationResult::Error("Invalid filter node");
+        }
+        
+        // Check if filter is a FULLTEXT function call
+        if (filter->condition->getType() == ASTNodeType::FunctionCall) {
+            auto funcCall = std::static_pointer_cast<FunctionCallExpr>(filter->condition);
+            std::string funcName = funcCall->name;
+            std::transform(funcName.begin(), funcName.end(), funcName.begin(), ::tolower);
+            
+            if (funcName == "fulltext") {
+                // Parse FULLTEXT(column, query [, limit])
+                if (funcCall->arguments.size() < 2 || funcCall->arguments.size() > 3) {
+                    return TranslationResult::Error("FULLTEXT() requires 2-3 arguments: FULLTEXT(column, query [, limit])");
+                }
+                
+                // Extract column (must be field access: doc.column)
+                if (funcCall->arguments[0]->getType() != ASTNodeType::FieldAccess) {
+                    return TranslationResult::Error("FULLTEXT() first argument must be field access (e.g., doc.content)");
+                }
+                std::string column = extractColumnName(funcCall->arguments[0]);
+                
+                // Extract query string (must be literal)
+                if (funcCall->arguments[1]->getType() != ASTNodeType::Literal) {
+                    return TranslationResult::Error("FULLTEXT() second argument must be string literal");
+                }
+                auto queryLiteral = std::static_pointer_cast<LiteralExpr>(funcCall->arguments[1]);
+                if (!std::holds_alternative<std::string>(queryLiteral->value)) {
+                    return TranslationResult::Error("FULLTEXT() query must be a string");
+                }
+                std::string queryStr = std::get<std::string>(queryLiteral->value);
+                
+                // Extract optional limit
+                size_t limit = 1000; // default
+                if (funcCall->arguments.size() == 3) {
+                    if (funcCall->arguments[2]->getType() != ASTNodeType::Literal) {
+                        return TranslationResult::Error("FULLTEXT() third argument (limit) must be integer literal");
+                    }
+                    auto limitLiteral = std::static_pointer_cast<LiteralExpr>(funcCall->arguments[2]);
+                    if (std::holds_alternative<int64_t>(limitLiteral->value)) {
+                        limit = static_cast<size_t>(std::get<int64_t>(limitLiteral->value));
+                    } else {
+                        return TranslationResult::Error("FULLTEXT() limit must be an integer");
+                    }
+                }
+                
+                // Set fulltext predicate
+                query.fulltextPredicate = PredicateFulltext{column, queryStr, limit};
+                continue; // Skip normal predicate extraction for this filter
+            }
+        }
+        
+        // Check if filter contains FULLTEXT combined with AND
+        // Helper to recursively find FULLTEXT in AND tree
+        std::function<std::shared_ptr<FunctionCallExpr>(const std::shared_ptr<Expression>&)> findFulltext;
+        findFulltext = [&](const std::shared_ptr<Expression>& e) -> std::shared_ptr<FunctionCallExpr> {
+            if (!e) return nullptr;
+            
+            if (e->getType() == ASTNodeType::FunctionCall) {
+                auto fc = std::static_pointer_cast<FunctionCallExpr>(e);
+                std::string name = fc->name;
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                if (name == "fulltext") return fc;
+            }
+            
+            if (e->getType() == ASTNodeType::BinaryOp) {
+                auto bo = std::static_pointer_cast<BinaryOpExpr>(e);
+                if (bo->op == BinaryOperator::And) {
+                    auto left = findFulltext(bo->left);
+                    if (left) return left;
+                    return findFulltext(bo->right);
+                }
+            }
+            
+            return nullptr;
+        };
+        
+        // Helper to collect all non-FULLTEXT predicates from AND tree
+        std::function<void(const std::shared_ptr<Expression>&, std::vector<std::shared_ptr<Expression>>&)> collectNonFulltext;
+        collectNonFulltext = [&](const std::shared_ptr<Expression>& e, std::vector<std::shared_ptr<Expression>>& preds) {
+            if (!e) return;
+            
+            if (e->getType() == ASTNodeType::FunctionCall) {
+                auto fc = std::static_pointer_cast<FunctionCallExpr>(e);
+                std::string name = fc->name;
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                if (name != "fulltext") {
+                    preds.push_back(e); // Non-FULLTEXT function
+                }
+                // Skip FULLTEXT itself
+                return;
+            }
+            
+            if (e->getType() == ASTNodeType::BinaryOp) {
+                auto bo = std::static_pointer_cast<BinaryOpExpr>(e);
+                if (bo->op == BinaryOperator::And) {
+                    collectNonFulltext(bo->left, preds);
+                    collectNonFulltext(bo->right, preds);
+                    return;
+                }
+            }
+            
+            // Leaf predicate (equality, range, etc.)
+            preds.push_back(e);
+        };
+        
+        if (filter->condition->getType() == ASTNodeType::BinaryOp) {
+            auto binOp = std::static_pointer_cast<BinaryOpExpr>(filter->condition);
+            
+            if (binOp->op == BinaryOperator::And) {
+                auto fulltextFunc = findFulltext(filter->condition);
+                
+                if (fulltextFunc) {
+                    // Parse FULLTEXT part
+                    if (fulltextFunc->arguments.size() < 2 || fulltextFunc->arguments.size() > 3) {
+                        return TranslationResult::Error("FULLTEXT() requires 2-3 arguments");
+                    }
+                    
+                    if (fulltextFunc->arguments[0]->getType() != ASTNodeType::FieldAccess) {
+                        return TranslationResult::Error("FULLTEXT() first argument must be field access");
+                    }
+                    std::string column = extractColumnName(fulltextFunc->arguments[0]);
+                    
+                    if (fulltextFunc->arguments[1]->getType() != ASTNodeType::Literal) {
+                        return TranslationResult::Error("FULLTEXT() second argument must be string literal");
+                    }
+                    auto queryLiteral = std::static_pointer_cast<LiteralExpr>(fulltextFunc->arguments[1]);
+                    if (!std::holds_alternative<std::string>(queryLiteral->value)) {
+                        return TranslationResult::Error("FULLTEXT() query must be a string");
+                    }
+                    std::string queryStr = std::get<std::string>(queryLiteral->value);
+                    
+                    size_t limit = 1000;
+                    if (fulltextFunc->arguments.size() == 3) {
+                        if (fulltextFunc->arguments[2]->getType() != ASTNodeType::Literal) {
+                            return TranslationResult::Error("FULLTEXT() limit must be integer literal");
+                        }
+                        auto limitLiteral = std::static_pointer_cast<LiteralExpr>(fulltextFunc->arguments[2]);
+                        if (std::holds_alternative<int64_t>(limitLiteral->value)) {
+                            limit = static_cast<size_t>(std::get<int64_t>(limitLiteral->value));
+                        } else {
+                            return TranslationResult::Error("FULLTEXT() limit must be an integer");
+                        }
+                    }
+                    
+                    query.fulltextPredicate = PredicateFulltext{column, queryStr, limit};
+                    
+                    // Collect all non-FULLTEXT predicates
+                    std::vector<std::shared_ptr<Expression>> predicateExprs;
+                    collectNonFulltext(filter->condition, predicateExprs);
+                    
+                    // Extract each predicate
+                    for (const auto& predExpr : predicateExprs) {
+                        if (!extractPredicates(predExpr, query.predicates, query.rangePredicates, error)) {
+                            return TranslationResult::Error("Filter translation failed: " + error);
+                        }
+                    }
+                    
+                    continue; // Successfully handled FULLTEXT AND <predicates>
+                }
+            }
         }
         
         if (!extractPredicates(filter->condition, query.predicates, query.rangePredicates, error)) {
@@ -75,6 +281,25 @@ bool AQLTranslator::extractPredicates(
         return false;
     }
     
+    // Check for FULLTEXT function call in FILTER
+    if (expr->getType() == ASTNodeType::FunctionCall) {
+        auto funcCall = std::static_pointer_cast<FunctionCallExpr>(expr);
+        
+        // Check if it's FULLTEXT(...) - case insensitive
+        std::string funcName = funcCall->name;
+        std::transform(funcName.begin(), funcName.end(), funcName.begin(), ::tolower);
+        
+        if (funcName == "fulltext") {
+            // FULLTEXT is now allowed in both AND and OR combinations
+            // In OR: each disjunct can have its own FULLTEXT
+            // In AND: handled at translate level
+            // When called from extractPredicates in OR context, we shouldn't reach here
+            // (DNF conversion handles FULLTEXT directly)
+            error = "FULLTEXT() should be handled by DNF converter in OR context";
+            return false;
+        }
+    }
+    
     // Check expression type
     if (expr->getType() == ASTNodeType::BinaryOp) {
         auto binOp = std::static_pointer_cast<BinaryOpExpr>(expr);
@@ -85,10 +310,15 @@ bool AQLTranslator::extractPredicates(
                    extractPredicates(binOp->right, eqPredicates, rangePredicates, error);
         }
         
-        // Handle OR: Not yet fully supported, but accept simple cases (will be handled at execution layer)
-        // For MVP: reject OR, suggest splitting into multiple queries
-        if (binOp->op == BinaryOperator::Or || binOp->op == BinaryOperator::Xor) {
-            error = "OR/XOR operators not yet supported - use multiple queries and merge results client-side";
+        // Handle OR: Should be handled at higher level via convertToDNF
+        // If we reach here, it means OR is nested in a way that requires DNF conversion
+        if (binOp->op == BinaryOperator::Or) {
+            error = "OR operator detected - should be handled via DisjunctiveQuery (internal error)";
+            return false;
+        }
+        
+        if (binOp->op == BinaryOperator::Xor) {
+            error = "XOR operator not supported";
             return false;
         }
         
@@ -237,6 +467,168 @@ std::optional<OrderBy> AQLTranslator::extractOrderBy(
     }
     
     return orderBy;
+}
+
+bool AQLTranslator::containsOr(const std::shared_ptr<Expression>& expr) {
+    if (!expr) return false;
+    
+    if (expr->getType() == ASTNodeType::BinaryOp) {
+        auto binOp = std::static_pointer_cast<BinaryOpExpr>(expr);
+        if (binOp->op == BinaryOperator::Or) {
+            return true;
+        }
+        // Recursively check both sides
+        return containsOr(binOp->left) || containsOr(binOp->right);
+    }
+    
+    return false;
+}
+
+std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
+    const std::shared_ptr<Expression>& expr,
+    const std::string& table,
+    std::string& error
+) {
+    if (!expr) {
+        error = "Null expression in DNF conversion";
+        return {};
+    }
+    
+    // Base case: Single predicate (leaf node)
+    if (expr->getType() == ASTNodeType::BinaryOp) {
+        auto binOp = std::static_pointer_cast<BinaryOpExpr>(expr);
+        
+        // OR: Split into multiple disjuncts
+        if (binOp->op == BinaryOperator::Or) {
+            auto leftDNF = convertToDNF(binOp->left, table, error);
+            if (!error.empty()) return {};
+            
+            auto rightDNF = convertToDNF(binOp->right, table, error);
+            if (!error.empty()) return {};
+            
+            // Merge disjuncts (union)
+            leftDNF.insert(leftDNF.end(), rightDNF.begin(), rightDNF.end());
+            return leftDNF;
+        }
+        
+        // AND: Distribute over existing disjuncts
+        if (binOp->op == BinaryOperator::And) {
+            auto leftDNF = convertToDNF(binOp->left, table, error);
+            if (!error.empty()) return {};
+            
+            auto rightDNF = convertToDNF(binOp->right, table, error);
+            if (!error.empty()) return {};
+            
+            // Cartesian product: (A OR B) AND (C OR D) = (A AND C) OR (A AND D) OR (B AND C) OR (B AND D)
+            std::vector<ConjunctiveQuery> result;
+            for (const auto& leftConj : leftDNF) {
+                for (const auto& rightConj : rightDNF) {
+                    ConjunctiveQuery merged;
+                    merged.table = table;
+                    
+                    // Merge predicates
+                    merged.predicates = leftConj.predicates;
+                    merged.predicates.insert(merged.predicates.end(), 
+                                            rightConj.predicates.begin(), 
+                                            rightConj.predicates.end());
+                    
+                    // Merge range predicates
+                    merged.rangePredicates = leftConj.rangePredicates;
+                    merged.rangePredicates.insert(merged.rangePredicates.end(),
+                                                 rightConj.rangePredicates.begin(),
+                                                 rightConj.rangePredicates.end());
+                    
+                    // Merge fulltext predicates
+                    // Only one FULLTEXT per disjunct allowed (can't merge multiple FULLTEXT into single AND clause)
+                    if (leftConj.fulltextPredicate.has_value() && rightConj.fulltextPredicate.has_value()) {
+                        error = "Cannot combine multiple FULLTEXT() predicates in AND - only one FULLTEXT per clause allowed";
+                        return {};
+                    }
+                    if (leftConj.fulltextPredicate.has_value()) {
+                        merged.fulltextPredicate = leftConj.fulltextPredicate;
+                    } else if (rightConj.fulltextPredicate.has_value()) {
+                        merged.fulltextPredicate = rightConj.fulltextPredicate;
+                    }
+                    
+                    result.push_back(std::move(merged));
+                }
+            }
+            return result;
+        }
+        
+        // Leaf comparison (==, <, >, etc.)
+        // Create single-predicate conjunctive query
+        ConjunctiveQuery conj;
+        conj.table = table;
+        
+        std::vector<PredicateEq> eqPreds;
+        std::vector<PredicateRange> rangePreds;
+        
+        if (!extractPredicates(expr, eqPreds, rangePreds, error)) {
+            return {};
+        }
+        
+        conj.predicates = std::move(eqPreds);
+        conj.rangePredicates = std::move(rangePreds);
+        
+        return {conj};
+    }
+    
+    // FULLTEXT function call - create single-predicate query with FULLTEXT
+    if (expr->getType() == ASTNodeType::FunctionCall) {
+        auto funcCall = std::static_pointer_cast<FunctionCallExpr>(expr);
+        std::string funcName = funcCall->name;
+        std::transform(funcName.begin(), funcName.end(), funcName.begin(), ::tolower);
+        
+        if (funcName == "fulltext") {
+            // Parse FULLTEXT(column, query [, limit])
+            if (funcCall->arguments.size() < 2 || funcCall->arguments.size() > 3) {
+                error = "FULLTEXT() requires 2-3 arguments: FULLTEXT(column, query [, limit])";
+                return {};
+            }
+            
+            if (funcCall->arguments[0]->getType() != ASTNodeType::FieldAccess) {
+                error = "FULLTEXT() first argument must be field access (e.g., doc.content)";
+                return {};
+            }
+            std::string column = extractColumnName(funcCall->arguments[0]);
+            
+            if (funcCall->arguments[1]->getType() != ASTNodeType::Literal) {
+                error = "FULLTEXT() second argument must be string literal";
+                return {};
+            }
+            auto queryLiteral = std::static_pointer_cast<LiteralExpr>(funcCall->arguments[1]);
+            if (!std::holds_alternative<std::string>(queryLiteral->value)) {
+                error = "FULLTEXT() query must be a string";
+                return {};
+            }
+            std::string queryStr = std::get<std::string>(queryLiteral->value);
+            
+            size_t limit = 1000; // default
+            if (funcCall->arguments.size() == 3) {
+                if (funcCall->arguments[2]->getType() != ASTNodeType::Literal) {
+                    error = "FULLTEXT() third argument (limit) must be integer literal";
+                    return {};
+                }
+                auto limitLiteral = std::static_pointer_cast<LiteralExpr>(funcCall->arguments[2]);
+                if (std::holds_alternative<int64_t>(limitLiteral->value)) {
+                    limit = static_cast<size_t>(std::get<int64_t>(limitLiteral->value));
+                } else {
+                    error = "FULLTEXT() limit must be an integer";
+                    return {};
+                }
+            }
+            
+            // Create a ConjunctiveQuery with only the fulltext predicate
+            ConjunctiveQuery conj;
+            conj.table = table;
+            conj.fulltextPredicate = PredicateFulltext{column, queryStr, limit};
+            return {conj};
+        }
+    }
+    
+    error = "Unsupported expression type in DNF conversion";
+    return {};
 }
 
 } // namespace themis

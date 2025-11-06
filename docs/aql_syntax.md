@@ -6,19 +6,19 @@
 
 ---
 
-## Überblick
+## �berblick
 
-**AQL (Advanced Query Language)** ist eine deklarative SQL-ähnliche Sprache für THEMIS, optimiert für hybride Queries über relationale, Graph-, Vektor- und Dokument-Daten.
+**AQL (Advanced Query Language)** ist eine deklarative SQL-�hnliche Sprache f�r THEMIS, optimiert f�r hybride Queries �ber relationale, Graph-, Vektor- und Dokument-Daten.
 
 **Design-Prinzipien:**
-- ✅ **Einfach:** SQL-ähnliche Syntax für schnelle Adoption
-- ✅ **Mächtig:** Multi-Modell-Support (Relational, Graph, Vector)
-- ✅ **Optimierbar:** Automatische Index-Auswahl via Optimizer
-- ✅ **Erweiterbar:** Schrittweise Erweiterung (Aggregationen, Joins, Subqueries)
+- ? **Einfach:** SQL-�hnliche Syntax f�r schnelle Adoption
+- ? **M�chtig:** Multi-Modell-Support (Relational, Graph, Vector)
+- ? **Optimierbar:** Automatische Index-Auswahl via Optimizer
+- ? **Erweiterbar:** Schrittweise Erweiterung (Aggregationen, Joins, Subqueries)
 
 ---
 
-## Syntax-Übersicht
+## Syntax-�bersicht
 
 ### Grundstruktur
 
@@ -32,22 +32,22 @@ FOR variable IN collection
 ```
 
 **Execution-Reihenfolge:**
-1. `FOR` - Iteration über Collection/Index
-2. `FILTER` - Prädikat-Evaluation (mit Index-Nutzung)
-3. `SORT` - Sortierung (mit Index-Nutzung wenn möglich)
+1. `FOR` - Iteration �ber Collection/Index
+2. `FILTER` - Pr�dikat-Evaluation (mit Index-Nutzung)
+3. `SORT` - Sortierung (mit Index-Nutzung wenn m�glich)
 4. `LIMIT` - Pagination/Offset
 5. `RETURN` - Projektion (Felder/Objekte/Arrays)
 
 ---
 
-## MVP-Einschränkungen und Hinweise
+## MVP-Einschr�nkungen und Hinweise
 
 Damit Erwartungen klar sind, hier die wichtigsten Begrenzungen des aktuellen MVP:
 
-- Kein generisches OR im Translator. AND wird unterstützt; OR ist in Arbeit und wird später ergänzt.
-- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt. Ein spezieller Join-Pfad erlaubt jedoch Gleichheits‑Joins über genau zwei FOR‑Klauseln (siehe Abschnitt „Einfache Joins (MVP)“).
-- LET in FILTER: Falls einfache LET‑Bindungen in FILTER vorkommen, werden diese vor der Übersetzung extrahiert („pre‑extracted“). Bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`.
-- Subqueries, OR, komplexe Ausdrücke/Funktionen sind (noch) eingeschränkt und werden iterativ erweitert.
+- OR-Operator: Vollst�ndig unterst�tzt �ber DNF-Konvertierung. FULLTEXT kann in OR-Ausdr�cken verwendet werden.
+- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt. Ein spezieller Join-Pfad erlaubt jedoch Gleichheits-Joins �ber genau zwei FOR-Klauseln (siehe Abschnitt �Einfache Joins (MVP)�).
+- LET in FILTER: Falls einfache LET-Bindungen in FILTER vorkommen, werden diese vor der �bersetzung extrahiert (�pre-extracted�). Bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`.
+- Subqueries, OR, komplexe Ausdr�cke/Funktionen sind (noch) eingeschr�nkt und werden iterativ erweitert.
 
 ## Kern-Klauseln
 
@@ -68,7 +68,7 @@ FOR u IN users
 
 **Multi-Collection (Joins - MVP seit 31.10.2025):**
 
-Themis unterstützt Nested-Loop-Joins über mehrere Collections via sequenzielle `FOR`-Klauseln:
+Themis unterst�tzt Nested-Loop-Joins �ber mehrere Collections via sequenzielle `FOR`-Klauseln:
 
 ```aql
 FOR u IN users
@@ -78,8 +78,8 @@ FOR u IN users
 ```
 
 **Join-Arten (MVP):**
-- **Equality Join:** Verknüpfung über `FILTER var1.field == var2.field`
-- **Cross Product + Filter:** Kartesisches Produkt mit nachträglicher Filterung
+- **Equality Join:** Verkn�pfung �ber `FILTER var1.field == var2.field`
+- **Cross Product + Filter:** Kartesisches Produkt mit nachtr�glicher Filterung
 
 **Beispiel - User-City-Join:**
 ```aql
@@ -94,10 +94,10 @@ FOR user IN users
 ```
 
 **Performance-Hinweise:**
-- ⚠️ Nested-Loop kann **teuer** sein bei großen Datasets (O(n×m) Komplexität)
-- 💡 Empfehlung: FILTER-Bedingungen so spezifisch wie möglich
-- 💡 Zukünftig: Hash-Join-Optimierung für große Collections geplant
-- 💡 Verwende Indizes auf Join-Spalten (z.B. `city_id`) wo möglich
+- ?? Nested-Loop kann **teuer** sein bei gro�en Datasets (O(n�m) Komplexit�t)
+- ?? Empfehlung: FILTER-Bedingungen so spezifisch wie m�glich
+- ?? Zuk�nftig: Hash-Join-Optimierung f�r gro�e Collections geplant
+- ?? Verwende Indizes auf Join-Spalten (z.B. `city_id`) wo m�glich
 
 **Multi-FOR Limitierungen (MVP):**
 - Maximal 2-3 FOR-Klauseln empfohlen (Performance)
@@ -112,8 +112,8 @@ FOR user IN users
 ```aql
 FILTER doc.age == 25          // Gleichheit
 FILTER doc.age != 25          // Ungleichheit
-FILTER doc.age > 18           // Größer
-FILTER doc.age >= 18          // Größer-Gleich
+FILTER doc.age > 18           // Gr��er
+FILTER doc.age >= 18          // Gr��er-Gleich
 FILTER doc.age < 65           // Kleiner
 FILTER doc.age <= 65          // Kleiner-Gleich
 ```
@@ -121,8 +121,20 @@ FILTER doc.age <= 65          // Kleiner-Gleich
 **Logische Operatoren:**
 ```aql
 FILTER doc.age > 18 AND doc.city == "Berlin"
-FILTER doc.status == "active" OR doc.status == "pending"   // Hinweis: OR im MVP noch nicht unterstützt
+FILTER doc.status == "active" OR doc.status == "pending"
 FILTER NOT doc.deleted
+```
+
+**OR-Operator (v1.3):**
+```aql
+// Einfaches OR
+FILTER doc.status == "active" OR doc.status == "pending"
+
+// OR mit AND kombiniert
+FILTER (doc.status == "active" AND doc.age >= 30) OR doc.city == "Berlin"
+
+// Komplexe DNF-Expansion
+FILTER (doc.city == "Berlin" OR doc.city == "Munich") AND doc.status == "active"
 ```
 
 **IN-Operator:**
@@ -137,6 +149,31 @@ FILTER LIKE(doc.name, "Max%")           // Prefix-Match
 FILTER CONTAINS(doc.description, "AI")  // Substring
 FILTER REGEX_TEST(doc.email, ".*@example\.com")
 ```
+
+**Fulltext-Suche (BM25-ranked):**
+```aql
+FILTER FULLTEXT(doc.content, "machine learning")              // Multi-term search
+FILTER FULLTEXT(doc.title, '"exact phrase"')                  // Phrase search (escaped quotes)
+FILTER FULLTEXT(doc.abstract, "neural networks", 50)          // Custom limit (default: 1000)
+
+// **NEU v1.3:** FULLTEXT + AND Kombinationen (Hybrid Search)
+FILTER FULLTEXT(doc.content, "AI") AND doc.year >= 2023
+FILTER FULLTEXT(doc.title, "neural") AND doc.category == "Research" AND doc.views >= 1000
+FILTER doc.lang == "en" AND FULLTEXT(doc.abstract, "machine learning")  // Order flexible
+```
+
+**FULLTEXT-Funktionsdetails:**
+- **Argumente:** `FULLTEXT(field, query [, limit])`
+  - `field` - Spaltenname mit Fulltext-Index
+  - `query` - Suchquery (Tokens mit AND-Logik, oder `"phrase"` f�r exakte Phrasen)
+  - `limit` - Optional: Max. Ergebnisse (default 1000)
+- **Ranking:** BM25-Scoring (k1=1.2, b=0.75)
+- **Features:** Stemming (EN/DE), Stopwords, Normalization (Umlaute)
+- **Hybrid Queries (v1.3):** 
+  - ? `FULLTEXT(...) AND <predicates>` - Intersection-based (BM25 n structural filters)
+  - ? `FULLTEXT(...) OR <expr>` - Noch nicht unterst�tzt (geplant v1.4)
+- **Execution Strategy:** Fulltext-Scan zuerst (BM25-ranked), dann Intersection mit strukturellen Filtern
+- **Siehe:** `docs/search/fulltext_api.md` f�r Index-Erstellung und Konfiguration
 
 **NULL-Checks:**
 ```aql
@@ -162,8 +199,8 @@ SORT doc.priority DESC, doc.created_at ASC
 ```
 
 **Index-Nutzung:**
-- Range-Index auf `age` → effiziente Sortierung
-- Composite-Index `(city, age)` → optimale Multi-Column-Sort
+- Range-Index auf `age` ? effiziente Sortierung
+- Composite-Index `(city, age)` ? optimale Multi-Column-Sort
 
 ---
 
@@ -183,7 +220,7 @@ LIMIT 20, 10                  // Zeilen 21-30 (Seite 3)
 
 **Best Practices:**
 - Immer mit `LIMIT` arbeiten (verhindert Full-Scans)
-- Für große Offsets: Cursor-basierte Pagination bevorzugen
+- F�r gro�e Offsets: Cursor-basierte Pagination bevorzugen
 
 ---
 
@@ -223,10 +260,10 @@ RETURN {
 RETURN [doc.name, doc.age, doc.city]
 ```
 
-Unterstützte Ausdrücke im MVP:
+Unterst�tzte Ausdr�cke im MVP:
 - Literale: Zahl, String, Bool, null
 - Variablen und Feldzugriff: `doc`, `doc.field`
-- Objekt- und Array-Literale (verschachtelt möglich)
+- Objekt- und Array-Literale (verschachtelt m�glich)
 - Einfache Let-Bindings pro Zeile (siehe LET)
 
 ---
@@ -235,7 +272,7 @@ Unterstützte Ausdrücke im MVP:
 
 ### LET - Variable Binding (MVP seit 31.10.2025)
 
-Bindet pro Iteration Werte an Variablen, die in `FILTER` und `RETURN` genutzt werden können.
+Bindet pro Iteration Werte an Variablen, die in `FILTER` und `RETURN` genutzt werden k�nnen.
 
 **Einfaches Beispiel:**
 ```aql
@@ -273,11 +310,11 @@ FOR user IN users
     RETURN {customer: full_name, order_id: order._key}
 ```
 
-**MVP-Einschränkungen:**
-- Unterstützt sind aktuell einfache Ausdrücke: Literale, Variablen, Feldzugriffe, Binäroperationen (+, -, *, /), Objekt-/Array-Literale
-- LETs werden sequenziell ausgewertet; spätere LETs können frühere verwenden
+**MVP-Einschr�nkungen:**
+- Unterst�tzt sind aktuell einfache Ausdr�cke: Literale, Variablen, Feldzugriffe, Bin�roperationen (+, -, *, /), Objekt-/Array-Literale
+- LETs werden sequenziell ausgewertet; sp�tere LETs k�nnen fr�here verwenden
 - Komplexe Funktionen (CONCAT, SUBSTRING, etc.) in Entwicklung
-- Explain: Wenn `LET`‑Variablen in `FILTER` zu einfachen Gleichheitsprädikaten vor der Übersetzung extrahiert wurden, enthält der Plan das Flag `plan.let_pre_extracted = true`
+- Explain: Wenn `LET`-Variablen in `FILTER` zu einfachen Gleichheitspr�dikaten vor der �bersetzung extrahiert wurden, enth�lt der Plan das Flag `plan.let_pre_extracted = true`
 
 ---
 
@@ -329,7 +366,7 @@ FOR user IN users
   RETURN {city, adult_count}
 ```
 
-**Unterstützte Aggregatfunktionen (MVP):**
+**Unterst�tzte Aggregatfunktionen (MVP):**
 - `COUNT()` - Anzahl der Gruppen-Elemente
 - `SUM(expr)` - Summe eines numerischen Felds
 - `AVG(expr)` - Durchschnitt eines numerischen Felds
@@ -337,9 +374,9 @@ FOR user IN users
 - `MAX(expr)` - Maximum eines Felds
 
 **Performance-Hinweise:**
-- Hash-basiertes Grouping: O(n) Komplexität
+- Hash-basiertes Grouping: O(n) Komplexit�t
 - FILTER vor COLLECT reduziert Datenvolumen (wird automatisch optimiert)
-- Für sehr große Gruppen: Memory-Nutzung beachten
+- F�r sehr gro�e Gruppen: Memory-Nutzung beachten
 
 **Geplante Erweiterungen:**
 - `STDDEV(expr)` - Standardabweichung
@@ -348,15 +385,15 @@ FOR user IN users
 - `UNIQUE(expr)` - Distinct Values
 
 Hinweise (MVP):
-- Gruppierung erfolgt über exakte String-Matches der Group-Keys
+- Gruppierung erfolgt �ber exakte String-Matches der Group-Keys
 - Mehrere GROUP BY-Felder via Tuple-Keys geplant
 - HAVING-Clause (Post-Aggregation-Filter) in Entwicklung
 
 ---
 
-## HTTP-spezifische Parameter für Pagination
+## HTTP-spezifische Parameter f�r Pagination
 
-Bei Nutzung des HTTP-Endpunkts `POST /query/aql` können optionale Felder zur Pagination mitgegeben werden:
+Bei Nutzung des HTTP-Endpunkts `POST /query/aql` k�nnen optionale Felder zur Pagination mitgegeben werden:
 
 ```json
 {
@@ -367,9 +404,9 @@ Bei Nutzung des HTTP-Endpunkts `POST /query/aql` können optionale Felder zur Pa
 }
 ```
 
-- `use_cursor` (bool): Aktiviert Cursor-basierte Pagination. Antwortformat enthält `{items, has_more, next_cursor, batch_size}`.
-- `cursor` (string): Token aus `next_cursor` der vorherigen Seite. Gültig nur in Kombination mit `use_cursor: true`.
-- `allow_full_scan` (bool): Optionaler Fallback für kleine Datenmengen/Tests; für große Daten wird Index-basierte Sortierung empfohlen.
+- `use_cursor` (bool): Aktiviert Cursor-basierte Pagination. Antwortformat enth�lt `{items, has_more, next_cursor, batch_size}`.
+- `cursor` (string): Token aus `next_cursor` der vorherigen Seite. G�ltig nur in Kombination mit `use_cursor: true`.
+- `allow_full_scan` (bool): Optionaler Fallback f�r kleine Datenmengen/Tests; f�r gro�e Daten wird Index-basierte Sortierung empfohlen.
 
 Weitere Details siehe `docs/cursor_pagination.md`.
 
@@ -386,8 +423,8 @@ FOR v, e, p IN 1..3 OUTBOUND "users/alice" edges
 ```
 
 **Traversal-Richtungen:**
-- `OUTBOUND` - Ausgehende Kanten (Alice → Bob)
-- `INBOUND` - Eingehende Kanten (Alice ← Bob)
+- `OUTBOUND` - Ausgehende Kanten (Alice ? Bob)
+- `INBOUND` - Eingehende Kanten (Alice ? Bob)
 - `ANY` - Beide Richtungen
 
 **Depth-Limits:**
@@ -397,7 +434,7 @@ FOR v, e, p IN 1..3 OUTBOUND "users/alice" edges
 
 ---
 
-### Vektor-Ähnlichkeitssuche
+### Vektor-�hnlichkeitssuche
 
 ```aql
 FOR doc IN users
@@ -432,25 +469,101 @@ FOR doc IN locations
 
 ---
 
-### Fulltext-Suche
+### Fulltext-Suche (BM25)
 
+**Einfache Multi-Term-Suche:**
 ```aql
 FOR doc IN articles
-  FULLTEXT(doc.content, "machine learning AI")
+  FILTER FULLTEXT(doc.content, "machine learning")
+  LIMIT 10
+  RETURN {title: doc.title, content: doc.content}
+```
+
+**Sortierung nach Score (BM25):**
+```aql
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "neural networks")
   SORT BM25(doc) DESC
   LIMIT 10
   RETURN {title: doc.title, score: BM25(doc)}
 ```
 
+**Phrasensuche:**
+```aql
+FOR doc IN articles
+  FILTER FULLTEXT(doc.abstract, '"neural networks"')
+  LIMIT 20
+  RETURN doc
+```
+
+**Mit benutzerdefiniertem Limit:**
+```aql
+FOR doc IN research_papers
+  FILTER FULLTEXT(doc.content, "deep learning transformer", 50)
+  RETURN {
+    title: doc.title,
+    authors: doc.authors,
+    year: doc.year
+  }
+```
+
+**Volltext + strukturierte Filter kombiniert:**
+```aql
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "AI") AND doc.year >= 2023
+  LIMIT 10
+  RETURN doc
+```
+
+**Volltext + OR-Kombinationen:**
+```aql
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "machine learning") OR doc.year < 2000
+  LIMIT 10
+  RETURN {title: doc.title, year: doc.year}
+```
+
+**Hinweise:**
+- BM25-Ranking: Ergebnisse sind automatisch nach Relevanz sortiert (höchster Score zuerst)
+- Score aus AQL zugreifbar: `BM25(doc)` liefert den Score für das aktuelle Dokument
+- Index erforderlich: `POST /api/index/fulltext` (siehe `docs/search/fulltext_api.md`)
+- Stemming/Stopwords/Normalisierung: Per Index konfigurierbar (EN/DE)
+- Score-Ausgabe: Verf�gbar in RETURN via `FULLTEXT_SCORE()` (nur wenn ein `FULLTEXT(...)`-Filter in der Query vorhanden ist)
+- AND/OR-Kombinationen: `FULLTEXT(...) AND ...` und `FULLTEXT(...) OR ...` vollständig produktiv
+
+**Index-Erstellung (HTTP API):**
+```json
+POST /api/index/fulltext
+{
+  "table": "articles",
+  "column": "content",
+  "stemming_enabled": true,
+  "language": "en",
+  "stopwords_enabled": true,
+  "normalize_german": false
+}
+```
+
+---
+
+### Fulltext-Suche
+
+```aql
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "machine learning AI")
+  LIMIT 10
+  RETURN {title: doc.title, score: FULLTEXT_SCORE()}
+```
+
 **Funktionen:**
-- `FULLTEXT(field, query)` - Tokenisierte Suche
-- `BM25(doc)` - Relevanz-Score (0.0+)
+- `FULLTEXT(field, query [, limit])` - Tokenisierte Suche mit optionalem Limit (Kandidatenzahl)
+- `FULLTEXT_SCORE()` - Relevanz-Score (BM25) des aktuellen Treffers; nur g�ltig, wenn ein `FULLTEXT(...)`-Filter vorhanden ist
 
 ---
 
 ## Einfache Joins (MVP)
 
-Unterstützt werden Equality-Joins über genau zwei `FOR`-Klauseln mit einem Gleichheitsprädikat zwischen Variablen.
+Unterst�tzt werden Equality-Joins �ber genau zwei `FOR`-Klauseln mit einem Gleichheitspr�dikat zwischen Variablen.
 
 ```aql
 FOR u IN users
@@ -459,12 +572,12 @@ FOR u IN users
   RETURN u
 ```
 
-Eigenschaften und Einschränkungen (MVP):
-- Genau zwei `FOR`‑Klauseln; ein Equality‑Prädikat `var1.field == var2.field` in `FILTER`.
-- Zusätzliche `FILTER` pro Seite sind erlaubt und werden vor dem Join angewendet.
-- `RETURN` muss aktuell eine der Variablen zurückgeben (typisch `u` oder `o`).
-- `LIMIT` wird nach dem Join angewendet. `SORT` im Join‑Pfad ist derzeit nicht unterstützt.
-- `explain: true` liefert einen Plan, der den Join‑Pfad ausweist; bei LET‑Pre‑Extraction wird `plan.let_pre_extracted = true` gesetzt.
+Eigenschaften und Einschr�nkungen (MVP):
+- Genau zwei `FOR`-Klauseln; ein Equality-Pr�dikat `var1.field == var2.field` in `FILTER`.
+- Zus�tzliche `FILTER` pro Seite sind erlaubt und werden vor dem Join angewendet.
+- `RETURN` muss aktuell eine der Variablen zur�ckgeben (typisch `u` oder `o`).
+- `LIMIT` wird nach dem Join angewendet. `SORT` im Join-Pfad ist derzeit nicht unterst�tzt.
+- `explain: true` liefert einen Plan, der den Join-Pfad ausweist; bei LET-Pre-Extraction wird `plan.let_pre_extracted = true` gesetzt.
 
 Projektion mit LET im Join-Kontext:
 
@@ -476,7 +589,7 @@ FOR u IN users
   RETURN info
 ```
 
-Hinweis: Komplexe Projektionen können je nach Datenvolumen höhere Kosten verursachen; nutze `LIMIT` wo sinnvoll.
+Hinweis: Komplexe Projektionen k�nnen je nach Datenvolumen h�here Kosten verursachen; nutze `LIMIT` wo sinnvoll.
 
 ---
 
@@ -486,21 +599,21 @@ Hinweis: Komplexe Projektionen können je nach Datenvolumen höhere Kosten verur
 
 ```aql
 CONCAT(str1, str2, ...)       // "Hello" + " " + "World"
-LOWER(str)                     // "HELLO" → "hello"
-UPPER(str)                     // "hello" → "HELLO"
-SUBSTRING(str, offset, length) // "Hello"[1:4] → "ell"
-LENGTH(str)                    // "Hello" → 5
-TRIM(str)                      // "  Hello  " → "Hello"
+LOWER(str)                     // "HELLO" ? "hello"
+UPPER(str)                     // "hello" ? "HELLO"
+SUBSTRING(str, offset, length) // "Hello"[1:4] ? "ell"
+LENGTH(str)                    // "Hello" ? 5
+TRIM(str)                      // "  Hello  " ? "Hello"
 ```
 
 ### Numeric-Funktionen
 
 ```aql
-ABS(num)                       // |-5| → 5
-CEIL(num) / FLOOR(num)         // 3.7 → 4 / 3
-ROUND(num, decimals)           // 3.14159, 2 → 3.14
-SQRT(num)                      // √16 → 4
-POW(base, exp)                 // 2^8 → 256
+ABS(num)                       // |-5| ? 5
+CEIL(num) / FLOOR(num)         // 3.7 ? 4 / 3
+ROUND(num, decimals)           // 3.14159, 2 ? 3.14
+SQRT(num)                      // v16 ? 4
+POW(base, exp)                 // 2^8 ? 256
 ```
 
 ### Aggregations (in COLLECT)
@@ -564,8 +677,8 @@ FOR loc IN restaurants
 ```
 
 **Optimizer:**
-- Nutzt Geo-Index für Bounding-Box-Scan
-- Post-Filter für exakte Distanz-Berechnung
+- Nutzt Geo-Index f�r Bounding-Box-Scan
+- Post-Filter f�r exakte Distanz-Berechnung
 
 ---
 
@@ -585,8 +698,8 @@ FOR product IN products
 ```
 
 **Pre-Filtering vs Post-Filtering:**
-- Pre-Filter: Bitset für `price < 100 AND in_stock == true` → k-NN
-- Post-Filter: k-NN (20) → Filter → Top-10
+- Pre-Filter: Bitset f�r `price < 100 AND in_stock == true` ? k-NN
+- Post-Filter: k-NN (20) ? Filter ? Top-10
 
 ---
 
@@ -654,7 +767,7 @@ POST /query/aql
 }
 ```
 
-### Index-Hints (später)
+### Index-Hints (sp�ter)
 
 ```aql
 FOR doc IN users USE INDEX idx_age_city
@@ -684,7 +797,7 @@ enum class ASTNodeType {
     Variable          // doc, user, etc.
 };
 
-// Beispiel-AST für: FOR u IN users FILTER u.age > 18 RETURN u.name
+// Beispiel-AST f�r: FOR u IN users FILTER u.age > 18 RETURN u.name
 ForNode {
     variable: "u",
     collection: "users",
@@ -708,11 +821,11 @@ ForNode {
 ## Implementierungs-Phasen
 
 ### Phase 1 (MVP - Woche 1-2):
-- ✅ FOR, FILTER (Equality, Range, IN), SORT, LIMIT, RETURN
-- ✅ Parser (PEGTL)
-- ✅ AST → QueryEngine-Translation
-- ✅ HTTP-Endpoint `/query/aql`
-- ✅ Unit-Tests
+- ? FOR, FILTER (Equality, Range, IN), SORT, LIMIT, RETURN
+- ? Parser (PEGTL)
+- ? AST ? QueryEngine-Translation
+- ? HTTP-Endpoint `/query/aql`
+- ? Unit-Tests
 
 ### Phase 2 (Woche 3-4):
 - LET (Variable Binding)
@@ -726,7 +839,7 @@ ForNode {
 - Geo-Queries (GEO_DISTANCE, GEO_BOX)
 - Fulltext (FULLTEXT, BM25)
 
-### Phase 4 (später):
+### Phase 4 (sp�ter):
 - Joins (Multi-Collection)
 - Subqueries
 - Transactions (BEGIN, COMMIT, ROLLBACK)
@@ -734,30 +847,30 @@ ForNode {
 
 ---
 
-## Performance-Überlegungen
+## Performance-�berlegungen
 
 **Index-Nutzung:**
-- FILTER mit `==` → Equality-Index
-- FILTER mit `>`, `<` → Range-Index
-- FILTER mit `IN` → Batch-Lookup
-- SORT → Range-Index (wenn vorhanden)
+- FILTER mit `==` ? Equality-Index
+- FILTER mit `>`, `<` ? Range-Index
+- FILTER mit `IN` ? Batch-Lookup
+- SORT ? Range-Index (wenn vorhanden)
 
 **Optimizer-Strategien:**
 - **Filter-Pushdown:** FILTER vor SORT (reduziert Sortier-Kosten)
-- **Index-Auswahl:** Kleinster geschätzter Index zuerst
-- **Short-Circuit:** LIMIT früh anwenden (z.B. Top-K)
+- **Index-Auswahl:** Kleinster gesch�tzter Index zuerst
+- **Short-Circuit:** LIMIT fr�h anwenden (z.B. Top-K)
 
 **Vermeiden:**
 - Full-Table-Scans ohne LIMIT
-- Sortierung ohne Index auf großen Datasets
+- Sortierung ohne Index auf gro�en Datasets
 - Aggregationen ohne COLLECT (ineffizient)
 
 ---
 
-## Kompatibilität & Erweiterungen
+## Kompatibilit�t & Erweiterungen
 
 **ArangoDB AQL:**
-- Ähnliche Syntax (FOR, FILTER, SORT, LIMIT, RETURN)
+- �hnliche Syntax (FOR, FILTER, SORT, LIMIT, RETURN)
 - Unterschiede: THEMIS nutzt natives MVCC, kein `_key` zwingend
 
 **SQL-Vergleich:**
@@ -819,14 +932,14 @@ FOR user IN users
 
 ---
 
-**Status:** ✅ Syntax-Definition vollständig  
-**Nächster Schritt:** Parser-Implementation mit PEGTL
+**Status:** ? Syntax-Definition vollst�ndig  
+**N�chster Schritt:** Parser-Implementation mit PEGTL
 
-## Vollständige Beispiele (MVP Features)
+## Vollst�ndige Beispiele (MVP Features)
 
 ### Beispiel 1: User-City-Join mit Aggregation
 
-**Szenario:** Finde alle User in ihren Städten, gruppiert nach Land mit Zählung:
+**Szenario:** Finde alle User in ihren St�dten, gruppiert nach Land mit Z�hlung:
 
 ```aql
 FOR user IN users
@@ -850,7 +963,7 @@ FOR user IN users
 
 ### Beispiel 2: Sales-Analyse mit LET und Aggregation
 
-**Szenario:** Berechne Netto/Brutto-Umsätze pro Kategorie:
+**Szenario:** Berechne Netto/Brutto-Ums�tze pro Kategorie:
 
 ```aql
 FOR sale IN sales
@@ -873,9 +986,9 @@ FOR sale IN sales
 
 ---
 
-### Beispiel 3: Top-10 Städte nach User-Count
+### Beispiel 3: Top-10 St�dte nach User-Count
 
-**Szenario:** Häufigste Städte finden:
+**Szenario:** H�ufigste St�dte finden:
 
 ```aql
 FOR user IN users
@@ -894,9 +1007,9 @@ FOR user IN users
 ** Schlecht:** Kartesisches Produkt ohne Filter
 ** Gut:** Spezifische FILTER-Bedingungen, LIMIT verwenden
 
-### 2. LET für Wiederverwendung
+### 2. LET f�r Wiederverwendung
 
-Berechnungen einmal durchführen, mehrfach nutzen:
+Berechnungen einmal durchf�hren, mehrfach nutzen:
 
 ```aql
 FOR sale IN sales
@@ -911,22 +1024,27 @@ Datenvolumen reduzieren bevor gruppiert wird.
 
 ---
 
-## Implementation-Status (31.10.2025)
+## Implementation-Status (03.11.2025)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **FOR** (Single) |  Production | Vollständig optimiert |
-| **FOR** (Multi/Join) |  MVP | Nested-Loop, Hash-Join geplant |
-| **FILTER** |  Production | Equality + Range + AND |
-| **SORT** |  Production | Index-optimiert |
-| **LIMIT** |  Production | Offset + Count |
-| **RETURN** |  Production | Field/Object/Array |
-| **LET** |  MVP | Basis-Expressions, Arithmetik |
-| **COLLECT** |  MVP | Hash-Grouping, COUNT/SUM/AVG/MIN/MAX |
-| **OR-Operator** |  Planned | Index-Merge geplant |
-| **Subqueries** |  Planned | Phase 1.2 |
+| **FOR** (Single) | ? Production | Vollst�ndig optimiert |
+| **FOR** (Multi/Join) | ? MVP | Nested-Loop, Hash-Join geplant |
+| **FILTER** | ? Production | Equality + Range + AND + OR + FULLTEXT |
+| **OR-Operator** | ? Production | DNF-Konvertierung, Index-Merge |
+| **FULLTEXT()** | ? Production | BM25-Ranking, Stemming, Phrasen |
+| **FULLTEXT + AND** | ? Production | Hybrid Queries (BM25 n structural filters) |
+| **SORT** | ? Production | Index-optimiert |
+| **LIMIT** | ? Production | Offset + Count |
+| **RETURN** | ? Production | Field/Object/Array |
+| **LET** | ? MVP | Basis-Expressions, Arithmetik |
+| **COLLECT** | ? MVP | Hash-Grouping, COUNT/SUM/AVG/MIN/MAX |
+| **FULLTEXT + OR** | ?? Planned | Per-Disjunct FULLTEXT execution |
+| **FULLTEXT_SCORE()** | ?? Planned | Score in RETURN-Expression |
+| **Subqueries** | ?? Planned | Phase 1.4 |
 
 ---
 
-**Dokumentations-Version:** 1.1 (31. Oktober 2025)  
-**Letzte Aktualisierung:** JOIN/LET/COLLECT MVP-Features dokumentiert
+**Dokumentations-Version:** 1.3 (03. November 2025)  
+**Letzte Aktualisierung:** FULLTEXT + AND Hybrid Queries implementiert (13 Tests PASSED)
+

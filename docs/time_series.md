@@ -93,6 +93,20 @@ Zeitreihen sind über folgende Endpunkte nutzbar (Feature-Flag `features.timeser
   - Body wie bei `/ts/query` (entity erforderlich)
   - Antwort: `200 OK` mit `{ metric, entity, aggregation: { min,max,avg,sum,count,first_timestamp_ms,last_timestamp_ms } }`
 
+- GET `/ts/config`
+  - Gibt aktuelle Kompression- und Chunk-Konfiguration zurück
+  - Antwort: `200 OK` mit `{ compression: "gorilla"|"none", chunk_size_hours: 24 }`
+
+- PUT `/ts/config`
+  - Ändert Konfiguration zur Laufzeit (betrifft nur neue Datenpunkte)
+  - Body:
+    ```json
+    { "compression": "gorilla", "chunk_size_hours": 24 }
+    ```
+  - Antwort: `200 OK` mit `{ status: "ok", compression, chunk_size_hours, note }`
+  - Kompression-Typen: `"gorilla"` (10-20x Ratio, +15% CPU) oder `"none"`
+  - `chunk_size_hours`: 1-168 (max 1 Woche)
+
 Hinweise:
 - Tag-Filter sind in der TSStore-API vorhanden (`tag_filter`), in den aktuellen HTTP-Endpunkten aber (noch) nicht explizit verdrahtet.
 - Die Server-Handler verwenden intern `TSStore` (`putDataPoint`, `query`, `aggregate`).

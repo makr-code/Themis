@@ -1,0 +1,360 @@
+# Geo AQL – Checkliste (abgehakt werden kann)
+
+Hinweis: Diese Liste ist in umsetzbare Teilaufgaben gegliedert. Unterpunkte sind als eigene Häkchen ausführbar. Bereits erledigt: Geo-Scope & AQL-Set.
+
+## 0) Recherche: Wie hosten/verarbeiten/bereitstellen spezialisierte Datenbanken Geo-Daten?
+- [ ] Überblick erstellen (Vergleichsmatrix: Storage, Indizes, 3D, Query, APIs, Skalierung, Lizenz)
+- [ ] PostgreSQL/PostGIS (ST_*):
+  - [ ] Storage: TOAST/WKB/EWKB; Raster optional
+  - [ ] Indizes: GiST/SP-GiST (R-Tree auf MBR), KNN, BRIN
+  - [ ] Funktionen: Topologie/Overlay, 3D/4D, Geodäsie (Sphärisch), Prepared Geometries
+  - [ ] Serving: SQL/FDW/FDW-Ökosystem; Replikation/Partitionierung
+  - [ ] Lizenz: PostgreSQL License, PostGIS GPL/ LGPL-Komponenten (prüfen Einsatz als externer Dienst)
+- [ ] Elasticsearch/OpenSearch (geo_point/geo_shape):
+  - [ ] Storage: inverted index, BKD-Trees
+  - [ ] Indizes: H3/Prefix-Cell-artig, Routen über BKD; geo_shape relationen
+  - [ ] Query: within, intersects, distance, shape relations; Aggregationen, Tiles
+  - [ ] Serving: REST; verteilte Ausführung
+  - [ ] Lizenz: Apache-2.0 (OpenSearch), Elastic License (Elasticsearch)
+- [ ] MongoDB Geospatial:
+  - [ ] Storage: BSON GeoJSON
+  - [ ] Indizes: 2dsphere, 2d, geohash-basiert
+  - [ ] Query: $near, $geoWithin, $geoIntersects; 2dsphere 3.0+
+  - [ ] Serving: BSON/REST (Atlas Data API)
+  - [ ] Lizenz: SSPL (Server Side Public License) – Kompatibilität bewerten
+- [ ] Neo4j Spatial (Graph):
+  - [ ] Storage: Property Graph + räumliche Layer/Plugins
+  - [ ] Indizes: R-Tree index auf Nodes; räumliche Prozeduren
+  - [ ] Query: Cypher + Prozeduren (intersects/within/near)
+  - [ ] Serving: Bolt/HTTP
+  - [ ] Lizenz: GPL-Community / kommerziell – Eignung als externe Komponente prüfen
+- [ ] Redis/Tile38 (Geofencing):
+  - [ ] Storage: Redis Strukturen / Tile38 GeoJSON
+  - [ ] Indizes: Geohash/B-Tree, Echtzeit-Geofencing
+  - [ ] Query: NEARBY, WITHIN, INTERSECTS, HOOKS
+  - [ ] Lizenz: BSD-3-Clause (Redis), Tile38 (MIT)
+- [ ] BigQuery GIS / Snowflake Geospatial / ClickHouse / DuckDB Spatial:
+  - [ ] Storage: variant/typed; Funktionen ähnlich PostGIS
+  - [ ] Indizes: oft nicht klassisch; Partition/Cluster Pruning
+  - [ ] Query: ST_* Umfang; Skalierung serverless/MPP
+  - [ ] Lizenz: proprietär (SaaS) / ClickHouse (Apache-2.0) / DuckDB (MIT)
+- [ ] SpatiaLite (SQLite):
+  - [ ] Storage: SpatiaLite BLOB
+  - [ ] Indizes: R*-Tree
+  - [ ] Lizenz: MPL-1.1/GPL/LGPL – nur als Referenz
+- [ ] H3/S2 Ökosystem:
+  - [ ] Storage: Zellen-IDs; Polyfill/coverage
+  - [ ] Query: Nachbarschaft, Distanz in Zellen, Hierarchien
+  - [ ] Lizenz: H3 (Apache-2.0), S2 (Apache-2.0)
+
+Ergebnis dieser Sektion: Best Practices ableiten (Storage=WKB+Sidecar, Index=MBR+H3/S2 optional, Prepared Geometries, KNN-Routing, REST/SQL APIs) und in die folgenden Aufgaben einfließen lassen.
+
+Hinweis: Kurzbericht und Leitentscheidungen siehe `docs/research_postgis_opensearch_h3s2_mvp.md`.
+
+## 1) OSS-Policy & Lizenzcheck
+- [ ] Lizenzmatrix dokumentieren (Boost.Geometry BSL-1.0, PROJ MIT/ISC, H3 Apache-2.0, S2 Apache-2.0)
+- [ ] GEOS als optionales Plugin via dynamischem Link (LGPL) und Feature-Flag
+- [ ] Keine GPL-Only Abhängigkeiten im Core
+- [ ] Third-Party Notices/`developers.md` ergänzen
+
+## 2) Lib-Auswahl & Dependencies
+- [ ] Boost.Geometry als default Topologie (permissiv)
+- [ ] PROJ optional für ST_Transform
+- [ ] H3/S2 optional für Tiling/Polyfill; evaluieren
+- [ ] vcpkg.json erweitern (proj, h3/s2; geos optional)
+- [ ] CI/Build verifizieren (Windows/Linux)
+
+## 3) Geometriedatenmodell
+- [ ] GeoJSON als API/Abstraktionsschicht (inkl. [lon, lat, z])
+- [ ] WKB/EWKB(Z/M) als Storage-Format (BLOB-Feld)
+- [ ] Sidecar: mbr(minx,miny,maxx,maxy), centroid(lon,lat), z_min/z_max
+- [ ] Parser/Serializer (GeoJSON↔EWKB), Validation (Limits, Ring-Ordnungen)
+
+## 4) Räumlicher Index (MVP)
+- [ ] R-Tree über MBR (CF "spatial"): createSpatialIndex(table, column, options)
+- [ ] Update-Strategie bei Put/Delete (inkrementell)
+- [ ] Scan-APIs: bbox-Scan, candidate_count, stats (node_count, depth)
+- [ ] Z-Range-Index: separater Range-Index auf z_min/z_max
+
+## 5) AQL Parser: Geo-Funktionen (MVP)
+- [ ] ST_Point, ST_GeomFromGeoJSON/Text, ST_AsGeoJSON/Text, ST_Envelope
+- [ ] ST_Distance, ST_DWithin
+- [ ] ST_Intersects, ST_Within, ST_Contains
+- [ ] 3D-Basis: ST_HasZ, ST_Z, ST_Force2D/3D, ST_ZBetween
+- [ ] Fehlertexte/Argumentchecks
+
+## 6) Translator/Engine: Geo-Prädikate
+- [ ] Conjunctive/DisjunctiveQuery um spatialPredicate(s) erweitern
+- [ ] Engine: Kandidaten via Spatial-Index + exakte Prüfung (Boost.Geometry/GEOS)
+- [ ] Fallback: Full-Scan mit Geo-Prüfung
+- [ ] Parallele Ausführung: Partitionierung nach Tiles/Buckets
+
+## 7) Grundfunktionen implementieren (MVP)
+- [ ] ST_Point, ST_GeomFromGeoJSON/Text, ST_AsGeoJSON/Text, ST_Envelope
+- [ ] ST_Distance, ST_DWithin
+- [ ] ST_Intersects, ST_Within, ST_Contains
+- [ ] ST_IsValid, ST_IsEmpty
+
+## 8) Fortgeschrittene Funktionen
+- [ ] ST_Buffer, ST_Area, ST_Length, ST_Perimeter
+- [ ] ST_Centroid, ST_ConvexHull, ST_Simplify
+- [ ] ST_Union, ST_Intersection, ST_Difference, ST_SymDifference
+- [ ] ST_Transform (PROJ), ST_MakeValid, ST_SnapToGrid
+- [ ] 3D: ST_3DDistance, ST_3DLength
+
+## 9) Spezialwerkzeuge
+- [ ] Spatial JOIN (JOIN ... ON ST_Intersects(a.geom, b.geom))
+- [ ] kNN (geodätisch) – ORDER BY ST_Distance(...) LIMIT k (Index-gestützt)
+- [ ] H3/S2: H3_Index, H3_Polyfill, Coverage-Funktionen
+- [ ] Geofencing/Events: ST_Contains(zone, position)
+- [ ] Aggregation/Binning: Hexbin/SnapToGrid
+
+## 10) Cross-Modal Queries
+- [ ] Geo + Graph: Traversal nur über Knoten/Kanten in Region (Filter, räumliche Frontier)
+- [ ] Geo + Vector: Geo-Prefilter (DWithin/Viewport) vor ANN; Score-Fusion
+- [ ] Geo + Relational: Kombination mit EQ/RANGE, CBO-Planwahl
+
+## 11) Kostenmodell & Optimizer
+- [ ] Kandidatenschätzer: Spatial-Index-Statistiken (Hit-Raten, Zellenanzahl)
+- [ ] Planwahl: spatial-first vs. eq/range-first; DNF/OR Orchestrierung
+- [ ] Parallelpläne: Batching, Partitions/tiles
+
+## 12) Caching & Prepared Geometries
+- [ ] GEOS Prepared Geometries (optional) für häufige Masken
+- [ ] Ergebnis-Caches (Union/Intersection/Heatmaps) mit TTL
+
+## 13) OpenAPI & HTTP-Schicht
+- [ ] /index/create (Spatial), /index/rebuild
+- [ ] AQL-Geo-Beispiele, Fehlercodes/Validierung
+- [ ] openapi.yaml aktualisieren
+
+## 14) Dokumentation Geo-AQL
+- [ ] docs/aql_syntax.md: Geo-Abschnitt mit Beispielen (2D/3D, CRS, DWithin)
+- [ ] Architektur (Index-Design, Sidecar, Fallbacks, Kostenmodell)
+- [ ] Migrationshinweise
+
+## 15) Benchmarks & Tuning
+- [ ] Datensätze: NaturalEarth, synthetische Cluster
+- [ ] Microbenchmarks: Indexbau, ST_Intersects-Latenzen
+- [ ] Zielwerte: Kandidatenfilter ≤5%, P95-Latenzen definieren
+
+## 16) Security & Validation
+- [ ] Input-Validierung (Koordinatenanzahl, Polygon-Ringe, Limits)
+- [ ] DOS-Schutz (Max. Vertex-Zahl, Tiefe, Zeitlimits)
+
+## 17) Observability
+- [ ] Metriken: index.hits/misses, candidate_count, exact_checks, z_pruned
+- [ ] Tracing: Phasen (index_scan, exact_check, fallback)
+
+## 18) Index-Wartung & Ingestion
+- [ ] Batch-Ingest, inkrementelles Rebuild, Hintergrundkompaktion
+- [ ] Reindex-API, Statistiken; TTL/soft-deletes
+
+## 19) Speicherlayout & Kompression
+- [ ] WKB/EWKB(Z) im BLOB; Kompression (RocksDB, optional Geobuf/FlatGeobuf)
+- [ ] ring_offsets/vertex_count; LOD/Simplify beim Persistieren (optional)
+
+## 20) 3D-Geometrie & Z-Semantik
+- [ ] ST_HasZ/ST_Z/ST_Force2D/3D/ST_ZBetween implementieren
+- [ ] Z-Range-Index in Abfragen verwenden (Pruning)
+- [ ] 3D-Metriken (ST_3DDistance, ST_3DLength)
+
+## 21) Binary Blobs & Sidecar-Metadaten
+- [ ] Blob-Felder (WKB, glTF/PLY) + Parser/Serializer
+- [ ] Sidecar-Attribute (MBR, centroid, z-range) mainten
+- [ ] Validierung/Fehlerpfade
+
+## 22) 3D-/GameDev-Techniken für Geo adaptieren
+- [ ] Beschleunigungsstrukturen:
+  - [ ] BVH/LBVH/HLBVH (linear BVH via Morton-Codes) für schnelle Intersects/Within/Distance auf Punkten, Segmenten und Dreiecken (3D)
+  - [ ] Quadtree/Octree/Sparse Voxel Octree (SVO) für 2.5D/3D-Volumen, optional brick-basiert
+- [ ] Speicher- & Datenlayout:
+  - [ ] SoA/AoSoA Layouts für Koordinaten, Bounding-Boxes und Indizes (SIMD/Cache-freundlich)
+  - [ ] Morton-/Hilbert-Codes (Z-Order) zur Sortierung, Sharding und Range-Scans (2D/3D inkl. Z)
+  - [ ] Quantisierung (z. B. 16-bit Tile-lokal) + Delta/Varint/Bitpacking
+- [ ] SIMD-Kerne (CPU):
+  - [ ] Branchlose Point-in-Polygon (Ray-Cast/XOR) AVX2/AVX-512
+  - [ ] Vektorisierte Haversine/Geodätik, bbox-overlap, segment-segment-intersection
+  - [ ] Bibliothek evaluieren: Google Highway (Apache-2.0) oder xsimd (BSD)
+- [ ] GPU-Compute (optional):
+  - [ ] Compute-Shader-Pipeline für ST_Intersects/DWithin-Kandidatenprüfung (Prefix-Sum/Compaction, Warp-Votes)
+  - [ ] LBVH-Build auf GPU (Morton sort + parallel node gen) für dynamische Punktwolken
+  - [ ] Plattformen: DX12/Vulkan; CPU-Fallback verpflichtend
+- [ ] Set-Algebra & Culling:
+  - [ ] Roaring Bitmaps (MIT) für schnelle AND/OR/NOT über PK-Sets (Query-Union/Intersection)
+  - [ ] Hierarchische Min/Max-Maps (Hi-Z-ähnlich) über Tiles/MBRs für frühes Pruning
+  - [ ] Signed Distance Fields (SDF/ESDF) für Geofencing/DWithin (statische Zonen, Mipchain/JFA)
+- [ ] LOD/Streaming:
+  - [ ] Geometry Clipmaps/Tile-Levels für Multi-Resolution-Queries (Viewport/Zoom)
+  - [ ] Draco (Apache-2.0) optional für Mesh-Kompression (Gebäudemodelle)
+- [ ] Integration in Themis:
+  - [ ] Spatial-Index-Erweiterung: optionale BVH-Buckets neben R-Tree; Persistenz-Layout breitensuche-kontig
+  - [ ] RocksDB-Keyspace: morton:{level}:{code} → PK-Listen (kompakt)
+  - [ ] Engine-Pfade: SIMD-Kerne zuerst, GPU-Compute hinter Feature-Flag
+  - [ ] Metriken: simd_hits, bvh_pruned, morton_tiles_visited, gpu_batches
+  - [ ] Tests: Korrektheit vs. GEOS/Boost.Geometry; Performance-A/B vs. R-Tree-only
+
+Ergebnis dieser Sektion: Design-Dokument „docs/geo_acceleration_3d_games.md“ und priorisierte Prototypen (CPU-SIMD + Morton als Quick Wins; GPU/BVH optional).
+
+## Status
+- [x] Geo-Scope & AQL-Set definieren
+
+Geo AQL – Plan und ToDo
+
+Ziel
+- AQL um Geo-Funktionen erweitern (Basic → Advanced → Special), orientiert an ArcGIS-Toolbox-Konzepten.
+- Effiziente räumliche Indizes + exakte Geometrie-Operationen mit klaren Akzeptanzkriterien.
+ - Cross-Modal: Geo mit Graph-, relationalen und Vektor-Daten verzahnen (End-to-End Query-Pfade).
+ - Strenge Open-Source-Policy: nur kompatible, bevorzugt permissive Lizenzen (BSL-1.0, MIT, Apache-2.0); copyleft (LGPL) nur optional/dynamisch.
+
+Referenzinspiration (ArcGIS Toolbox)
+- Kategorien: Grundlagen (Buffer, Clip, Dissolve, Intersect, Union), Messung (Distance, Area, Length), Konvertierung (Format/CRS), Datenmanagement (Spatial Index, Repair), Analyse (Spatial Join, Near, Erase, Identity, SymDiff), Netzwerke (kNN/Routing), Raster (vorerst out-of-scope).
+- Prinzip: jedes Werkzeug hat klare Inputs/Outputs, Parameter und Beispiele.
+ - Weitere Quellen: OGC Simple Features/SQL, PostGIS ST_* Semantik, Elasticsearch Geo (GeoShape/GeoPoint), Uber H3/S2, GeoMesa/GeoWave Speicherstrategien.
+
+Datenmodell & Abhängigkeiten
+- Geometriedaten: GeoJSON (Erstklassig), WKT/WKB optional; CRS standardmäßig WGS84 (EPSG:4326).
+- Bibliotheken:
+  - Boost.Geometry oder GEOS für topologische Operationen (Intersects/Union/Buffer...).
+  - PROJ für CRS-Transformationen (ST_Transform).
+  - Optional S2/H3 für kugelflächenbezogene Indexierung und Tiling.
+- vcpkg-Erweiterungen (später): geos, proj, s2geometry oder h3.
+ - Storage-Formate:
+   - Persistenz bevorzugt WKB (kompakt, binär); GeoJSON als API/Interchange.
+   - Optionale Kompression: Geobuf/FlatGeobuf; RocksDB-Compression + Dictionary.
+ - Zusätzliche abgeleitete Felder pro Entity:
+   - mbr: minx,miny,maxx,maxy (Bounding Box)
+   - centroid: lon,lat (für Distance/Sorting)
+   - ring_offsets/vertex_count (Validation/Pruning)
+ - 3D-Unterstützung:
+   - GeoJSON: Positions [lon, lat, z] zulässig; Libraries beachten Z optional.
+   - WKB/EWKB: Z/M-Varianten für 3D; Speicherung als Blob (binary) bevorzugt.
+   - Sidecar: z_min/z_max zur Z-Filterung; MBR erweitert nicht auf 3D (2D-Index + Z-Range-Index).
+
+Index-Strategie (MVP → Ausbau)
+- MVP: R-Tree über Bounding Boxes (schneller Kandidatenfilter) im SecondaryIndexManager.
+- Exaktprüfung pro Kandidat via GEOS/Boost.Geometry.
+- Ausbau: S2/H3 Keys zur globalen Abdeckung, Polyfill/coverage-Funktionen.
+ - Speicherlayout-Varianten:
+   - R-Tree in-memory + RocksDB persisted nodes (CF "spatial").
+   - Alternativ Geohash/H3 Buckets → PK-Listen; kompakte Varint-Listen.
+ - Wartung: inkrementelles Update bei Put/Delete; Rebuild-API, Stats (node_count, depth, coverage).
+ - 3D: zusätzlicher Range-Index auf z_min/z_max für rasches Pruning bei 3D-Queries (z-Overlap).
+
+AQL Funktionskatalog
+1) Grundlegend (MVP)
+- ST_Point(lon, lat) → GeoJSON Point
+- ST_GeomFromGeoJSON(json), ST_GeomFromText(wkt)
+- ST_AsGeoJSON(geom), ST_AsText(geom)
+- ST_Envelope(geom) → bbox
+- ST_Distance(geom1, geom2)
+- ST_Intersects(a, b), ST_Within(a, b), ST_Contains(a, b)
+- ST_IsValid(geom), ST_IsEmpty(geom)
+ - ST_DWithin(a, b, dist) (Radius-basierter Filter, Index-gestützt via MBR-Expand)
+ - 3D-Basis: ST_HasZ(geom), ST_Z(geom), ST_Force2D(geom), ST_Force3D(geom[, z_default])
+
+2) Fortgeschritten
+- ST_Buffer(geom, dist[, quad_segs])
+- ST_Area(geom), ST_Length(geom), ST_Perimeter(geom)
+- ST_Centroid(geom), ST_ConvexHull(geom)
+- ST_Simplify(geom[, tolerance])
+- ST_Union(...), ST_Intersection(a,b), ST_Difference(a,b), ST_SymDifference(a,b)
+- ST_Transform(geom, srcCRS, dstCRS)
+ - ST_MakeValid(geom), ST_SnapToGrid(geom, size)
+ - 3D-Erweiterungen: ST_3DDistance(a,b), ST_3DLength(geom)
+
+3) Spezial
+- Spatial JOIN: JOIN ... ON ST_Intersects(a.geom, b.geom)
+- kNN: ORDER BY ST_Distance(d.geom, ST_Point(...)) LIMIT k (Index-gestützt)
+- Tiling/Index: H3_Index(lon,lat, res), H3_Polyfill(geom,res)
+- Geofencing/Events: ST_Contains(zone, position)
+- Aggregation/Binning: ST_SnapToGrid, Hexbin (falls H3 verfügbar)
+ - Hybrid-Suche: Vektor + Geo-Prefilter (erst Geo-Kandidaten, dann kNN), Score-Fusion.
+ - 3D-Filter: ST_ZBetween(geom, zmin, zmax), Kombination mit 2D Topologie (AND)
+
+Engine/Parser/Translator Anpassungen
+- Parser: Funktionsaufrufe ST_* in AST aufnehmen, Argumentvalidierung.
+- Translator: neue Predicate-Typen (spatialPredicate) in Conjunctive/DisjunctiveQuery.
+- Engine: Spatial-Index-Abfragen (bbox→Kandidaten) + exakte Prüfung; Fallback: Full-Scan mit Geo-Prüfung.
+- HTTP-Evaluator (LET/RETURN): Funktionsauswertung für konstruktive/analytische ST_* Funktionen.
+ - Kostenmodell/Optimizer:
+   - Schätzung Kandidatenmenge aus Spatial-Index (z. B. cell hit counts, node stats).
+   - Planwahl: spatial-first vs. eq/range-first (ähnlich JOIN-Reihenfolge), Orchestrierung bei OR/DNF.
+   - Parallele Ausführung: Partitionierung nach Tiles/Buckets, Batching entity loads.
+ - Caching:
+   - Prepared geometries (GEOSPrepared) für oft verwendete Polygone.
+   - Ergebnis-Cache für teure Flächen/Union-Ergebnisse, TTL-basiert.
+ - 3D-Semantik:
+   - Topologie (Intersects/Within/Contains) standardmäßig 2D (planar/geodätisch) mit optionalem Z-Filter (ZBetween/HasZ).
+   - 3D-spezifische Metriken (3DDistance/3DLength) nutzen Z; CRS für Z unverändert (Höhe in Meter), dokumentieren.
+
+Milestones (inkrementell)
+M1 – MVP Intersects/Within/Contains
+- Spatial-Index (R-Tree/Geohash) + ST_Intersects/ST_Within/ST_Contains + ST_Point/ST_GeomFromGeoJSON/ST_AsGeoJSON/ST_Distance/ST_Envelope.
+- AQL: FILTER ST_Intersects(d.geom, ST_Point(...))
+- Tests: Parser, Engine (Index+Fallback), HTTP; Beispiel-Datensatz (Polygone, Punkte).
+ - Effizienz: Kandidatenfilter ≤ 5% der Tabelle bei typischen Viewports (Zielwert), Metriken sichtbar.
+ - 3D: Basis-Felder (z_min/z_max), ST_HasZ/ST_Z, Z-Filter per ST_ZBetween implementieren.
+
+M2 – Messen & einfache Geometrieformen
+- ST_Area/ST_Length/ST_Perimeter/ST_Centroid/ST_ConvexHull, ST_IsValid/IsEmpty.
+- Performance-Tests und Genauigkeit vs. GEOS-Referenz.
+ - Speicher: Evaluierung WKB vs. GeoJSON; Größe/Latency; mögliche Geobuf.
+ - 3D: ST_3DDistance, ST_3DLength; Semantik von Längen auf Linestring mit Z.
+
+M3 – Geometrische Operationen
+- ST_Buffer, ST_Simplify, ST_Union/Intersection/Difference/SymDifference.
+- Stabilität (Self-intersections), Toleranzen; umfangreiche Tests.
+ - Prepared Geometries für häufige Masken (Beschleunigung Intersects/Within).
+ - 3D optional später (Polyeder) – außerhalb MVP, dokumentiert.
+
+M4 – CRS-Transformationen
+- ST_Transform mittels PROJ; strikte CRS-Policy (WGS84 default, Transform vor Operationen).
+- Fehlerpfade und Validierung.
+ - Cache für häufige CRS-Parameter; Limitierungen dokumentieren (EPSG support, Genauigkeit).
+
+M5 – Spezialwerkzeuge
+- Spatial JOINs (Hash/Index gestützt), kNN (geodätisch), H3/S2 Integration (Index & AQL-Funktionen), Aggregationen.
+ - Cross-Modal:
+   - Geo + Graph: Traversal nur über Knoten/Kanten in Region (ST_Intersects in Traversal-Filtern), räumlicher Start-Frontier.
+   - Geo + Vektor: Erst geographischer Prefilter (DWithin/Viewport), dann ANN; Ranking-Fusion.
+   - Geo + Relational: Kombination mit Gleichheits-/Range-Prädikaten, CBO wählt beste Reihenfolge.
+ - 3D: kNN mit 3D-Distanz optional; Z-Constraints in Spatial JOIN.
+
+Akzeptanzkriterien (für M1)
+- AQL-Queries mit ST_Intersects/Within/Contains liefern korrekte Ergebnisse vs. GEOS.
+- Index-Hits sichtbar in Metriken; Fallback funktioniert ohne Index.
+- 95p Latenz für 100k-Entities ≤ definierter Zielwert (messbar in Benchmarks).
+- Doku-Abschnitt „Geo in AQL“ mit 5+ Beispielen.
+ - Speicherziel: +≤20% Overhead pro Geometrie ggü. Roh-WKB; Indexgröße/PK-Listen dokumentiert.
+
+Tests & Daten
+- Unit-Tests (Parser, Translator, Engine), HTTP-Tests (Ende-zu-Ende), Benchmark-Suiten.
+- Beispieldaten (NaturalEarth / synthetisch generiert).
+ - Synthetic Stresstests: dichte Cluster vs. gleichmäßige Verteilung, riesige Polygone, MultiPolygon mit vielen Ringen.
+
+Risiken/Entscheidungen
+- Genauigkeit (planar vs. geodätisch) → klare Dokumentation.
+- Abhängigkeiten (GEOS/PROJ) – Portabilität via vcpkg testen.
+- Speicherbedarf Spatial-Index – Optionen (Kachelung/H3) bei sehr großen Datasets.
+ - Konvergenz von Index & CF-Layout: R-Tree vs. H3-Buckets; Write-Amplification.
+ - Parallelität: Hot buckets/locks; Balance von Partitionen.
+ - Lizenz-Compliance: Standardweg ohne Copyleft (Boost.Geometry, PROJ, H3/S2). GEOS nur optional via dyn. Link (LGPL) und Feature-Flag.
+
+Nächste Schritte (konkret)
+1) Funktionsumfang M1 finalisieren (Scope Freeze).
+2) vcpkg-Abhängigkeiten evaluieren (GEOS, ggf. PROJ) – PoC bauen.
+3) Spatial-Index-Interface im SecondaryIndexManager entwerfen.
+4) Parser + Translator für ST_* (MVP-Satz) anlegen.
+5) Engine: Kandidatenfilter + exakte Prüfung (Intersects/Within/Contains).
+6) Tests + Doku + Beispielqueries.
+ 7) Kostenmodell (grobe Heuristik) und Metriken integrieren.
+ 8) Cross-Modal Mini-Demo: Geo+Vector Prefilter, Geo+Graph Filter im Traversal.
+ 9) 3D Basis: z_min/z_max Seitendaten, ST_HasZ/ST_Z/ST_ZBetween, Storage (EWKB Z) + Parser.
+ 10) 3D/GameDev-Adaptions: Dokument anlegen; Quick-Wins umsetzen (Morton + SIMD PiP), Messung vs. Baseline.
+  11) Geo-Execution-Plan über Blob-Layer: siehe `docs/geo_execution_plan_over_blob.md` und entsprechend implementieren.
+
+Verknüpfte interne Todos
+- Siehe manage_todo_list: IDs 1–14 decken Planung → Implementierung → Doku/Benchmarks → Observability ab.
+ - Ergänzungen: 15 Speicherlayout/Kompression, 16 Kostenmodell, 17 Cross-Modal, 18 Caching, 19 Wartung/Ingestion.
+ - Neu: 20 OSS-Policy & Lizenzcheck, 21 3D-Geometrie & Z-Semantik, 22 Binary Blobs & Sidecar, 23 3D/GameDev-Techniken adaptieren.

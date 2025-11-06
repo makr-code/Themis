@@ -66,6 +66,15 @@ public:
      * @return true if mapping existed and was deleted
      */
     bool erasePII(const std::string& pii_uuid);
+
+    /**
+     * @brief Soft-Delete eines PII-Mappings (ausblenden, aber nicht löschen)
+     * Markiert das Mapping als inactive und setzt deleted_at.
+     * @param pii_uuid UUID des Mappings
+     * @param user_id Benutzer, der die Aktion ausführt (für Audit)
+     * @return true, wenn Mapping existierte und aktualisiert wurde
+     */
+    bool softDeletePII(const std::string& pii_uuid, const std::string& user_id);
     
     /**
      * @brief Find all PII UUIDs for a specific entity

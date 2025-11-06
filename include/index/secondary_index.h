@@ -67,6 +67,9 @@ public:
     struct FulltextConfig {
         bool stemming_enabled = false;
         std::string language = "none"; // "en", "de", "none"
+        bool stopwords_enabled = false; // remove stopwords during tokenization
+        std::vector<std::string> stopwords; // optional custom stopword list (lowercase)
+        bool normalize_umlauts = false; // de: ä->a, ö->o, ü->u, ß->ss
     };
     
     Status createFulltextIndex(std::string_view table, std::string_view column, 

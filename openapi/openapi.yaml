@@ -9,6 +9,74 @@ info:
 servers:
   - url: http://localhost:8765
 paths:
+  /pii/reveal/{uuid}:
+  /pii/{uuid}:
+    delete:
+      summary: PII Delete (soft/hard)
+      operationId: piiDelete
+      tags: [pii]
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema: { type: string }
+        - in: query
+          name: mode
+          required: false
+          schema:
+            type: string
+            enum: [soft, hard]
+            default: soft
+      responses:
+        '200':
+          description: Ergebnis des Löschvorgangs
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      status: { type: string, enum: [ok, not_found] }
+                      mode: { type: string, enum: [soft] }
+                      uuid: { type: string }
+                      updated: { type: boolean }
+                    required: [status, mode, uuid, updated]
+                  - type: object
+                    properties:
+                      status: { type: string, enum: [ok, not_found] }
+                      mode: { type: string, enum: [hard] }
+                      uuid: { type: string }
+                      deleted: { type: boolean }
+                    required: [status, mode, uuid, deleted]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+      security:
+        - bearerAuth: []
+    get:
+      summary: PII Reveal by UUID
+      operationId: piiReveal
+      tags: [pii]
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Originalwert zur pseudonymisierten UUID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uuid: { type: string }
+                  value: { type: string }
+                required: [uuid, value]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security:
+        - bearerAuth: []
   /health:
     get:
       summary: Health Check
@@ -454,7 +522,7 @@ paths:
         Erstellt einen Index auf einer Spalte. Typen verfügbar:
         - equality: Für Gleichheitsfilter (default). Optional: unique=true für Unique-Constraint.
         - range: Für gte/lte-Prädikate und ORDER BY.
-        - fulltext: Invertierter Index für Volltextsuche (BM25). Optional: config.stemming_enabled und config.language ("en", "de", "none").
+        - fulltext: Invertierter Index für Volltextsuche (BM25). Optional: config.stemming_enabled und config.language ("en", "de", "none"), sowie Stopwords-Konfiguration (config.stopwords_enabled, config.stopwords[] für benutzerdefinierte Liste).
         
         Ein Range-Index kann unabhängig von einem Equality-Index existieren.
       requestBody:
@@ -501,6 +569,28 @@ paths:
                   config:
                     stemming_enabled: false
                     language: none
+              fulltext_index_stopwords_de:
+                summary: Fulltext-Index mit Stopwords (DE, Default-Liste)
+                value:
+                  table: docs
+                  column: text
+                  type: fulltext
+                  config:
+                    stemming_enabled: true
+                    language: de
+                    stopwords_enabled: true
+                    normalize_umlauts: true
+              fulltext_index_custom_stopwords:
+                summary: Fulltext-Index mit benutzerdefinierten Stopwords
+                value:
+                  table: docs
+                  column: text
+                  type: fulltext
+                  config:
+                    stemming_enabled: false
+                    language: none
+                    stopwords_enabled: true
+                    stopwords: ["foo", "bar", "baz"]
       responses:
         '200':
           description: Index erstellt
@@ -1026,6 +1116,19 @@ components:
               enum: [en, de, none]
               default: none
               description: Sprache für Stemming
+            stopwords_enabled:
+              type: boolean
+              default: false
+              description: Stopwords entfernen (Default-Liste je Sprache)
+            stopwords:
+              type: array
+              description: Optionale benutzerdefinierte Stopword-Liste (Kleinschreibung)
+              items:
+                type: string
+            normalize_umlauts:
+              type: boolean
+              default: false
+              description: Deutsch: ä→a, ö→o, ü→u, ß→ss vor Tokenisierung/Stemming
       required: [table, column]
     IndexResponse:
       type: object

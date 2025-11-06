@@ -511,3 +511,52 @@ TEST_F(HttpVectorApiTest, VectorSearch_CursorPagination_Works) {
     auto items2 = r2["items"];
     ASSERT_GE(items2.size(), 1);
 }
+
+TEST_F(HttpVectorApiTest, VectorIndexStats_DOTMetric_NoNormalization) {
+    // Create a new index with DOT metric to test HTTP API metric handling
+    const std::string db_path_dot = "data/themis_http_vector_test_dot";
+    if (std::filesystem::exists(db_path_dot)) {
+        std::filesystem::remove_all(db_path_dot);
+    }
+    
+    themis::RocksDBWrapper::Config cfg;
+    cfg.db_path = db_path_dot;
+    cfg.memtable_size_mb = 64;
+    cfg.block_cache_size_mb = 128;
+    auto storage_dot = std::make_shared<themis::RocksDBWrapper>(cfg);
+    ASSERT_TRUE(storage_dot->open());
+    
+    auto vector_index_dot = std::make_shared<themis::VectorIndexManager>(*storage_dot);
+    auto st = vector_index_dot->init("docs_dot", 2, themis::VectorIndexManager::Metric::DOT, 16, 200, 64);
+    ASSERT_TRUE(st.ok) << st.message;
+    
+    // Add vectors with different magnitudes (DOT does NOT normalize)
+    themis::BaseEntity e1("doc1");
+    e1.setField("vec", std::vector<float>{1.0f, 0.0f});
+    ASSERT_TRUE(vector_index_dot->addEntity(e1, "vec").ok);
+    
+    themis::BaseEntity e2("doc2");
+    e2.setField("vec", std::vector<float>{10.0f, 0.0f}); // 10x magnitude
+    ASSERT_TRUE(vector_index_dot->addEntity(e2, "vec").ok);
+    
+    // Verify DOT metric configuration
+    EXPECT_EQ(vector_index_dot->getMetric(), themis::VectorIndexManager::Metric::DOT);
+    EXPECT_EQ(vector_index_dot->getVectorCount(), 2u);
+    
+    // Search with DOT - higher dot product = better (lower distance after negation)
+    std::vector<float> query{1.0f, 0.0f};
+    auto [search_st, results] = vector_index_dot->searchKnn(query, 2);
+    ASSERT_TRUE(search_st.ok);
+    ASSERT_EQ(results.size(), 2u);
+    
+    // doc2 should rank first (dot=10.0 > dot=1.0)
+    EXPECT_EQ(results[0].pk, "doc2");
+    EXPECT_EQ(results[1].pk, "doc1");
+    
+    // Distance should be negative dot product
+    EXPECT_LT(results[0].distance, results[1].distance);
+    
+    storage_dot->close();
+    std::filesystem::remove_all(db_path_dot);
+}
+

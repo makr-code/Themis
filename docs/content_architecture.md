@@ -531,6 +531,46 @@ Response:
 }
 ```
 
+**Get Content Compression Config**
+```http
+GET /content/config
+
+Response:
+{
+  "compress_blobs": false,
+  "compression_level": 19,
+  "skip_compressed_mimes": ["image/", "video/", "application/zip", "application/gzip"]
+}
+```
+
+**Update Content Compression Config**
+```http
+PUT /content/config
+Content-Type: application/json
+
+{
+  "compress_blobs": true,
+  "compression_level": 15,
+  "skip_compressed_mimes": ["image/", "video/"]
+}
+
+Response:
+{
+  "status": "ok",
+  "compress_blobs": true,
+  "compression_level": 15,
+  "skip_compressed_mimes": ["image/", "video/"],
+  "note": "Configuration updated. Changes apply to new content imports only."
+}
+```
+
+**Notes:**
+- `compress_blobs`: Enable/disable ZSTD compression for content blobs >4KB
+- `compression_level`: 1-22 (higher = better compression, slower; default 19)
+- `skip_compressed_mimes`: Array of MIME prefixes to skip (already compressed formats)
+- Configuration is stored in DB key `config:content`
+- Changes only affect new content imports, not existing data
+
 ## 6. Erweiterung: Neue Datentypen hinzufügen
 
 ### Beispiel: Video-Processor

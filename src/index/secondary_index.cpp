@@ -1,4 +1,5 @@
-﻿// Secondary index implementation
+﻿#include "utils/normalizer.h"
+// Secondary index implementation
 
 #include "index/secondary_index.h"
 #include "storage/rocksdb_wrapper.h"
@@ -6,6 +7,7 @@
 #include "storage/base_entity.h"
 #include "utils/logger.h"
 #include "utils/stemmer.h"
+#include "utils/stopwords.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -452,7 +454,10 @@ SecondaryIndexManager::Status SecondaryIndexManager::createFulltextIndex(
 	nlohmann::json configJson = {
 		{"type", "fulltext"},
 		{"stemming_enabled", config.stemming_enabled},
-		{"language", config.language}
+		{"language", config.language},
+		{"stopwords_enabled", config.stopwords_enabled},
+		{"stopwords", config.stopwords},
+		{"normalize_umlauts", config.normalize_umlauts}
 	};
 	std::string configStr = configJson.dump();
 	std::vector<uint8_t> configBytes(configStr.begin(), configStr.end());
@@ -462,8 +467,8 @@ SecondaryIndexManager::Status SecondaryIndexManager::createFulltextIndex(
 		return Status::Error("createFulltextIndex: Schreiben des Metaschlüssels fehlgeschlagen: " + metaKey);
 	}
 	
-	THEMIS_INFO("Fulltext Index erstellt: {}.{} (stemming={}, lang={})", 
-		table, column, config.stemming_enabled, config.language);
+		THEMIS_INFO("Fulltext Index erstellt: {}.{} (stemming={}, lang={}, stopwords_enabled={}, stopwords={}, normalize_umlauts={})", 
+			table, column, config.stemming_enabled, config.language, config.stopwords_enabled, config.stopwords.size(), config.normalize_umlauts);
 	return Status::OK();
 }
 
@@ -492,7 +497,15 @@ SecondaryIndexManager::getFulltextConfig(std::string_view table, std::string_vie
 		
 		FulltextConfig config;
 		config.stemming_enabled = configJson.value("stemming_enabled", false);
-		config.language = configJson.value("language", "none");
+		config.language = configJson.value("language", std::string("none"));
+		config.stopwords_enabled = configJson.value("stopwords_enabled", false);
+		if (configJson.contains("stopwords") && configJson["stopwords"].is_array()) {
+			config.stopwords.clear();
+			for (const auto& s : configJson["stopwords"]) {
+				if (s.is_string()) config.stopwords.push_back(s.get<std::string>());
+			}
+		}
+		config.normalize_umlauts = configJson.value("normalize_umlauts", false);
 		return config;
 	} catch (...) {
 		// Legacy format (just "fulltext" marker) - return default config
@@ -1704,9 +1717,40 @@ SecondaryIndexManager::computeBM25Scores_(
 		return {Status::Error("computeBM25Scores_: Kein Fulltext-Index für " + std::string(table) + "." + std::string(column)), {}};
 	}
 	
-	// Get index config and tokenize query with same settings as index
+	// Get index config and parse phrases; tokenize query without quoted phrases
 	auto config = getFulltextConfig(table, column).value_or(FulltextConfig{});
-	auto tokens = tokenize(query, config);
+	auto parsePhrases = [](std::string_view q) {
+		std::vector<std::string> phrases;
+		std::string cleaned;
+		cleaned.reserve(q.size());
+		bool in_quotes = false;
+		std::string current;
+		for (size_t i = 0; i < q.size(); ++i) {
+			char c = q[i];
+			if (c == '"') {
+				if (in_quotes) {
+					if (!current.empty()) { phrases.push_back(current); current.clear(); }
+					in_quotes = false;
+				} else {
+					in_quotes = true;
+				}
+				continue;
+			}
+			if (in_quotes) current.push_back(c); else cleaned.push_back(c);
+		}
+		return std::pair{phrases, cleaned};
+	};
+	auto [phrases, cleanedQuery] = parsePhrases(query);
+	auto tokens = tokenize(cleanedQuery, config);
+	if (tokens.empty() && !phrases.empty()) {
+		// Fallback: use tokens from phrases to generate candidates
+		std::string concat;
+		for (size_t i = 0; i < phrases.size(); ++i) {
+			if (i) concat.push_back(' ');
+			concat += phrases[i];
+		}
+		tokens = tokenize(concat, config);
+	}
 	
 	if (tokens.empty()) {
 		return {Status::OK(), {}};
@@ -1744,6 +1788,41 @@ SecondaryIndexManager::computeBM25Scores_(
 			}
 		}
 		intersectionSet = std::move(intersection);
+	}
+
+	// Optional phrase verification on original field text (no positions stored)
+	if (!phrases.empty()) {
+		std::vector<std::string> toErase;
+		for (const auto& pk : intersectionSet) {
+			auto pkey = KeySchema::makeRelationalKey(table, pk);
+			auto blob = db_.get(pkey);
+			bool keep = false;
+			if (blob && !blob->empty()) {
+				try {
+					// Use BaseEntity deserialization to reliably access field values
+					BaseEntity::Blob beBlob(blob->begin(), blob->end());
+					BaseEntity entity = BaseEntity::deserialize(pk, beBlob);
+					auto maybeVal = entity.extractField(column);
+					if (maybeVal.has_value()) {
+						std::string field = *maybeVal;
+						if (config.normalize_umlauts) field = utils::Normalizer::normalizeUmlauts(field);
+						std::transform(field.begin(), field.end(), field.begin(), [](unsigned char c){ return std::tolower(c); });
+						bool allFound = true;
+						for (auto ph : phrases) {
+							if (config.normalize_umlauts) ph = utils::Normalizer::normalizeUmlauts(ph);
+							std::transform(ph.begin(), ph.end(), ph.begin(), [](unsigned char c){ return std::tolower(c); });
+							if (field.find(ph) == std::string::npos) { allFound = false; break; }
+						}
+						keep = allFound;
+					}
+				} catch (...) {
+					keep = false;
+				}
+			}
+			if (!keep) toErase.push_back(pk);
+		}
+		for (const auto& pk : toErase) intersectionSet.erase(pk);
+		if (intersectionSet.empty()) return {Status::OK(), {}};
 	}
 
 	// BM25 Ranking über die Schnittmenge berechnen
@@ -1893,9 +1972,23 @@ std::vector<std::string> SecondaryIndexManager::tokenize(std::string_view text) 
 
 // Tokenizer with Stemming support
 std::vector<std::string> SecondaryIndexManager::tokenize(std::string_view text, const FulltextConfig& config) {
+	// Optional: normalize umlauts/ß for German-like content before tokenization
+	std::string normalized;
+	if (config.normalize_umlauts) {
+		normalized = utils::Normalizer::normalizeUmlauts(text);
+	}
 	// First tokenize normally (lowercase + whitespace split)
-	std::vector<std::string> tokens = tokenize(text);
+	std::vector<std::string> tokens = tokenize(normalized.empty() ? text : std::string_view(normalized));
 	
+	// Remove stopwords if enabled
+	if (config.stopwords_enabled) {
+		auto base = utils::Stopwords::defaults(config.language);
+		auto sw = utils::Stopwords::merge(base, config.stopwords);
+		tokens.erase(std::remove_if(tokens.begin(), tokens.end(), [&](const std::string& t){
+			return sw.find(t) != sw.end();
+		}), tokens.end());
+	}
+
 	// Apply stemming if enabled
 	if (config.stemming_enabled) {
 		auto lang = utils::Stemmer::parseLanguage(config.language);

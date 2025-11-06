@@ -50,6 +50,12 @@ struct PredicateRange {
     bool includeUpper = true;
 };
 
+struct PredicateFulltext {
+    std::string column;
+    std::string query;
+    size_t limit = 1000;
+};
+
 struct OrderBy {
     std::string column;
     bool desc = false;
@@ -66,6 +72,7 @@ struct ConjunctiveQuery {
     std::vector<PredicateEq> predicates; // alle mit AND verknüpft
     std::vector<PredicateRange> rangePredicates; // zusätzliche AND-Range-Prädikate
     std::optional<OrderBy> orderBy; // optionales ORDER BY über Range-Index
+    std::optional<PredicateFulltext> fulltextPredicate; // optional: FULLTEXT(column, query, limit)
 };
 
 // Disjunctive Query: OR-verknüpfte AND-Blöcke (Disjunctive Normal Form)
@@ -87,6 +94,7 @@ public:
         static Status Error(std::string msg) { return Status{false, std::move(msg)}; }
     };
 
+    
     QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx);
     QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx, GraphIndexManager& graphIdx);
     // Rekursive Pfadabfrage (Multi-Hop Traversal)
@@ -96,9 +104,20 @@ public:
     std::pair<Status, std::vector<BaseEntity>> executeAndEntities(const ConjunctiveQuery& q) const;
     std::pair<Status, std::vector<std::string>> executeAndKeys(const ConjunctiveQuery& q) const;
 
+    
+
     // OR-Queries: Union von mehreren AND-Blöcken
     std::pair<Status, std::vector<std::string>> executeOrKeys(const DisjunctiveQuery& q) const;
     std::pair<Status, std::vector<BaseEntity>> executeOrEntities(const DisjunctiveQuery& q) const;
+    // Varianten mit Fallback (nutzen Full-Scan, wenn kein Index vorhanden ist)
+    std::pair<Status, std::vector<std::string>> executeOrKeysWithFallback(
+        const DisjunctiveQuery& q,
+        bool optimize = true
+    ) const;
+    std::pair<Status, std::vector<BaseEntity>> executeOrEntitiesWithFallback(
+        const DisjunctiveQuery& q,
+        bool optimize = true
+    ) const;
 
     // Sequenzielles Ausführen in vorgegebener Reihenfolge (z. B. vom Optimizer)
     std::pair<Status, std::vector<std::string>> executeAndKeysSequential(
@@ -169,6 +188,8 @@ private:
 // EvaluationContext Definition (moved from class body to avoid json dependency in header)
 struct QueryEngine::EvaluationContext {
     std::unordered_map<std::string, nlohmann::json> bindings;
+    // Optional: BM25/FULLTEXT score context, keyed by primary key ("_key")
+    std::shared_ptr<std::unordered_map<std::string, double>> bm25_scores;
     
     void bind(const std::string& var, nlohmann::json value) {
         bindings[var] = std::move(value);
@@ -178,6 +199,15 @@ struct QueryEngine::EvaluationContext {
         auto it = bindings.find(var);
         if (it != bindings.end()) return std::make_optional(it->second);
         return std::nullopt;
+    }
+    void setBm25Scores(std::shared_ptr<std::unordered_map<std::string, double>> scores) {
+        bm25_scores = std::move(scores);
+    }
+    double getBm25ScoreForPk(const std::string& pk) const {
+        if (!bm25_scores) return 0.0;
+        auto it = bm25_scores->find(pk);
+        if (it == bm25_scores->end()) return 0.0;
+        return it->second;
     }
 };
 

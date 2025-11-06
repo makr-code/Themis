@@ -3,6 +3,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <windows.h>
 #endif
@@ -37,6 +40,7 @@
 // Sprint A features - include BEFORE http_server.h to have complete types
 #include "llm/llm_interaction_store.h"
 #include "cdc/changefeed.h"
+#include <algorithm>
 
 // Sprint B features
 #include "timeseries/timeseries.h"
@@ -214,7 +218,11 @@ HttpServer::HttpServer(
     auto key_provider = std::make_shared<themis::MockKeyProvider>();
     key_provider->createKey("default", 1);  // Create a default key for testing
     THEMIS_INFO("MockKeyProvider initialized");
-    
+
+    // Field encryption for PII and audit
+    field_encryption_ = std::make_shared<themis::FieldEncryption>(key_provider);
+    THEMIS_INFO("FieldEncryption initialized");
+
     // Initialize Keys API Handler with KeyProvider
     keys_api_ = std::make_unique<themis::server::KeysApiHandler>(key_provider);
     THEMIS_INFO("Keys API Handler initialized");
@@ -226,6 +234,16 @@ HttpServer::HttpServer(
     // Initialize Classification API Handler with PIIDetector
     classification_api_ = std::make_unique<themis::server::ClassificationApiHandler>(pii_detector);
     THEMIS_INFO("Classification API Handler initialized");
+
+    // Initialize PII Pseudonymizer (used for reveal/erase)
+    try {
+        pii_pseudonymizer_ = std::make_shared<themis::utils::PIIPseudonymizer>(
+            storage_, field_encryption_, std::make_shared<themis::utils::PIIDetector>(), audit_logger_
+        );
+        THEMIS_INFO("PII Pseudonymizer initialized");
+    } catch (const std::exception& e) {
+        THEMIS_WARN("Failed to initialize PII Pseudonymizer: {}", e.what());
+    }
     
     // Initialize Reports API Handler
     reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
@@ -434,6 +452,7 @@ namespace {
     enum class Route {
         Health,
         Stats,
+        CapabilitiesGet,
         Metrics,
         Config,
         AdminBackupPost,
@@ -468,6 +487,8 @@ namespace {
         TimeSeriesPut,
         TimeSeriesQuery,
         TimeSeriesAggregate,
+        TimeSeriesConfigGet,
+        TimeSeriesConfigPut,
         // Sprint C
         IndexSuggestionsGet,
         IndexPatternsGet,
@@ -492,6 +513,8 @@ namespace {
         FulltextSearchPost,
         ContentFilterSchemaGet,
         ContentFilterSchemaPut,
+        ContentConfigGet,
+        ContentConfigPut,
         EdgeWeightConfigGet,
         EdgeWeightConfigPut,
         // Keys / Classification / Reports
@@ -500,8 +523,11 @@ namespace {
         ClassificationRulesGet,
         ClassificationTestPost,
         ReportsComplianceGet,
-    PoliciesImportRangerPost,
-    PoliciesExportRangerGet,
+        PoliciesImportRangerPost,
+        PoliciesExportRangerGet,
+        // PII
+        PiiRevealGet,
+        PiiDeleteDelete,
         NotFound
     };
 
@@ -514,7 +540,8 @@ namespace {
         if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
 
         if (target == "/" || target == "/health") return Route::Health;
-        if (target == "/stats" && method == http::verb::get) return Route::Stats;
+    if (target == "/stats" && method == http::verb::get) return Route::Stats;
+    if (target == "/api/capabilities" && method == http::verb::get) return Route::CapabilitiesGet;
     if (target == "/metrics" && method == http::verb::get) return Route::Metrics;
     if (target == "/config" && (method == http::verb::get || method == http::verb::post)) return Route::Config;
     if (target == "/admin/backup" && method == http::verb::post) return Route::AdminBackupPost;
@@ -530,7 +557,9 @@ namespace {
 
         if (target == "/entities" && method == http::verb::post) return Route::EntitiesPost;
         if (target == "/query" && method == http::verb::post) return Route::QueryPost;
-        if (target == "/query/aql" && method == http::verb::post) return Route::QueryAqlPost;
+    if (target == "/query/aql" && method == http::verb::post) return Route::QueryAqlPost;
+    // Backward compatibility alias
+    if (target == "/api/aql" && method == http::verb::post) return Route::QueryAqlPost;
         if (target == "/index/create" && method == http::verb::post) return Route::IndexCreatePost;
         if (target == "/index/drop" && method == http::verb::post) return Route::IndexDropPost;
         if (target == "/index/stats" && method == http::verb::get) return Route::IndexStatsGet;
@@ -556,6 +585,8 @@ namespace {
         if (target == "/ts/put" && method == http::verb::post) return Route::TimeSeriesPut;
         if (target == "/ts/query" && method == http::verb::post) return Route::TimeSeriesQuery;
         if (target == "/ts/aggregate" && method == http::verb::post) return Route::TimeSeriesAggregate;
+        if (target == "/ts/config" && method == http::verb::get) return Route::TimeSeriesConfigGet;
+        if (target == "/ts/config" && method == http::verb::put) return Route::TimeSeriesConfigPut;
         // Sprint C endpoints
         if (target.find("/index/suggestions") == 0 && method == http::verb::get) return Route::IndexSuggestionsGet;
         if (target.find("/index/patterns") == 0 && method == http::verb::get) return Route::IndexPatternsGet;
@@ -577,6 +608,9 @@ namespace {
     // Policies (Ranger integration)
     if (path_only == "/policies/import/ranger" && method == http::verb::post) return Route::PoliciesImportRangerPost;
     if (path_only == "/policies/export/ranger" && method == http::verb::get) return Route::PoliciesExportRangerGet;
+    // PII endpoints
+    if (path_only.rfind("/pii/reveal/", 0) == 0 && method == http::verb::get) return Route::PiiRevealGet;
+    if (path_only.rfind("/pii/", 0) == 0 && method == http::verb::delete_) return Route::PiiDeleteDelete;
         if (target == "/transaction" && method == http::verb::post) return Route::TransactionPost;
         if (target == "/transaction/begin" && method == http::verb::post) return Route::TransactionBeginPost;
         if (target == "/transaction/commit" && method == http::verb::post) return Route::TransactionCommitPost;
@@ -585,6 +619,8 @@ namespace {
 
         // Content API
         if (target == "/content/import" && method == http::verb::post) return Route::ContentImportPost;
+        if (target == "/content/config" && method == http::verb::get) return Route::ContentConfigGet;
+        if (target == "/content/config" && method == http::verb::put) return Route::ContentConfigPut;
         if (target.rfind("/content/", 0) == 0 && method == http::verb::get) {
             if (target.find("/blob") != std::string::npos) return Route::ContentBlobGet;
             if (target.find("/chunks") != std::string::npos) return Route::ContentChunksGet;
@@ -636,6 +672,9 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::Stats:
             response = handleStats(req);
+            break;
+        case Route::CapabilitiesGet:
+            response = handleCapabilities(req);
             break;
         case Route::Metrics:
             response = handleMetrics(req);
@@ -733,6 +772,12 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::TimeSeriesAggregate:
             response = handleTimeSeriesAggregate(req);
             break;
+        case Route::TimeSeriesConfigGet:
+            response = handleTimeSeriesConfigGet(req);
+            break;
+        case Route::TimeSeriesConfigPut:
+            response = handleTimeSeriesConfigPut(req);
+            break;
         case Route::IndexSuggestionsGet:
             response = handleIndexSuggestions(req);
             break;
@@ -775,6 +820,12 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::ReportsComplianceGet:
             response = handleReportsCompliance(req);
             break;
+        case Route::PiiRevealGet:
+            response = handlePiiRevealByUuid(req);
+            break;
+        case Route::PiiDeleteDelete:
+            response = handlePiiDeleteByUuid(req);
+            break;
         case Route::TransactionPost:
             response = handleTransaction(req);
             break;
@@ -816,6 +867,12 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::ContentFilterSchemaPut:
             response = handleContentFilterSchemaPut(req);
+            break;
+        case Route::ContentConfigGet:
+            response = handleContentConfigGet(req);
+            break;
+        case Route::ContentConfigPut:
+            response = handleContentConfigPut(req);
             break;
         case Route::EdgeWeightConfigGet:
             response = handleEdgeWeightConfigGet(req);
@@ -1038,6 +1095,76 @@ http::response<http::string_body> HttpServer::handleStats(
         return makeErrorResponse(http::status::internal_server_error, 
                                  std::string("Failed to get stats: ") + e.what(), req);
     }
+}
+
+http::response<http::string_body> HttpServer::handleCapabilities(
+    const http::request<http::string_body>& req
+) {
+    // No auth required for capabilities (read-only, non-sensitive)
+    json caps;
+
+    // Build flags
+#ifdef THEMIS_GEO_ENABLED
+    const bool geo_enabled = true;
+#else
+    const bool geo_enabled = false;
+#endif
+#ifdef THEMIS_GEO_SIMD_ENABLED
+    const bool geo_simd = true;
+#else
+    const bool geo_simd = false;
+#endif
+#ifdef THEMIS_GEO_GPU_ENABLED
+    const bool geo_gpu = true;
+#else
+    const bool geo_gpu = false;
+#endif
+#ifdef THEMIS_GEO_H3_ENABLED
+    const bool geo_h3 = true;
+#else
+    const bool geo_h3 = false;
+#endif
+#ifdef THEMIS_GEO_GEOS_PLUGIN_ENABLED
+    const bool geo_geos = true;
+#else
+    const bool geo_geos = false;
+#endif
+#ifdef THEMIS_ENTERPRISE_ENABLED
+    const bool enterprise = true;
+#else
+    const bool enterprise = false;
+#endif
+
+#ifdef THEMIS_GPU_ENABLED
+    const bool vector_gpu = true;
+#else
+    const bool vector_gpu = false;
+#endif
+
+    caps["geo"] = {
+        {"enabled", geo_enabled},
+        {"enterprise_compiled", enterprise},
+        {"accel", {
+            {"simd_compiled", geo_simd},
+            {"gpu_compiled", geo_gpu}
+        }},
+        {"plugins_compiled", {
+            {"geos", geo_geos},
+            {"h3", geo_h3}
+        }}
+    };
+
+    caps["vector"] = {
+        {"gpu_compiled", vector_gpu}
+    };
+
+    // Server basics
+    caps["server"] = {
+        {"version", "1.0.0"},
+        {"threads", config_.num_threads}
+    };
+
+    return makeResponse(http::status::ok, caps.dump(), req);
 }
 
 http::response<http::string_body> HttpServer::handleConfig(
@@ -1594,6 +1721,230 @@ std::optional<http::response<http::string_body>> HttpServer::requireAccess(
 }
 
 // ===================== Sprint A beta handlers =====================
+http::response<http::string_body> HttpServer::handlePiiRevealByUuid(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handlePiiRevealByUuid");
+    span.setAttribute("http.path", "/pii/reveal/{uuid}");
+
+    // Extract UUID from path
+    std::string target = std::string(req.target());
+    std::string path_only = target;
+    auto qpos = path_only.find('?');
+    if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+    const std::string prefix = "/pii/reveal/";
+    if (path_only.rfind(prefix, 0) != 0) {
+        return makeErrorResponse(http::status::bad_request, "Invalid path", req);
+    }
+    std::string uuid = path_only.substr(prefix.size());
+    if (uuid.empty()) {
+        return makeErrorResponse(http::status::bad_request, "Missing UUID", req);
+    }
+
+    // Authorization: allow tokens with scope 'pii:reveal' OR 'admin'
+    std::string user_id = "";
+    if (auth_ && auth_->isEnabled()) {
+        auto it = req.find(http::field::authorization);
+        if (it == req.end()) {
+            http::response<http::string_body> res{http::status::unauthorized, req.version()};
+            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = R"({"error":"missing_authorization","message":"Missing Authorization header"})";
+            res.prepare_payload();
+            return res;
+        }
+        auto token = themis::AuthMiddleware::extractBearerToken(std::string_view(it->value().data(), it->value().size()));
+        if (!token) {
+            http::response<http::string_body> res{http::status::unauthorized, req.version()};
+            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = R"({"error":"invalid_authorization","message":"Invalid Bearer token format"})";
+            res.prepare_payload();
+            return res;
+        }
+        auto ar = auth_->authorize(*token, "pii:reveal");
+        if (!ar.authorized) {
+            ar = auth_->authorize(*token, "admin");
+            if (!ar.authorized) {
+                http::response<http::string_body> res{http::status::forbidden, req.version()};
+                res.set(http::field::content_type, "application/json");
+                res.keep_alive(req.keep_alive());
+                std::string body = std::string("{\"error\":\"forbidden\",\"message\":\"") + ar.reason + "\"}";
+                res.body() = std::move(body);
+                res.prepare_payload();
+                return res;
+            }
+        }
+        user_id = ar.user_id;
+    }
+
+    // Policy check (if configured)
+    if (policy_engine_) {
+        // Extract client IP (X-Forwarded-For or X-Real-IP)
+        std::optional<std::string> client_ip;
+        for (const auto& h : req) {
+            auto name = h.name_string();
+            if (beast::iequals(name, "x-forwarded-for")) {
+                std::string v = std::string(h.value());
+                auto comma = v.find(',');
+                if (comma != std::string::npos) v = v.substr(0, comma);
+                auto s = v.find_first_not_of(" \t");
+                auto e = v.find_last_not_of(" \t");
+                if (s != std::string::npos) client_ip = v.substr(s, e - s + 1);
+                break;
+            } else if (beast::iequals(name, "x-real-ip")) {
+                client_ip = std::string(h.value());
+            }
+        }
+        auto decision = policy_engine_->authorize(user_id, "pii.reveal", path_only, client_ip);
+        if (!decision.allowed) {
+            http::response<http::string_body> res{http::status::forbidden, req.version()};
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            nlohmann::json j = {
+                {"error", "policy_denied"},
+                {"message", decision.reason},
+            };
+            if (!decision.policy_id.empty()) j["policy_id"] = decision.policy_id;
+            res.body() = j.dump();
+            res.prepare_payload();
+            return res;
+        }
+    }
+
+    // Ensure pseudonymizer is available
+    if (!pii_pseudonymizer_) {
+        return makeErrorResponse(http::status::service_unavailable, "PII service not initialized", req);
+    }
+
+    // Reveal
+    auto value_opt = pii_pseudonymizer_->revealPII(uuid, user_id.empty() ? std::string("unknown") : user_id);
+    if (!value_opt) {
+        return makeErrorResponse(http::status::not_found, "PII mapping not found", req);
+    }
+    nlohmann::json resp{{"uuid", uuid}, {"value", *value_opt}};
+    span.setStatus(true);
+    return makeResponse(http::status::ok, resp.dump(), req);
+}
+
+http::response<http::string_body> HttpServer::handlePiiDeleteByUuid(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handlePiiDeleteByUuid");
+    span.setAttribute("http.path", "/pii/{uuid}");
+
+    // Extract path and uuid
+    std::string target = std::string(req.target());
+    auto qpos = target.find('?');
+    std::string path_only = (qpos == std::string::npos) ? target : target.substr(0, qpos);
+    std::string query = (qpos == std::string::npos) ? std::string() : target.substr(qpos + 1);
+    const std::string prefix = "/pii/";
+    if (path_only.rfind(prefix, 0) != 0) {
+        return makeErrorResponse(http::status::bad_request, "Invalid path", req);
+    }
+    std::string uuid = path_only.substr(prefix.size());
+    if (uuid.empty()) {
+        return makeErrorResponse(http::status::bad_request, "Missing UUID", req);
+    }
+
+    // Parse mode from query (?mode=soft|hard), default soft
+    std::string mode = "soft";
+    if (!query.empty()) {
+        // naive parsing
+        // mode=<value>&...
+        auto pos = query.find("mode=");
+        if (pos != std::string::npos) {
+            auto val = query.substr(pos + 5);
+            auto amp = val.find('&'); if (amp != std::string::npos) val = val.substr(amp);
+            if (val == "hard") mode = "hard";
+        }
+    }
+
+    // Authorization: require pii:erase or admin
+    std::string user_id;
+    if (auth_ && auth_->isEnabled()) {
+        auto it = req.find(http::field::authorization);
+        if (it == req.end()) {
+            http::response<http::string_body> res{http::status::unauthorized, req.version()};
+            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = R"({"error":"missing_authorization","message":"Missing Authorization header"})";
+            res.prepare_payload();
+            return res;
+        }
+        auto token = themis::AuthMiddleware::extractBearerToken(std::string_view(it->value().data(), it->value().size()));
+        if (!token) {
+            http::response<http::string_body> res{http::status::unauthorized, req.version()};
+            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            res.body() = R"({"error":"invalid_authorization","message":"Invalid Bearer token format"})";
+            res.prepare_payload();
+            return res;
+        }
+        auto ar = auth_->authorize(*token, "pii:erase");
+        if (!ar.authorized) {
+            ar = auth_->authorize(*token, "admin");
+            if (!ar.authorized) {
+                http::response<http::string_body> res{http::status::forbidden, req.version()};
+                res.set(http::field::content_type, "application/json");
+                res.keep_alive(req.keep_alive());
+                std::string body = std::string("{\"error\":\"forbidden\",\"message\":\"") + ar.reason + "\"}";
+                res.body() = std::move(body);
+                res.prepare_payload();
+                return res;
+            }
+        }
+        user_id = ar.user_id;
+    }
+
+    // Policy check
+    if (policy_engine_) {
+        std::optional<std::string> client_ip;
+        for (const auto& h : req) {
+            auto name = h.name_string();
+            if (beast::iequals(name, "x-forwarded-for")) {
+                std::string v = std::string(h.value());
+                auto comma = v.find(',');
+                if (comma != std::string::npos) v = v.substr(0, comma);
+                auto s = v.find_first_not_of(" \t");
+                auto e = v.find_last_not_of(" \t");
+                if (s != std::string::npos) client_ip = v.substr(s, e - s + 1);
+                break;
+            } else if (beast::iequals(name, "x-real-ip")) {
+                client_ip = std::string(h.value());
+            }
+        }
+        auto decision = policy_engine_->authorize(user_id, "pii.erase", path_only, client_ip);
+        if (!decision.allowed) {
+            http::response<http::string_body> res{http::status::forbidden, req.version()};
+            res.set(http::field::content_type, "application/json");
+            res.keep_alive(req.keep_alive());
+            nlohmann::json j = {{"error","policy_denied"},{"message",decision.reason}};
+            if (!decision.policy_id.empty()) j["policy_id"] = decision.policy_id;
+            res.body() = j.dump();
+            res.prepare_payload();
+            return res;
+        }
+    }
+
+    if (!pii_pseudonymizer_) {
+        return makeErrorResponse(http::status::service_unavailable, "PII service not initialized", req);
+    }
+
+    nlohmann::json resp;
+    if (mode == "hard") {
+        bool ok = pii_pseudonymizer_->erasePII(uuid);
+        resp = {{"status", ok ? "ok" : "not_found"}, {"mode", "hard"}, {"uuid", uuid}, {"deleted", ok}};
+    } else {
+        bool ok = pii_pseudonymizer_->softDeletePII(uuid, user_id.empty() ? std::string("unknown") : user_id);
+        resp = {{"status", ok ? "ok" : "not_found"}, {"mode", "soft"}, {"uuid", uuid}, {"updated", ok}};
+    }
+    return makeResponse(http::status::ok, resp.dump(), req);
+}
 http::response<http::string_body> HttpServer::handleCacheQuery(
     const http::request<http::string_body>& req
 ) {
@@ -4105,6 +4456,61 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return makeResponse(http::status::ok, res.dump(), req);
         }
 
+        // Disjunctive Query (OR support)
+        if (translate_result.disjunctive.has_value()) {
+            const auto& dq = translate_result.disjunctive.value();
+            auto orSpan = Tracer::startSpan("aql.or_execution");
+            orSpan.setAttribute("or.table", dq.table);
+            orSpan.setAttribute("or.disjunct_count", static_cast<int64_t>(dq.disjuncts.size()));
+            
+            themis::QueryEngine engine(*storage_, *secondary_index_);
+            // Nutze Fallback-Variante, damit OR-Queries auch ohne passende Indizes funktionieren
+            auto [status, keys] = engine.executeOrKeysWithFallback(dq, optimize);
+            
+            if (!status.ok) {
+                orSpan.setStatus(false, status.message);
+                span.setStatus(false, "OR execution failed");
+                return makeErrorResponse(http::status::bad_request, status.message, req);
+            }
+            
+            // Fetch entities
+            nlohmann::json entities = nlohmann::json::array();
+            for (const auto& key : keys) {
+                auto pk = themis::KeySchema::makeRelationalKey(dq.table, key);
+                auto blob = storage_->get(pk);
+                if (blob && !blob->empty()) {
+                    try {
+                        themis::BaseEntity::Blob entity_blob(blob->begin(), blob->end());
+                        auto entity = themis::BaseEntity::deserialize(key, entity_blob);
+                        entities.push_back(nlohmann::json::parse(entity.toJson()));
+                    } catch (...) {
+                        // Skip malformed entities
+                    }
+                }
+            }
+            
+            nlohmann::json response_body = {
+                {"table", dq.table},
+                {"count", entities.size()},
+                {"entities", entities}
+            };
+            // Provide "result" alias for compatibility with older clients/tests
+            try { response_body["result"] = response_body["entities"]; } catch (...) { /* ignore */ }
+            
+            if (explain) {
+                response_body["query"] = aql_query;
+                response_body["ast"] = parse_result.query->toJSON();
+                response_body["disjunctive_query"] = true;
+                response_body["disjunct_count"] = dq.disjuncts.size();
+            }
+            
+            orSpan.setAttribute("or.result_count", static_cast<int64_t>(entities.size()));
+            orSpan.setStatus(true);
+            span.setAttribute("aql.result_count", static_cast<int64_t>(entities.size()));
+            span.setStatus(true);
+            return makeResponse(http::status::ok, response_body.dump(), req);
+        }
+
         // JOIN/LET Query (Multi-FOR or LET without COLLECT)
         // Note: Single-FOR + COLLECT is handled by conversion to ConjunctiveQuery below
         if (translate_result.join.has_value()) {
@@ -4226,6 +4632,57 @@ http::response<http::string_body> HttpServer::handleQueryAql(
         // Relationale Query (mutable Kopie f�r Cursor-Anker/Limit-Anpassungen)
     auto forSpan = Tracer::startSpan("aql.for");
     auto q = translate_result.query;
+
+        // Detect function-based SORT (BM25(doc) or FULLTEXT_SCORE()) to avoid range-index ORDER BY
+        bool sortByScoreFunction = false;
+        bool sortAsc = true;
+        if (parse_result.query && parse_result.query->sort && !parse_result.query->sort->specifications.empty()) {
+            // Helper: recursively check if expression contains a specific function name
+            std::function<bool(const std::shared_ptr<themis::query::Expression>&, const std::string&)> exprContainsFn;
+            exprContainsFn = [&](const std::shared_ptr<themis::query::Expression>& expr, const std::string& name)->bool{
+                if (!expr) return false;
+                using namespace themis::query;
+                switch (expr->getType()) {
+                    case ASTNodeType::FunctionCall: {
+                        auto* fc = static_cast<FunctionCallExpr*>(expr.get());
+                        std::string n = fc->name; std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+                        if (n == name) return true;
+                        for (const auto& a : fc->arguments) if (exprContainsFn(a, name)) return true;
+                        return false;
+                    }
+                    case ASTNodeType::BinaryOp: {
+                        auto* bo = static_cast<BinaryOpExpr*>(expr.get());
+                        return exprContainsFn(bo->left, name) || exprContainsFn(bo->right, name);
+                    }
+                    case ASTNodeType::UnaryOp: {
+                        auto* u = static_cast<UnaryOpExpr*>(expr.get());
+                        return exprContainsFn(u->operand, name);
+                    }
+                    case ASTNodeType::ArrayLiteral: {
+                        auto* ar = static_cast<ArrayLiteralExpr*>(expr.get());
+                        for (const auto& el : ar->elements) if (exprContainsFn(el, name)) return true;
+                        return false;
+                    }
+                    case ASTNodeType::ObjectConstruct: {
+                        auto* oc = static_cast<ObjectConstructExpr*>(expr.get());
+                        for (const auto& kv : oc->fields) if (exprContainsFn(kv.second, name)) return true;
+                        return false;
+                    }
+                    default:
+                        return false;
+                }
+            };
+            const auto& spec = parse_result.query->sort->specifications[0];
+            sortAsc = spec.ascending;
+            if (exprContainsFn(spec.expression, "bm25") || exprContainsFn(spec.expression, "fulltext_score")) {
+                sortByScoreFunction = true;
+            }
+        }
+        // If SORT uses BM25/FULLTEXT_SCORE, clear index ORDER BY and sort later in-memory
+        if (sortByScoreFunction && q.orderBy.has_value()) {
+            q.orderBy.reset();
+        }
+
         std::string table = q.table;
         forSpan.setAttribute("for.table", table);
         forSpan.setAttribute("for.predicates_count", static_cast<int64_t>(q.predicates.size()));
@@ -4234,6 +4691,9 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             forSpan.setAttribute("for.order_by", q.orderBy->column);
             forSpan.setAttribute("for.order_desc", q.orderBy->desc);
         }
+
+        // Shared score map for BM25/FULLTEXT score lookups (filled on demand later)
+        std::unordered_map<std::string, double> fulltextScoreByPk;
 
         // Cursor-Integration in die QueryEngine: falls ORDER BY vorhanden
         bool early_empty_due_to_cursor = false;
@@ -4302,9 +4762,14 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             exec_mode = "full_scan_fallback";
             res = engine.executeAndEntitiesWithFallback(q, optimize);
         } else {
-            // Range-aware: Wenn Range-Pr�dikate oder ORDER BY vorhanden sind,
-            // nutze direkt die range-f�hige Engine-Logik (Optimizer unterst�tzt nur Gleichheit).
-            if (!q.rangePredicates.empty() || q.orderBy.has_value()) {
+            // Wenn FULLTEXT vorhanden ist, delegiere direkt an Engine (Optimizer kennt FULLTEXT nicht)
+            if (q.fulltextPredicate.has_value()) {
+                exec_mode = "fulltext";
+                res = engine.executeAndEntities(q);
+            }
+            // Range-aware: Wenn Range-Prädikate oder ORDER BY vorhanden sind,
+            // nutze direkt die range-fähige Engine-Logik (Optimizer unterstützt nur Gleichheit).
+            else if (!q.rangePredicates.empty() || q.orderBy.has_value()) {
                 exec_mode = "index_rangeaware";
                 res = engine.executeAndEntities(q);
             } else if (optimize) {
@@ -4358,6 +4823,37 @@ http::response<http::string_body> HttpServer::handleQueryAql(
         std::vector<themis::BaseEntity> sliced;
         sliced.reserve(res.second.size());
         sliced = std::move(res.second);
+
+        // If SORT uses BM25/FULLTEXT_SCORE, compute scores and sort now (pre-LIMIT)
+        if (sortByScoreFunction) {
+            if (!q.fulltextPredicate.has_value()) {
+                forSpan.setStatus(false, "BM25/FULLTEXT_SCORE sort without FULLTEXT filter");
+                span.setStatus(false, "BM25/FULLTEXT_SCORE sort requires FULLTEXT() in FILTER");
+                return makeErrorResponse(http::status::bad_request, "SORT by BM25/FULLTEXT_SCORE requires a FULLTEXT(...) filter in the query", req);
+            }
+            const auto& ft = *q.fulltextPredicate;
+            auto scoreSpan = Tracer::startSpan("aql.fulltext_scores_fetch.sort");
+            scoreSpan.setAttribute("table", q.table);
+            scoreSpan.setAttribute("column", ft.column);
+            scoreSpan.setAttribute("limit", static_cast<int64_t>(ft.limit));
+            auto [st, results] = secondary_index_->scanFulltextWithScores(q.table, ft.column, ft.query, ft.limit);
+            if (!st.ok) {
+                scoreSpan.setStatus(false, st.message);
+                return makeErrorResponse(http::status::internal_server_error, std::string("Failed to fetch fulltext scores: ") + st.message, req);
+            }
+            fulltextScoreByPk.clear();
+            fulltextScoreByPk.reserve(results.size());
+            for (const auto& r : results) fulltextScoreByPk.emplace(r.pk, r.score);
+            scoreSpan.setAttribute("count", static_cast<int64_t>(results.size()));
+            scoreSpan.setStatus(true);
+
+            std::sort(sliced.begin(), sliced.end(), [&](const themis::BaseEntity& a, const themis::BaseEntity& b){
+                double sa = 0.0, sb = 0.0;
+                auto ita = fulltextScoreByPk.find(a.getPrimaryKey()); if (ita != fulltextScoreByPk.end()) sa = ita->second;
+                auto itb = fulltextScoreByPk.find(b.getPrimaryKey()); if (itb != fulltextScoreByPk.end()) sb = itb->second;
+                if (sortAsc) return sa < sb; else return sa > sb;
+            });
+        }
 
         if (!use_cursor && parse_result.query && parse_result.query->limit) {
             auto limitSpan = Tracer::startSpan("aql.limit");
@@ -4555,7 +5051,89 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return col;
         };
 
-        // Evaluate limited expressions to JSON (Literal, Variable, FieldAccess, Object, Array)
+        // Detect if RETURN/LET expressions reference FULLTEXT_SCORE()
+        std::function<bool(const std::shared_ptr<Expression>&, const std::string&)> containsFunction;
+        containsFunction = [&](const std::shared_ptr<Expression>& expr, const std::string& name)->bool{
+            if (!expr) return false;
+            switch (expr->getType()) {
+                case ASTNodeType::FunctionCall: {
+                    auto* fc = static_cast<FunctionCallExpr*>(expr.get());
+                    std::string n = fc->name; std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+                    if (n == name) return true;
+                    for (const auto& a : fc->arguments) if (containsFunction(a, name)) return true;
+                    return false;
+                }
+                case ASTNodeType::BinaryOp: {
+                    auto* bo = static_cast<BinaryOpExpr*>(expr.get());
+                    return containsFunction(bo->left, name) || containsFunction(bo->right, name);
+                }
+                case ASTNodeType::UnaryOp: {
+                    auto* u = static_cast<UnaryOpExpr*>(expr.get());
+                    return containsFunction(u->operand, name);
+                }
+                case ASTNodeType::ArrayLiteral: {
+                    auto* ar = static_cast<ArrayLiteralExpr*>(expr.get());
+                    for (const auto& el : ar->elements) if (containsFunction(el, name)) return true;
+                    return false;
+                }
+                case ASTNodeType::ObjectConstruct: {
+                    auto* oc = static_cast<ObjectConstructExpr*>(expr.get());
+                    for (const auto& kv : oc->fields) if (containsFunction(kv.second, name)) return true;
+                    return false;
+                }
+                default:
+                    return false;
+            }
+        };
+
+        bool usesFulltextScore = false;
+        if (parse_result.query) {
+            // RETURN
+            if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+                usesFulltextScore = containsFunction(parse_result.query->return_node->expression, "fulltext_score");
+            }
+            // LETs
+            if (!usesFulltextScore) {
+                for (const auto& ln : parse_result.query->let_nodes) {
+                    if (containsFunction(ln.expression, "fulltext_score")) { usesFulltextScore = true; break; }
+                }
+            }
+        }
+
+        // If FULLTEXT_SCORE() or BM25() is referenced in RETURN/LET, ensure scores are prepared (and validate FULLTEXT_SCORE usage)
+        bool usesScoreFn = usesFulltextScore;
+        if (!usesScoreFn && parse_result.query) {
+            if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+                usesScoreFn = containsFunction(parse_result.query->return_node->expression, "bm25");
+            }
+            if (!usesScoreFn) {
+                for (const auto& ln : parse_result.query->let_nodes) {
+                    if (containsFunction(ln.expression, "bm25")) { usesScoreFn = true; break; }
+                }
+            }
+        }
+        if (usesFulltextScore && !q.fulltextPredicate.has_value()) {
+            forSpan.setStatus(false, "FULLTEXT_SCORE without FULLTEXT filter");
+            span.setStatus(false, "FULLTEXT_SCORE requires FULLTEXT() in FILTER");
+            return makeErrorResponse(http::status::bad_request, "FULLTEXT_SCORE() requires a FULLTEXT(...) filter in the query", req);
+        }
+        if ((usesScoreFn || sortByScoreFunction) && fulltextScoreByPk.empty() && q.fulltextPredicate.has_value()) {
+            const auto& ft = *q.fulltextPredicate;
+            auto scoreSpan = Tracer::startSpan("aql.fulltext_scores_fetch");
+            scoreSpan.setAttribute("table", q.table);
+            scoreSpan.setAttribute("column", ft.column);
+            scoreSpan.setAttribute("limit", static_cast<int64_t>(ft.limit));
+            auto [st, results] = secondary_index_->scanFulltextWithScores(q.table, ft.column, ft.query, ft.limit);
+            if (!st.ok) {
+                scoreSpan.setStatus(false, st.message);
+                return makeErrorResponse(http::status::internal_server_error, std::string("Failed to fetch fulltext scores: ") + st.message, req);
+            }
+            for (const auto& r : results) fulltextScoreByPk.emplace(r.pk, r.score);
+            scoreSpan.setAttribute("count", static_cast<int64_t>(results.size()));
+            scoreSpan.setStatus(true);
+        }
+
+        // Evaluate expressions to JSON (Literal, Variable, FieldAccess, Binary/Unary, Object, Array, selected FunctionCall)
         std::function<nlohmann::json(const std::shared_ptr<Expression>&,
                                      const themis::BaseEntity&,
                                      const std::unordered_map<std::string, nlohmann::json>&)> evalExpr;
@@ -4586,6 +5164,140 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                         }
                         return nullptr;
                     }
+                }
+                case ASTNodeType::BinaryOp: {
+                    auto* bo = static_cast<BinaryOpExpr*>(expr.get());
+                    auto left = evalExpr(bo->left, ent, env);
+                    auto right = evalExpr(bo->right, ent, env);
+                    auto toNumber = [](const nlohmann::json& j, double& out)->bool{
+                        if (j.is_number()) { out = j.get<double>(); return true; }
+                        if (j.is_boolean()) { out = j.get<bool>() ? 1.0 : 0.0; return true; }
+                        if (j.is_string()) { char* end=nullptr; std::string s=j.get<std::string>(); out = strtod(s.c_str(), &end); return end && *end=='\0'; }
+                        return false;
+                    };
+                    switch (bo->op) {
+                        case BinaryOperator::Eq:  return left == right;
+                        case BinaryOperator::Neq: return left != right;
+                        case BinaryOperator::Lt:  return left < right;
+                        case BinaryOperator::Lte: return left <= right;
+                        case BinaryOperator::Gt:  return left > right;
+                        case BinaryOperator::Gte: return left >= right;
+                        case BinaryOperator::And: {
+                            bool lb = left.is_boolean() ? left.get<bool>() : (!left.is_null());
+                            bool rb = right.is_boolean() ? right.get<bool>() : (!right.is_null());
+                            return nlohmann::json(lb && rb);
+                        }
+                        case BinaryOperator::Or:  {
+                            bool lb = left.is_boolean() ? left.get<bool>() : (!left.is_null());
+                            bool rb = right.is_boolean() ? right.get<bool>() : (!right.is_null());
+                            return nlohmann::json(lb || rb);
+                        }
+                        case BinaryOperator::Add: {
+                            double a,b; if (toNumber(left,a) && toNumber(right,b)) return a+b; return nullptr; }
+                        case BinaryOperator::Sub: {
+                            double a,b; if (toNumber(left,a) && toNumber(right,b)) return a-b; return nullptr; }
+                        case BinaryOperator::Mul: {
+                            double a,b; if (toNumber(left,a) && toNumber(right,b)) return a*b; return nullptr; }
+                        case BinaryOperator::Div: {
+                            double a,b; if (toNumber(left,a) && toNumber(right,b) && b!=0.0) return a/b; return nullptr; }
+                        default: return nullptr;
+                    }
+                }
+                case ASTNodeType::UnaryOp: {
+                    auto* u = static_cast<UnaryOpExpr*>(expr.get());
+                    auto val = evalExpr(u->operand, ent, env);
+                    switch (u->op) {
+                        case UnaryOperator::Not:   return val.is_boolean() ? nlohmann::json(!val.get<bool>()) : nlohmann::json(false);
+                        case UnaryOperator::Minus: {
+                            if (val.is_number()) return -val.get<double>();
+                            if (val.is_string()) { char* end=nullptr; std::string s=val.get<std::string>(); double d=strtod(s.c_str(), &end); if (end && *end=='\0') return -d; }
+                            return nullptr; }
+                        case UnaryOperator::Plus:  {
+                            if (val.is_number()) return val.get<double>();
+                            if (val.is_string()) { char* end=nullptr; std::string s=val.get<std::string>(); double d=strtod(s.c_str(), &end); if (end && *end=='\0') return d; }
+                            return nullptr; }
+                        default: return nullptr;
+                    }
+                }
+                case ASTNodeType::FunctionCall: {
+                    auto* fc = static_cast<FunctionCallExpr*>(expr.get());
+                    std::string name = fc->name; std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                    if (name == "bm25") {
+                        // One-arg function: BM25(doc). Returns score for provided document object by _key/_pk
+                        if (fc->arguments.size() != 1) return 0.0;
+                        auto arg = evalExpr(fc->arguments[0], ent, env);
+                        if (arg.is_object()) {
+                            std::string pk;
+                            if (arg.contains("_key") && arg["_key"].is_string()) pk = arg["_key"].get<std::string>();
+                            else if (arg.contains("_pk") && arg["_pk"].is_string()) pk = arg["_pk"].get<std::string>();
+                            if (!pk.empty()) {
+                                auto it = fulltextScoreByPk.find(pk);
+                                if (it != fulltextScoreByPk.end()) return it->second; else return 0.0;
+                            }
+                        }
+                        return 0.0;
+                    }
+                    if (name == "fulltext_score") {
+                        // No-arg function returning score of current entity (requires FULLTEXT filter)
+                        auto it = fulltextScoreByPk.find(ent.getPrimaryKey());
+                        if (it != fulltextScoreByPk.end()) return it->second; else return 0.0; // default 0.0 when not present
+                    }
+                    auto evalArg = [&](size_t i)->nlohmann::json{ return (i<fc->arguments.size()) ? evalExpr(fc->arguments[i], ent, env) : nlohmann::json(); };
+                    if (name == "concat") {
+                        std::string out;
+                        for (size_t i=0;i<fc->arguments.size();++i) {
+                            auto a = evalArg(i);
+                            if (a.is_string()) out += a.get<std::string>();
+                            else if (a.is_number()) out += std::to_string(a.get<double>());
+                            else if (a.is_boolean()) out += (a.get<bool>()?"true":"false");
+                        }
+                        return out;
+                    }
+                    if (name == "substring" || name == "substr") {
+                        auto s = evalArg(0); auto off = evalArg(1); auto len = evalArg(2);
+                        if (!s.is_string()) return nullptr; std::string str = s.get<std::string>();
+                        int start = off.is_number_integer() ? static_cast<int>(off.get<int64_t>()) : 0;
+                        int count = len.is_number_integer() ? static_cast<int>(len.get<int64_t>()) : static_cast<int>(str.size() - std::min<int>(start,(int)str.size()));
+                        if (start < 0) start = 0; if (start > (int)str.size()) start = (int)str.size();
+                        if (count < 0) count = 0; if (start + count > (int)str.size()) count = (int)str.size() - start;
+                        return str.substr(static_cast<size_t>(start), static_cast<size_t>(count));
+                    }
+                    if (name == "length") {
+                        auto s = evalArg(0);
+                        if (s.is_string()) return static_cast<int64_t>(s.get<std::string>().size());
+                        if (s.is_array()) return static_cast<int64_t>(s.size());
+                        if (s.is_object()) return static_cast<int64_t>(s.size());
+                        return 0;
+                    }
+                    if (name == "lower") {
+                        auto s = evalArg(0); if (!s.is_string()) return nullptr; std::string t=s.get<std::string>();
+                        std::transform(t.begin(), t.end(), t.begin(), ::tolower); return t;
+                    }
+                    if (name == "upper") {
+                        auto s = evalArg(0); if (!s.is_string()) return nullptr; std::string t=s.get<std::string>();
+                        std::transform(t.begin(), t.end(), t.begin(), ::toupper); return t;
+                    }
+                    if (name == "to_number") {
+                        auto v = evalArg(0); if (v.is_number()) return v.get<double>(); if (v.is_boolean()) return v.get<bool>()?1.0:0.0; if (v.is_string()) { char* end=nullptr; std::string s=v.get<std::string>(); double d=strtod(s.c_str(), &end); if (end && *end=='\0') return d; }
+                        return nullptr;
+                    }
+                    if (name == "to_string") {
+                        auto v = evalArg(0); if (v.is_string()) return v; if (v.is_number()) return std::to_string(v.get<double>()); if (v.is_boolean()) return v.get<bool>()?"true":"false"; if (v.is_null()) return "null"; return v.dump();
+                    }
+                    if (name == "abs" || name == "ceil" || name == "floor" || name == "round") {
+                        auto v = evalArg(0); if (!v.is_number()) return nullptr; double d = v.get<double>();
+                        if (name == "abs") return std::abs(d);
+                        if (name == "ceil") return std::ceil(d);
+                        if (name == "floor") return std::floor(d);
+                        if (name == "round") return std::llround(d);
+                        return nullptr;
+                    }
+                    if (name == "coalesce") {
+                        for (size_t i=0;i<fc->arguments.size();++i) { auto a = evalArg(i); if (!a.is_null()) return a; }
+                        return nullptr;
+                    }
+                    // Unsupported function in MVP eval
+                    return nullptr;
                 }
                 case ASTNodeType::ObjectConstruct: {
                     auto* oc = static_cast<ObjectConstructExpr*>(expr.get());
@@ -4669,6 +5381,8 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                 {"count", sliced.size()},
                 {"entities", entities}
             };
+            // Provide "result" alias for compatibility
+            try { response_body["result"] = response_body["entities"]; } catch (...) { /* ignore */ }
         }
         
         if (explain) {
@@ -5704,6 +6418,129 @@ http::response<http::string_body> HttpServer::handleContentFilterSchemaPut(
     }
 }
 
+http::response<http::string_body> HttpServer::handleContentConfigGet(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleContentConfigGet");
+    
+    try {
+        auto v = storage_->get("config:content");
+        json resp;
+        if (v) {
+            std::string s(v->begin(), v->end());
+            resp = json::parse(s);
+        } else {
+            // Return defaults
+            resp = {
+                {"compress_blobs", false},
+                {"compression_level", 19},
+                {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip", "application/gzip"})}
+            };
+        }
+        
+        span.setStatus(true);
+        return makeResponse(http::status::ok, resp.dump(), req);
+        
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, 
+            std::string("config read error: ") + e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleContentConfigPut(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleContentConfigPut");
+    
+    try {
+        json body = json::parse(req.body());
+        
+        // Get current config or defaults
+        json config;
+        auto v = storage_->get("config:content");
+        if (v) {
+            std::string s(v->begin(), v->end());
+            config = json::parse(s);
+        } else {
+            config = {
+                {"compress_blobs", false},
+                {"compression_level", 19},
+                {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip", "application/gzip"})}
+            };
+        }
+        
+        // Update with provided values
+        if (body.contains("compress_blobs")) {
+            if (!body["compress_blobs"].is_boolean()) {
+                span.setStatus(false, "invalid_compress_blobs");
+                return makeErrorResponse(http::status::bad_request, 
+                    "compress_blobs must be boolean", req);
+            }
+            config["compress_blobs"] = body["compress_blobs"];
+        }
+        
+        if (body.contains("compression_level")) {
+            if (!body["compression_level"].is_number_integer()) {
+                span.setStatus(false, "invalid_compression_level");
+                return makeErrorResponse(http::status::bad_request, 
+                    "compression_level must be an integer", req);
+            }
+            int level = body["compression_level"];
+            if (level < 1 || level > 22) {
+                span.setStatus(false, "compression_level_out_of_range");
+                return makeErrorResponse(http::status::bad_request, 
+                    "compression_level must be between 1 and 22", req);
+            }
+            config["compression_level"] = level;
+        }
+        
+        if (body.contains("skip_compressed_mimes")) {
+            if (!body["skip_compressed_mimes"].is_array()) {
+                span.setStatus(false, "invalid_skip_mimes");
+                return makeErrorResponse(http::status::bad_request, 
+                    "skip_compressed_mimes must be an array of strings", req);
+            }
+            // Validate all elements are strings
+            for (const auto& item : body["skip_compressed_mimes"]) {
+                if (!item.is_string()) {
+                    span.setStatus(false, "invalid_skip_mimes_element");
+                    return makeErrorResponse(http::status::bad_request, 
+                        "All elements in skip_compressed_mimes must be strings", req);
+                }
+            }
+            config["skip_compressed_mimes"] = body["skip_compressed_mimes"];
+        }
+        
+        // Store updated config
+        std::string config_str = config.dump();
+        std::vector<uint8_t> bytes(config_str.begin(), config_str.end());
+        bool ok = storage_->put("config:content", bytes);
+        
+        if (!ok) {
+            span.setStatus(false, "storage_error");
+            return makeErrorResponse(http::status::internal_server_error, 
+                "Failed to store content config", req);
+        }
+        
+        json response = config;
+        response["status"] = "ok";
+        response["note"] = "Configuration updated. Changes apply to new content imports only.";
+        
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
+    } catch (const json::exception& e) {
+        span.setStatus(false, "json_error");
+        return makeErrorResponse(http::status::bad_request, 
+            std::string("JSON error: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, 
+            std::string("config write error: ") + e.what(), req);
+    }
+}
+
 http::response<http::string_body> HttpServer::handleEdgeWeightConfigGet(
     const http::request<http::string_body>& req
 ) {
@@ -5853,9 +6690,18 @@ http::response<http::string_body> HttpServer::handleCreateIndex(
                     auto configObj = body["config"];
                     config.stemming_enabled = configObj.value("stemming_enabled", false);
                     config.language = configObj.value("language", "none");
+                    config.stopwords_enabled = configObj.value("stopwords_enabled", false);
+                    if (configObj.contains("stopwords") && configObj["stopwords"].is_array()) {
+                        for (const auto& s : configObj["stopwords"]) {
+                            if (s.is_string()) config.stopwords.push_back(s.get<std::string>());
+                        }
+                    }
+                    config.normalize_umlauts = configObj.value("normalize_umlauts", false);
                 } else {
                     config.stemming_enabled = false;
                     config.language = "none";
+                    config.stopwords_enabled = false;
+                    config.normalize_umlauts = false;
                 }
                 
                 auto st = secondary_index_->createFulltextIndex(table, column, config);
@@ -5870,7 +6716,10 @@ http::response<http::string_body> HttpServer::handleCreateIndex(
                     {"type", "fulltext"},
                     {"config", {
                         {"stemming_enabled", config.stemming_enabled},
-                        {"language", config.language}
+                        {"language", config.language},
+                        {"stopwords_enabled", config.stopwords_enabled},
+                        {"stopwords", config.stopwords},
+                        {"normalize_umlauts", config.normalize_umlauts}
                     }}
                 };
                 return makeResponse(http::status::ok, resp.dump(), req);
@@ -6574,6 +7423,92 @@ http::response<http::string_body> HttpServer::handleTimeSeriesAggregate(
         };
         
         span.setAttribute("agg_count", static_cast<int64_t>(agg.count));
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
+    } catch (const json::exception& e) {
+        span.setStatus(false, "json_error");
+        return makeErrorResponse(http::status::bad_request, "JSON error: " + std::string(e.what()), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleTimeSeriesConfigGet(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleTimeSeriesConfigGet");
+    
+    if (!timeseries_) {
+        span.setStatus(false, "feature_disabled");
+        return makeErrorResponse(http::status::not_implemented, "Time-series feature not enabled", req);
+    }
+    
+    try {
+        const auto& config = timeseries_->getConfig();
+        
+        json response = {
+            {"compression", config.compression == TSStore::CompressionType::Gorilla ? "gorilla" : "none"},
+            {"chunk_size_hours", config.chunk_size_hours}
+        };
+        
+        span.setStatus(true);
+        return makeResponse(http::status::ok, response.dump(), req);
+        
+    } catch (const std::exception& e) {
+        span.setStatus(false, "error");
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handleTimeSeriesConfigPut(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("handleTimeSeriesConfigPut");
+    
+    if (!timeseries_) {
+        span.setStatus(false, "feature_disabled");
+        return makeErrorResponse(http::status::not_implemented, "Time-series feature not enabled", req);
+    }
+    
+    try {
+        json body = json::parse(req.body());
+        
+        TSStore::Config new_config = timeseries_->getConfig(); // Start with current config
+        
+        if (body.contains("compression")) {
+            std::string compression_str = body["compression"];
+            if (compression_str == "gorilla") {
+                new_config.compression = TSStore::CompressionType::Gorilla;
+            } else if (compression_str == "none") {
+                new_config.compression = TSStore::CompressionType::None;
+            } else {
+                span.setStatus(false, "invalid_compression");
+                return makeErrorResponse(http::status::bad_request, 
+                    "Invalid compression type. Must be 'gorilla' or 'none'", req);
+            }
+        }
+        
+        if (body.contains("chunk_size_hours")) {
+            int chunk_size = body["chunk_size_hours"];
+            if (chunk_size <= 0 || chunk_size > 168) { // Max 1 week
+                span.setStatus(false, "invalid_chunk_size");
+                return makeErrorResponse(http::status::bad_request, 
+                    "chunk_size_hours must be between 1 and 168 (1 week)", req);
+            }
+            new_config.chunk_size_hours = chunk_size;
+        }
+        
+        timeseries_->setConfig(new_config);
+        
+        json response = {
+            {"status", "ok"},
+            {"compression", new_config.compression == TSStore::CompressionType::Gorilla ? "gorilla" : "none"},
+            {"chunk_size_hours", new_config.chunk_size_hours},
+            {"note", "Configuration updated. Changes apply to new data points only."}
+        };
+        
         span.setStatus(true);
         return makeResponse(http::status::ok, response.dump(), req);
         

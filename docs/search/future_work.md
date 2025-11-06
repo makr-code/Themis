@@ -18,7 +18,7 @@
 - **Normalization:** Min-Max for weighted, reciprocal rank for RRF
 - **Tests:** No regressions in fulltext suite
 
-### ✅ Stemming & Advanced Analyzers (v1.1)
+### ✅ Stemming & Analyzer Extensions (v1.2)
 - **Implementation:** Porter-Subset (EN), simplified suffix removal (DE)
 - **Configuration:** Per-index via `POST /index/create` with:
   ```json
@@ -37,6 +37,7 @@
 - **Tests:** 16/16 stemming tests passed + 10/10 fulltext regression tests
 - **HTTP API:** `/index/create` with `type: "fulltext"` and optional `config`
 - **OpenAPI:** Documented in openapi.yaml with examples
+- **Stopwords:** Pro-Index konfigurierbar (Default-Listen EN/DE, Custom-Liste)
 
 ## Future Work (v2+)
 
@@ -90,10 +91,8 @@ FOR doc IN articles
 **Goal:** Extend stemming with additional linguistic features
 
 **Potential Enhancements:**
-1. **Stopword Filtering**
-   - Remove high-frequency, low-information words (de: "der", "die", "das"; en: "the", "a", "an")
-   - Configurable per-index stopword lists
-   - Reduces index size and improves relevance
+1. ~~Stopword Filtering~~
+  - Implemented in v1.2 (Default EN/DE + Custom per Index)
 
 2. **Umlaut Normalization (German)**
    - Normalize "ä→a", "ö→o", "ü→u", "ß→ss"
@@ -258,7 +257,6 @@ FOR doc IN articles
 - LambdaMART: Burges (2010)
 
 Nächste sinnvolle Schritte
-Stopword-Listen (EN/DE) pro Index konfigurierbar machen.
 Umlaut-/ß-Normalisierung (z. B. „läuft“ -> „lauft“) für DE verbessern.
 Phrase Queries und Highlighting.
 AQL-Integration: FULLTEXT-Operator + BM25 im Sort (geplant für V2).

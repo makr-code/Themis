@@ -18,6 +18,7 @@ using query::FieldAccessExpr;
 using query::LiteralExpr;
 using query::LiteralValue;
 using query::ASTNodeType;
+using query::FunctionCallExpr;
 using query::BinaryOperator;
 
 /**
@@ -69,10 +70,20 @@ public:
         };
         std::optional<JoinQuery> join;
         
+        // Disjunctive Query (OR support)
+        std::optional<DisjunctiveQuery> disjunctive;
+        
         static TranslationResult Success(ConjunctiveQuery q) {
             TranslationResult r;
             r.success = true;
             r.query = std::move(q);
+            return r;
+        }
+        
+        static TranslationResult SuccessDisjunctive(DisjunctiveQuery d) {
+            TranslationResult r;
+            r.success = true;
+            r.disjunctive = std::move(d);
             return r;
         }
         
@@ -101,22 +112,42 @@ public:
     /**
      * Translate AQL AST to QueryEngine query
      * 
+     * Supported:
+     * - Conjunctive queries (AND combinations)
+     * - Disjunctive queries (OR combinations in DNF)
+     * - Mixed AND/OR expressions
+     * 
      * Limitations:
-     * - Only supports conjunctive queries (AND combinations)
-     * - OR requires multiple queries (future enhancement)
-     * - Functions in FILTER not yet supported (e.g., LOWER(doc.name))
+     * - Functions in FILTER limited (FULLTEXT supported)
      */
     static TranslationResult translate(const std::shared_ptr<Query>& ast);
 
 private:
     /**
      * Extract predicates from FILTER conditions
-     * Returns false if unsupported expression found (e.g., OR, complex functions)
+     * Supports AND/OR and converts to Disjunctive Normal Form (DNF)
+     * Returns false if unsupported expression found
      */
     static bool extractPredicates(
         const std::shared_ptr<Expression>& expr,
         std::vector<PredicateEq>& eqPredicates,
         std::vector<PredicateRange>& rangePredicates,
+        std::string& error
+    );
+    
+    /**
+     * Check if expression contains OR operator (requires DisjunctiveQuery)
+     */
+    static bool containsOr(const std::shared_ptr<Expression>& expr);
+    
+    /**
+     * Convert expression to Disjunctive Normal Form (DNF)
+     * Returns list of conjunctive clauses (disjuncts)
+     * Example: (A AND B) OR (C AND D) -> [[A,B], [C,D]]
+     */
+    static std::vector<ConjunctiveQuery> convertToDNF(
+        const std::shared_ptr<Expression>& expr,
+        const std::string& table,
         std::string& error
     );
     

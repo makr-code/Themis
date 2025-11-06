@@ -13,6 +13,35 @@ Der `VectorIndexManager` unterstützt:
 - **Konfiguration** (`GET/PUT /vector/index/config`) zur Laufzeit (z. B. `efSearch`)
 - **Statistiken** (`GET /vector/index/stats`) für Index-Kennzahlen
 
+## Distanzmetriken
+
+Themis unterstützt drei Distanzmetriken für Vektorsuche:
+
+- **L2** (Euklidische Distanz): $d(a,b) = \sqrt{\sum_i (a_i - b_i)^2}$
+  - Verwendet für: Absolute Distanzen im Vektorraum
+  - "Lower is better" Semantik
+  
+- **COSINE** (Kosinus-Ähnlichkeit): $d(a,b) = 1 - \frac{a \cdot b}{||a|| \cdot ||b||}$
+  - Vektoren werden automatisch normalisiert (L2-Norm)
+  - Verwendet für: Richtungsähnlichkeit (z. B. Textembeddings)
+  - "Lower is better" Semantik (1 - Kosinus-Ähnlichkeit)
+
+- **DOT** (Skalarprodukt): $d(a,b) = -a \cdot b$
+  - **Keine Normalisierung** (Rohwerte werden verwendet)
+  - Negiert für "lower is better" Semantik (HNSW verwendet Distanzen)
+  - Verwendet für: Maximum Inner Product Search (MIPS), Pre-normalisierte Embeddings
+  - **Hinweis**: Bei DOT wird kein Normalisierungsschritt angewendet. Wenn normalisierte Suche gewünscht ist, verwenden Sie COSINE.
+
+**Metrik-Auswahl**: Konfiguriert in `/vector/index/config` via `metric`-Feld:
+
+```json
+{
+  "metric": "DOT",  // oder "L2", "COSINE"
+  "dimension": 768,
+  "efSearch": 64
+}
+```
+
 ## Batch Insert
 
 ### Endpoint
@@ -201,7 +230,7 @@ Setze `auto_save=true` und `savePath` via `VectorIndexManager::setAutoSavePath()
 {
   "objectName": "vectors",
   "dimension": 768,
-  "metric": "COSINE",
+  "metric": "COSINE",  // oder "L2", "DOT"
   "efSearch": 64,
   "M": 16,
   "efConstruction": 200,
@@ -227,7 +256,7 @@ Setze `auto_save=true` und `savePath` via `VectorIndexManager::setAutoSavePath()
 {
   "objectName": "vectors",
   "dimension": 768,
-  "metric": "COSINE",
+  "metric": "COSINE",  // oder "L2", "DOT"
   "vectorCount": 123456,
   "efSearch": 64,
   "M": 16,

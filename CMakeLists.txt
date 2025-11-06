@@ -27,6 +27,14 @@ option(THEMIS_ENABLE_TRACING "Enable OpenTelemetry distributed tracing" ON)
 option(THEMIS_ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
 option(THEMIS_STRICT_BUILD "Treat warnings as errors" OFF)
 
+# Geo feature tiering options (Core vs. Enterprise add-ins)
+option(THEMIS_GEO "Enable Geo core feature scaffolding" ON)
+option(THEMIS_GEO_SIMD "Enable SIMD kernels for Geo (enterprise add-in)" OFF)
+option(THEMIS_GEO_GPU "Enable GPU backend for Geo (enterprise add-in)" OFF)
+option(THEMIS_GEO_H3 "Enable H3 integration (enterprise add-in)" OFF)
+option(THEMIS_GEO_GEOS_PLUGIN "Enable GEOS prepared geometries plugin (enterprise add-in)" OFF)
+option(THEMIS_ENTERPRISE "Enable enterprise capabilities bundle" OFF)
+
 # Compiler warnings and optimizations
 if(MSVC)
     add_compile_options(/W4 /utf-8 /wd4701)
@@ -199,10 +207,15 @@ set(THEMIS_CORE_SOURCES
     src/utils/saga_logger.cpp
     src/utils/lek_manager.cpp
     src/utils/stemmer.cpp
+    src/utils/stopwords.cpp
     src/utils/pii_pseudonymizer.cpp
+    src/utils/normalizer.cpp
     src/security/pki_key_provider.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
+    # Geo scaffolding (headers + stubs; safe no-ops until used)
+    src/geo/cpu_backend.cpp
+    src/geo/gpu_backend_stub.cpp
 )
 
 # Main library
@@ -236,6 +249,26 @@ if(THEMIS_ENABLE_GPU)
 elseif(hnswlib_FOUND)
     target_link_libraries(themis_core PUBLIC hnswlib::hnswlib)
     target_compile_definitions(themis_core PUBLIC THEMIS_HNSW_ENABLED)
+endif()
+
+# Propagate Geo feature tiering compile definitions
+if(THEMIS_GEO)
+    target_compile_definitions(themis_core PUBLIC THEMIS_GEO_ENABLED)
+endif()
+if(THEMIS_GEO_SIMD)
+    target_compile_definitions(themis_core PUBLIC THEMIS_GEO_SIMD_ENABLED)
+endif()
+if(THEMIS_GEO_GPU)
+    target_compile_definitions(themis_core PUBLIC THEMIS_GEO_GPU_ENABLED)
+endif()
+if(THEMIS_GEO_H3)
+    target_compile_definitions(themis_core PUBLIC THEMIS_GEO_H3_ENABLED)
+endif()
+if(THEMIS_GEO_GEOS_PLUGIN)
+    target_compile_definitions(themis_core PUBLIC THEMIS_GEO_GEOS_PLUGIN_ENABLED)
+endif()
+if(THEMIS_ENTERPRISE)
+    target_compile_definitions(themis_core PUBLIC THEMIS_ENTERPRISE_ENABLED)
 endif()
 
 if(THEMIS_ENABLE_TRACING)
@@ -307,10 +340,18 @@ if(THEMIS_BUILD_TESTS)
         tests/test_query_or.cpp
         tests/test_stats_api.cpp
         tests/test_http_range_index.cpp
-        tests/test_query_engine_range.cpp
+              tests/test_stemming.cpp
+              tests/test_stopwords.cpp
+              tests/test_normalization.cpp
+              tests/test_phrase_search.cpp
+              tests/test_aql_fulltext.cpp
+              tests/test_aql_or.cpp
+              tests/test_aql_fulltext_hybrid.cpp
         tests/test_metrics_api.cpp
         tests/test_http_query_range.cpp
         tests/test_http_aql.cpp
+        tests/test_http_aql_fulltext_score.cpp
+        tests/test_http_aql_fulltext_or.cpp
     tests/test_http_aql_join.cpp
     tests/test_http_aql_let.cpp
         tests/test_http_aql_collect.cpp
@@ -324,6 +365,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_changefeed_sse.cpp
         tests/test_http_timeseries.cpp
     tests/test_stemming.cpp
+        tests/test_stopwords.cpp
         tests/test_http_governance.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
@@ -353,6 +395,9 @@ if(THEMIS_BUILD_TESTS)
         tests/test_saga_logger.cpp
         tests/test_http_retention_api.cpp
         tests/test_policy_yaml.cpp
+        tests/test_pki_client.cpp
+        tests/test_http_policies_export.cpp
+        tests/test_pii_soft_delete.cpp
     )
     
     target_link_libraries(themis_tests

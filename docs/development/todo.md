@@ -23,6 +23,8 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 
 ## Kurzstatus – Offene Schwerpunkte (Nächste 1–2 Sprints)
 
+Wichtiger Hinweis (Release-Fokus): Das Geo-Modul (Speicher, Indizes, AQL ST_*) wird auf nach den Core-Release verschoben. Alle Geo-bezogenen Arbeiten bleiben geplant, werden jedoch erst nach GA wieder aufgenommen. Die Release-Ziele konzentrieren sich auf Kern-Datenbankfunktionen und höhere Funktionen (Search, Vector, TS, Security, Ops).
+
 Diese Kurzliste verdichtet die wichtigsten noch offenen Themen aus den detaillierten Abschnitten weiter unten.
 
 - AQL-Erweiterungen: Equality-Joins, Subqueries/LET, Aggregationen (COLLECT), OR/NOT mit Index-Merge, RETURN-Projektionen
@@ -35,6 +37,10 @@ Diese Kurzliste verdichtet die wichtigsten noch offenen Themen aus den detaillie
 - Security: Column-Level Encryption Key Rotation, Dynamic Data Masking, RBAC-Basis, eIDAS-konforme Signaturen (PKI)
 - Observability/Ops: POST /config (Hot-Reload), strukturierte Logs, inkrementelle Backups
 - Auto-Scaling (Serverless-Basis): Request-basiertes Scaling, Auto-Pause, Global Secondary Indexes (eventual)
+
+Nicht im Release-Scope (Post-Release):
+- Geo-Module (WKB/EWKB Storage, R-Tree/Z-Range, ST_* AQL, Boost.Geometry/GEOS, GPU/SIMD Beschleuniger)
+- H3/S2 Indizes und Geo-spezifische Spezialfunktionen
 
 Hinweis: CDC Minimal inkl. Admin-Endpoints (stats/retention) und Doku ist abgeschlossen; siehe `docs/cdc.md`. CDC Streaming (SSE) mit Keep-Alive wurde implementiert, inklusive Tests, OpenAPI und Doku. Follow-ups: optionales echtes Chunked Streaming (async writes) und erweiterte Reverse-Proxy-/Timeout-Doku.
 
@@ -99,6 +105,8 @@ Hinweis: CDC Minimal inkl. Admin-Endpoints (stats/retention) und Doku ist abgesc
 
 - [ ] Datenablage- und Ingestion-Strategie (Post-Go-Live Kerndatenbank)
   - Ziel: Einheitliches, abfragefreundliches Speicherschema für Text- und Geo-Daten in relationalen Tabellen inkl. passender Indizes und Brücken zu Graph/Vector.
+
+Hinweis: Alle Geo-bezogenen Arbeiten (Storage, Indizes, AQL ST_*) werden in diesem Abschnitt nach GA fortgeführt. Siehe auch `docs/geo_execution_plan_over_blob.md` und `docs/geo_feature_tiering.md`.
   - Anforderungen:
     - Geo: Punkt/Linie/Polygon getrennt oder per Geometrie-Typ; Normalisierung auf EPSG:4326 (lon/lat), Bounding Box je Feature; räumliche Indizes (z. B. R-Tree) für Fast-Queries.
     - Begriffs-Indizierung: Relationale Felder/Indizes für inhaltliche Begriffe und Klassifikationen (z. B. „LSG", „Fließgewässer") inkl. Synonym-/Alias-Liste; optional FTS/Trigram.
