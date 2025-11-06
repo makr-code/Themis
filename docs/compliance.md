@@ -287,10 +287,10 @@ cfg.encrypt_then_sign = true;  // <- Aktivieren!
 
 ## 📚 Dokumentation
 
-- [Compliance Integration Guide](docs/compliance_integration.md)
-- [API-Dokumentation](docs/openapi.yaml)
-- [DSGVO-Checkliste](docs/dsgvo_checklist.md)
-- [Retention-Policies](config/retention_policies.yaml)
+- [Compliance Integration Guide](compliance_integration.md)
+- [API-Dokumentation](openapi.yaml)
+- [DSGVO-Checkliste](security_audit_checklist.md)
+- [Retention-Policies](security/audit_and_retention.md)
 
 ## 🤝 Support
 

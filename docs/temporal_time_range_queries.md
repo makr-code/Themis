@@ -470,6 +470,6 @@ while (iter.hasNext()) {
 ## See Also
 
 - [Recursive Path Queries](./recursive_path_queries.md) - Multi-hop temporal reasoning
-- [Temporal Graph Design](./temporal_graph.md) - Overall temporal architecture
+- [Temporal Graph Design](./temporal_graphs.md) - Overall temporal architecture
 - [Graph Index](./indexes.md#graph-index) - Adjacency index design
 - [MVCC Design](./mvcc_design.md) - Transaction temporal semantics

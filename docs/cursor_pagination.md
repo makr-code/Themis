@@ -190,4 +190,4 @@ If the cursor was generated for a different collection, the server returns a 400
 
 - [AQL Syntax Guide](aql_syntax.md)
 - [AQL EXPLAIN/PROFILE](aql_explain_profile.md)
-- [HTTP API Reference](../openapi/openapi.yaml)
+- [HTTP API Reference](openapi.yaml)

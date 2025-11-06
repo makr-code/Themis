@@ -124,7 +124,7 @@ nav:
       - Demo-Script: admin_tools_demo_script.md
   - APIs:
       - OpenAPI & Endpunkte: apis/openapi.md
-      - SSE-Streaming (Changefeed): apis/openapi.md#sse-streaming-changefeed
+      - SSE-Streaming (Changefeed): apis/openapi.md
   - Styleguide & Glossar:
       - Styleguide: styleguide.md
       - Glossar: glossary.md

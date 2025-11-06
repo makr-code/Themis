@@ -236,14 +236,15 @@ HttpServer::HttpServer(
     THEMIS_INFO("Classification API Handler initialized");
 
     // Initialize PII Pseudonymizer (used for reveal/erase)
-    try {
-        pii_pseudonymizer_ = std::make_shared<themis::utils::PIIPseudonymizer>(
-            storage_, field_encryption_, std::make_shared<themis::utils::PIIDetector>(), audit_logger_
-        );
-        THEMIS_INFO("PII Pseudonymizer initialized");
-    } catch (const std::exception& e) {
-        THEMIS_WARN("Failed to initialize PII Pseudonymizer: {}", e.what());
-    }
+    // DEFERRED: Initialize on first use to avoid deadlock during server construction
+    // try {
+    //     pii_pseudonymizer_ = std::make_shared<themis::utils::PIIPseudonymizer>(
+    //         storage_, field_encryption_, std::make_shared<themis::utils::PIIDetector>(), audit_logger_
+    //     );
+    //     THEMIS_INFO("PII Pseudonymizer initialized");
+    // } catch (const std::exception& e) {
+    //     THEMIS_WARN("Failed to initialize PII Pseudonymizer: {}", e.what());
+    // }
     
     // Initialize Reports API Handler
     reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
@@ -1814,7 +1815,14 @@ http::response<http::string_body> HttpServer::handlePiiRevealByUuid(
         }
     }
 
-    // Ensure pseudonymizer is available
+    // Ensure pseudonymizer is available (lazy init)
+    try {
+        ensurePIIPseudonymizer();
+    } catch (const std::exception& ex) {
+        return makeErrorResponse(http::status::service_unavailable, 
+            std::string("PII service initialization failed: ") + ex.what(), req);
+    }
+    
     if (!pii_pseudonymizer_) {
         return makeErrorResponse(http::status::service_unavailable, "PII service not initialized", req);
     }
@@ -1929,6 +1937,14 @@ http::response<http::string_body> HttpServer::handlePiiDeleteByUuid(
             res.prepare_payload();
             return res;
         }
+    }
+
+    // Ensure pseudonymizer is available (lazy init)
+    try {
+        ensurePIIPseudonymizer();
+    } catch (const std::exception& ex) {
+        return makeErrorResponse(http::status::service_unavailable, 
+            std::string("PII service initialization failed: ") + ex.what(), req);
     }
 
     if (!pii_pseudonymizer_) {
@@ -6860,6 +6876,28 @@ std::string HttpServer::extractPathParam(
         param = param.substr(0, query_pos);
     }
     return param;
+}
+
+// Lazy initialization for PIIPseudonymizer (deferred from constructor to avoid RocksDB deadlock)
+void HttpServer::ensurePIIPseudonymizer() {
+    std::lock_guard<std::mutex> lock(pii_init_mutex_);
+    if (pii_pseudonymizer_) {
+        return; // Already initialized
+    }
+    
+    try {
+        auto pii_detector = std::make_shared<themis::utils::PIIDetector>();
+        pii_pseudonymizer_ = std::make_shared<themis::utils::PIIPseudonymizer>(
+            storage_,
+            field_encryption_,
+            pii_detector,
+            audit_logger_
+        );
+        spdlog::info("PIIPseudonymizer lazy-initialized successfully");
+    } catch (const std::exception& ex) {
+        spdlog::error("Failed to lazy-initialize PII Pseudonymizer: {}", ex.what());
+        throw; // Re-throw to allow caller to handle as service unavailable
+    }
 }
 
 // ============================================================================

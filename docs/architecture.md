@@ -456,4 +456,4 @@ curl http://localhost:8765/stats | jq .storage.rocksdb
 - [Base Entity Layer](base_entity.md)
 - [Memory Tuning Guide](memory_tuning.md)
 - [Index Documentation](indexes.md)
-- [OpenAPI Specification](../docs/openapi.yaml)
+- [OpenAPI Specification](openapi.yaml)

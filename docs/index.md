@@ -5,7 +5,7 @@ Willkommen bei ThemisDB. Diese Dokumentation beschreibt Architektur, Datenmodell
 > Hinweis: Für Weitergabe/Archivierung
 >
 > - Gesamte Dokumentation (Druckansicht): [print_page/](print_page/)
-> - Gesamt-PDF (CI generiert): [themisdb-docs-complete.pdf](themisdb-docs-complete.pdf)
+> - Gesamt-PDF (CI generiert): Wird künftig als Build-Artefakt bereitgestellt
 
 ## Für wen ist das gedacht?
 - Benutzerinnen/Benutzer: Wie verwende ich AQL und die Server-APIs?

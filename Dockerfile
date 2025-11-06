@@ -11,6 +11,12 @@ WORKDIR /opt
 RUN git clone https://github.com/microsoft/vcpkg.git vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 ENV VCPKG_ROOT=/opt/vcpkg
+ENV VCPKG_FORCE_SYSTEM_BINARIES=1
+ENV PATH="${VCPKG_ROOT}:${PATH}"
+
+# Ensure compilers are discoverable by CMake
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
 
 # Allow overriding target triplet (x64-linux default for QNAP x86_64)
 ARG VCPKG_TRIPLET=x64-linux
@@ -23,6 +29,9 @@ RUN cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} \
+    -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
+    -DCMAKE_C_COMPILER=/usr/bin/gcc \
+    -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
     && cmake --build build -j
 
 # Runtime image
@@ -38,7 +47,7 @@ COPY --from=build /opt/vcpkg/installed /opt/vcpkg/installed
 
 # Triplet must match the build stage ARG; default to x64-linux
 ARG VCPKG_TRIPLET=x64-linux
-ENV LD_LIBRARY_PATH=/opt/vcpkg/installed/${VCPKG_TRIPLET}/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/opt/vcpkg/installed/${VCPKG_TRIPLET}/lib
 
 # Default config and data
 COPY config/config.json /etc/vccdb/config.json

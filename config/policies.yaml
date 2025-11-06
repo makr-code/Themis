@@ -5,3 +5,10 @@
   actions: ["metrics.read"]
   resources: ["/metrics"]
   effect: allow
+
+- id: allow-admin-policies-export
+  name: admin darf Policies exportieren
+  subjects: ["admin"]
+  actions: ["admin"]
+  resources: ["/policies/export/ranger"]
+  effect: allow

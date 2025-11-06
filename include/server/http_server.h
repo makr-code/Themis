@@ -307,6 +307,9 @@ private:
 
     std::string extractPathParam(const std::string& path, const std::string& prefix);
 
+    // Lazy initialization for PIIPseudonymizer
+    void ensurePIIPseudonymizer();
+
     // Accept new connections
     void doAccept();
     void onAccept(beast::error_code ec, tcp::socket socket);
@@ -354,6 +357,7 @@ private:
     std::shared_ptr<themis::FieldEncryption> field_encryption_;
     // PII Pseudonymizer (for reveal/erase operations)
     std::shared_ptr<themis::utils::PIIPseudonymizer> pii_pseudonymizer_;
+    std::mutex pii_init_mutex_; // For lazy initialization thread-safety
     
     // SAGA Logger
     std::shared_ptr<themis::utils::SAGALogger> saga_logger_;

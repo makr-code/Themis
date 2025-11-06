@@ -23,13 +23,20 @@ protected:
     void SetUp() override {
         // Ensure config directory exists and write a simple policies.yaml
         std::filesystem::create_directories("config");
-        const char* yaml = R"YAML(
+                const char* yaml = R"YAML(
 - id: allow-metrics-readonly
-  name: readonly darf /metrics
-  subjects: ["readonly"]
-  actions: ["metrics.read"]
-  resources: ["/metrics"]
-  effect: allow
+    name: readonly darf /metrics
+    subjects: ["readonly"]
+    actions: ["metrics.read"]
+    resources: ["/metrics"]
+    effect: allow
+
+- id: allow-admin-policies-export
+    name: admin darf Policies exportieren
+    subjects: ["admin"]
+    actions: ["admin"]
+    resources: ["/policies/export/ranger"]
+    effect: allow
 )YAML";
         std::ofstream pf("config/policies.yaml", std::ios::binary);
         pf << yaml;
@@ -122,6 +129,10 @@ TEST_F(PoliciesExportHttpTest, ExportPolicies_AsAdmin_ReturnsRangerJson) {
         }
     );
     EXPECT_EQ(res.result(), http::status::ok);
+
+        // Debug: output actual response
+        std::cout << "Response status: " << res.result_int() << std::endl;
+        std::cout << "Response body: " << res.body() << std::endl;
 
     // Very simple validation: response contains service name and resources
     auto body = res.body();
