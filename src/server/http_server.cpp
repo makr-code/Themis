@@ -4705,8 +4705,15 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             } else {
                 requested_count_for_cursor = 1000;
             }
-            // Engine soll count+1 liefern (extra Element f�r has_more)
-            q.orderBy->limit = requested_count_for_cursor + 1;
+            // Engine soll count+1 liefern (extra Element f�r has_more detection)
+            // Add safety margin for cursor pagination: when using cursor with ORDER BY,
+            // the query engine may filter items after cursor positioning (e.g., if there
+            // are equality predicates), which can result in fewer items than requested.
+            // Conservative approach: fetch extra items to account for potential filtering.
+            constexpr size_t CURSOR_SAFETY_MARGIN = 5;
+            size_t num_predicates = q.predicates.size();
+            size_t safety_margin = (num_predicates > 0) ? CURSOR_SAFETY_MARGIN * num_predicates : CURSOR_SAFETY_MARGIN;
+            q.orderBy->limit = requested_count_for_cursor + safety_margin + 1;
 
             // Wenn ein Cursor-Token �bergeben wurde, ermittle Anker (value, pk)
             if (!cursor_token.empty()) {
