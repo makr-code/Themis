@@ -221,28 +221,52 @@ set(THEMIS_CORE_SOURCES
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})
 
-target_link_libraries(themis_core
-    PUBLIC
-        RocksDB::rocksdb
-        simdjson::simdjson
-        TBB::tbb
-        Arrow::arrow_shared
-        fmt::fmt
-        spdlog::spdlog
-        Boost::system
-        nlohmann_json::nlohmann_json
-        CURL::libcurl
-        yaml-cpp::yaml-cpp
+# --- Defensive resolution of potentially ambiguous targets ---
+# Arrow may export Arrow::arrow_shared or Arrow::arrow depending on packaging
+if(TARGET Arrow::arrow_shared)
+    set(THEMIS_ARROW_TARGET Arrow::arrow_shared)
+elseif(TARGET Arrow::arrow)
+    set(THEMIS_ARROW_TARGET Arrow::arrow)
+else()
+    message(FATAL_ERROR "Required CMake target 'Arrow::arrow_shared' or 'Arrow::arrow' not found. Ensure Arrow was found correctly.")
+endif()
+
+# Collect required targets (OpenSSL targets are included here as well)
+set(THEMIS_REQUIRED_TARGETS
+    RocksDB::rocksdb
+    simdjson::simdjson
+    TBB::tbb
+    ${THEMIS_ARROW_TARGET}
+    fmt::fmt
+    spdlog::spdlog
+    Boost::system
+    nlohmann_json::nlohmann_json
+    CURL::libcurl
+    yaml-cpp::yaml-cpp
     OpenSSL::SSL
     OpenSSL::Crypto
 )
 
-# Link ZSTD if available and define compile flag
+# Validate that each required target actually exists and provide a clear error if not
+foreach(_tgt IN LISTS THEMIS_REQUIRED_TARGETS)
+    if(NOT TARGET ${_tgt})
+        message(FATAL_ERROR "Required CMake target '${_tgt}' not found for target 'themis_core'. Ensure the corresponding package was found and provides this target.")
+    endif()
+endforeach()
+
+# Link the validated targets
+target_link_libraries(themis_core
+    PUBLIC
+        ${THEMIS_REQUIRED_TARGETS}
+)
+
+# Link ZSTD if available and define compile flag (unchanged)
 if(DEFINED THEMIS_ZSTD_TARGET)
     target_link_libraries(themis_core PUBLIC ${THEMIS_ZSTD_TARGET})
     target_compile_definitions(themis_core PUBLIC THEMIS_HAS_ZSTD)
 endif()
 
+# GPU / Faiss / hnswlib handling (unchanged)
 if(THEMIS_ENABLE_GPU)
     target_link_libraries(themis_core PUBLIC faiss)
     target_compile_definitions(themis_core PUBLIC THEMIS_GPU_ENABLED)
@@ -271,17 +295,15 @@ if(THEMIS_ENTERPRISE)
     target_compile_definitions(themis_core PUBLIC THEMIS_ENTERPRISE_ENABLED)
 endif()
 
+# Tracing: keep the existing defensive checks for OpenTelemetry targets
 if(THEMIS_ENABLE_TRACING)
-    # Defensive checks: Ensure OpenTelemetry targets exist before linking
     if(NOT TARGET opentelemetry-cpp::trace)
-        message(FATAL_ERROR "Required CMake target 'opentelemetry-cpp::trace' not found. "
-                            "Ensure opentelemetry-cpp was found successfully.")
+        message(FATAL_ERROR "Required CMake target 'opentelemetry-cpp::trace' not found. Ensure opentelemetry-cpp was found successfully.")
     endif()
     if(NOT TARGET opentelemetry-cpp::otlp_http_exporter)
-        message(FATAL_ERROR "Required CMake target 'opentelemetry-cpp::otlp_http_exporter' not found. "
-                            "Ensure opentelemetry-cpp was found successfully with otlp-http feature.")
+        message(FATAL_ERROR "Required CMake target 'opentelemetry-cpp::otlp_http_exporter' not found. Ensure opentelemetry-cpp was found successfully with otlp-http feature.")
     endif()
-    
+
     target_link_libraries(themis_core PUBLIC
         opentelemetry-cpp::trace
         opentelemetry-cpp::otlp_http_exporter
