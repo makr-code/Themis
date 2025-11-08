@@ -22,21 +22,21 @@ class PoliciesExportHttpTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Ensure config directory exists and write a simple policies.yaml
-        std::filesystem::create_directories("config");
-                const char* yaml = R"YAML(
+    std::filesystem::create_directories("config");
+    const char* yaml = R"YAML(
 - id: allow-metrics-readonly
-    name: readonly darf /metrics
-    subjects: ["readonly"]
-    actions: ["metrics.read"]
-    resources: ["/metrics"]
-    effect: allow
+  name: readonly darf /metrics
+  subjects: ["readonly"]
+  actions: ["metrics.read"]
+  resources: ["/metrics"]
+  effect: allow
 
 - id: allow-admin-policies-export
-    name: admin darf Policies exportieren
-    subjects: ["admin"]
-    actions: ["admin"]
-    resources: ["/policies/export/ranger"]
-    effect: allow
+  name: admin darf Policies exportieren
+  subjects: ["admin"]
+  actions: ["admin"]
+  resources: ["/policies/export/ranger"]
+  effect: allow
 )YAML";
         std::ofstream pf("config/policies.yaml", std::ios::binary);
         pf << yaml;

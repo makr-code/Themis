@@ -58,6 +58,20 @@ protected:
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         setupTestData();
+        // Enable vector metadata encryption schema for collection "test_docs"
+        // Schema shape expected by server: { collections: { test_docs: { encryption: { enabled: true, fields: ["content"] }}}}
+        nlohmann::json es = {
+            {"collections", {
+                {"test_docs", {
+                    {"encryption", {
+                        {"enabled", true},
+                        {"fields", nlohmann::json::array({"content"})}
+                    }}
+                }}
+            }}
+        };
+        auto estr = es.dump();
+        storage_->put("config:encryption_schema", std::vector<uint8_t>(estr.begin(), estr.end()));
     }
 
     void TearDown() override {
@@ -221,6 +235,48 @@ TEST_F(HttpVectorApiTest, VectorIndexStats_ReturnsConfiguration) {
     EXPECT_EQ(response["efSearch"], 64);
 }
 
+TEST_F(HttpVectorApiTest, VectorBatchInsert_EncryptsMetadata_WhenSchemaEnabled) {
+    // Insert with metadata field 'content' which is marked encrypted by schema
+    json request = {
+        {"vector_field", "vec"},
+        {"items", json::array({
+            json{{"pk","sec1"},{"vector", {1.0f, 0.0f, 0.0f}}, {"fields", json{{"content","secret meta"}}}}
+        })}
+    };
+    auto resp = httpPost("/vector/batch_insert", request);
+    ASSERT_TRUE(resp.contains("inserted"));
+    EXPECT_EQ(resp["inserted"], 1);
+
+    // Read back underlying entity from storage and verify encryption markers
+    // Stored entity key uses object_name prefix (test_docs) + ':' + pk
+    auto raw = storage_->get("test_docs:sec1");
+    ASSERT_TRUE(raw.has_value());
+    // Native binary deserialization (entity stored via BaseEntity::serialize)
+    themis::BaseEntity ent = themis::BaseEntity::deserialize("sec1", *raw);
+    // Plaintext field "content" should have been replaced with monostate
+    auto fContent = ent.getField("content");
+    ASSERT_TRUE(fContent.has_value());
+    EXPECT_TRUE(std::holds_alternative<std::monostate>(*fContent));
+    // Encryption marker boolean
+    auto fEnc = ent.getField("content_enc");
+    ASSERT_TRUE(fEnc.has_value());
+    ASSERT_TRUE(std::holds_alternative<bool>(*fEnc));
+    EXPECT_TRUE(std::get<bool>(*fEnc));
+    // Encrypted blob JSON stored as string in field content_encrypted
+    auto fBlob = ent.getField("content_encrypted");
+    ASSERT_TRUE(fBlob.has_value());
+    ASSERT_TRUE(std::holds_alternative<std::string>(*fBlob));
+    auto blobStr = std::get<std::string>(*fBlob);
+    // Parse inner JSON for key metadata presence
+    auto blobJson = json::parse(blobStr);
+    ASSERT_TRUE(blobJson.contains("key_id"));
+    ASSERT_TRUE(blobJson.contains("key_version"));
+    // Optional: presence of cryptographic fields
+    ASSERT_TRUE(blobJson.contains("iv"));
+    ASSERT_TRUE(blobJson.contains("tag"));
+    ASSERT_TRUE(blobJson.contains("ciphertext"));
+}
+
 TEST_F(HttpVectorApiTest, VectorIndexConfigGet_ReturnsCurrentConfig) {
     auto response = httpGet("/vector/index/config");
 
@@ -256,7 +312,11 @@ TEST_F(HttpVectorApiTest, VectorIndexConfigPut_RejectsInvalidEfSearch) {
     ASSERT_TRUE(response.contains("error"));
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
-    EXPECT_NE(response["message"].get<std::string>().find("efSearch must be between"), std::string::npos);
+    if (response["message"].is_string()) {
+        EXPECT_NE(response["message"].get<std::string>().find("efSearch must be between"), std::string::npos);
+    } else {
+        FAIL() << "Expected 'message' field to be a string";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorIndexSave_CreatesFiles) {
@@ -316,7 +376,11 @@ TEST_F(HttpVectorApiTest, VectorIndexLoad_FailsOnInvalidDirectory) {
     ASSERT_TRUE(response.contains("error"));
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
-    EXPECT_NE(response["message"].get<std::string>().find("Failed to load index"), std::string::npos);
+    if (response["message"].is_string()) {
+        EXPECT_NE(response["message"].get<std::string>().find("Failed to load index"), std::string::npos);
+    } else {
+        FAIL() << "Expected 'message' field to be a string";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorIndexLoad_RequiresDirectory) {
@@ -326,7 +390,11 @@ TEST_F(HttpVectorApiTest, VectorIndexLoad_RequiresDirectory) {
     ASSERT_TRUE(response.contains("error"));
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
-    EXPECT_NE(response["message"].get<std::string>().find("Missing required field: directory"), std::string::npos);
+    if (response["message"].is_string()) {
+        EXPECT_NE(response["message"].get<std::string>().find("Missing required field: directory"), std::string::npos);
+    } else {
+        FAIL() << "Expected 'message' field to be a string";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorSearch_FindsNearestNeighbors) {
@@ -349,7 +417,11 @@ TEST_F(HttpVectorApiTest, VectorSearch_FindsNearestNeighbors) {
     
     // First result should be doc1 with smallest distance
     EXPECT_EQ(results[0]["pk"], "doc1");
-    EXPECT_LT(results[0]["distance"].get<float>(), 0.1f); // Very close (cosine distance)
+    if (results[0]["distance"].is_number()) {
+        EXPECT_LT(results[0]["distance"].get<float>(), 0.1f); // Very close (cosine distance)
+    } else {
+        FAIL() << "Expected 'distance' field to be a number";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorSearch_RespectsKParameter) {
@@ -392,7 +464,11 @@ TEST_F(HttpVectorApiTest, VectorSearch_ValidatesDimension) {
     ASSERT_TRUE(response.contains("error"));
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
-    EXPECT_NE(response["message"].get<std::string>().find("dimension mismatch"), std::string::npos);
+    if (response["message"].is_string()) {
+        EXPECT_NE(response["message"].get<std::string>().find("dimension mismatch"), std::string::npos);
+    } else {
+        FAIL() << "Expected 'message' field to be a string";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorSearch_RequiresVectorField) {
@@ -404,7 +480,11 @@ TEST_F(HttpVectorApiTest, VectorSearch_RequiresVectorField) {
     ASSERT_TRUE(response.contains("error"));
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
-    EXPECT_NE(response["message"].get<std::string>().find("Missing required field: vector"), std::string::npos);
+    if (response["message"].is_string()) {
+        EXPECT_NE(response["message"].get<std::string>().find("Missing required field: vector"), std::string::npos);
+    } else {
+        FAIL() << "Expected 'message' field to be a string";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorSearch_RejectsInvalidK) {
@@ -417,7 +497,11 @@ TEST_F(HttpVectorApiTest, VectorSearch_RejectsInvalidK) {
     ASSERT_TRUE(response.contains("error"));
     EXPECT_EQ(response["error"], true);
     ASSERT_TRUE(response.contains("message"));
-    EXPECT_NE(response["message"].get<std::string>().find("k' must be greater than 0"), std::string::npos);
+    if (response["message"].is_string()) {
+        EXPECT_NE(response["message"].get<std::string>().find("k' must be greater than 0"), std::string::npos);
+    } else {
+        FAIL() << "Expected 'message' field to be a string";
+    }
 }
 
 TEST_F(HttpVectorApiTest, VectorBatchInsert_InsertsItems) {
@@ -462,7 +546,11 @@ TEST_F(HttpVectorApiTest, VectorDeleteByFilter_SupportsPksAndPrefix) {
     ASSERT_TRUE(searchResp.contains("results"));
     auto results = searchResp["results"];
     ASSERT_GE(results.size(), 1);
-    EXPECT_NE(results[0]["pk"].get<std::string>(), std::string("doc2"));
+    if (results[0]["pk"].is_string()) {
+        EXPECT_NE(results[0]["pk"].get<std::string>(), std::string("doc2"));
+    } else {
+        FAIL() << "Expected 'pk' field to be a string";
+    }
 
     // Delete by prefix
     json delByPrefix = {{"prefix", "tmp-"}};
@@ -499,7 +587,12 @@ TEST_F(HttpVectorApiTest, VectorSearch_CursorPagination_Works) {
     if (!has_more) return; // nothing more to test
 
     // Page 2 using cursor
-    std::string cursor = r1["next_cursor"].get<std::string>();
+    std::string cursor;
+    if (r1["next_cursor"].is_string()) {
+        cursor = r1["next_cursor"].get<std::string>();
+    } else {
+        FAIL() << "Expected 'next_cursor' field to be a string";
+    }
     json req2 = {
         {"vector", {1.0f, 0.0f, 0.0f}},
         {"k", 2},

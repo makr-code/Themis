@@ -177,6 +177,32 @@ struct TimeRangeFilter {
     }
 };
 
+/**
+ * @brief Temporal Statistics for edges in a time range
+ * 
+ * Provides aggregated metrics over edges valid during a specific time window.
+ */
+struct TemporalStats {
+    size_t edge_count = 0;              // Total edges with any overlap
+    size_t fully_contained_count = 0;   // Edges fully within time range
+    
+    // Duration statistics (only for bounded edges)
+    size_t bounded_edge_count = 0;      // Edges with both valid_from and valid_to
+    double avg_duration_ms = 0.0;       // Average duration of bounded edges
+    double total_duration_ms = 0.0;     // Sum of all durations
+    std::optional<int64_t> min_duration_ms;  // Shortest edge duration
+    std::optional<int64_t> max_duration_ms;  // Longest edge duration
+    
+    // Temporal range coverage
+    std::optional<int64_t> earliest_start;   // Earliest valid_from among all edges
+    std::optional<int64_t> latest_end;       // Latest valid_to among all edges
+    
+    /**
+     * @brief Pretty-print statistics
+     */
+    std::string toString() const;
+};
+
 } // namespace themis
 
 #endif // THEMIS_TEMPORAL_GRAPH_H

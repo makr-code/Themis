@@ -39,27 +39,68 @@
 - **OpenAPI:** Documented in openapi.yaml with examples
 - **Stopwords:** Pro-Index konfigurierbar (Default-Listen EN/DE, Custom-Liste)
 
-## Future Work (v2+)
+### ✅ AQL Integration: FULLTEXT Operator (v1.3)
 
-### 🔲 AQL Integration: BM25(doc) Function
+**Goal:** Implement FULLTEXT(field, query) operator in AQL
+
+**Status:** ✅ Implementiert (aql_translator.cpp lines 101-174)
+
+**Features:**
+- Syntax: `FULLTEXT(doc.field, "query" [, limit])`
+- Standalone FULLTEXT queries
+- FULLTEXT + AND Kombinationen (hybride Suche)
+- FULLTEXT + OR via DisjunctiveQuery
+- Integration mit BM25() Scoring
+
+**Beispiel-Queries:**
+```aql
+-- Simple FULLTEXT
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "machine learning")
+  RETURN doc
+
+-- FULLTEXT + BM25 scoring
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "machine learning")
+  SORT BM25(doc) DESC
+  LIMIT 10
+  RETURN {title: doc.title, score: BM25(doc)}
+
+-- FULLTEXT + AND (hybrid)
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "neural networks") AND doc.year == "2024"
+  RETURN doc
+
+-- FULLTEXT + OR (disjunctive)
+FOR doc IN articles
+  FILTER FULLTEXT(doc.content, "AI") OR doc.category == "research"
+  RETURN doc
+```
+
+**Tests:** 23/23 green (`test_aql_fulltext.cpp`, `test_aql_fulltext_hybrid.cpp`)
+
+### ✅ AQL Integration: BM25(doc) Function (v1.3)
 
 **Goal:** Enable BM25 scoring in AQL queries with SORT support
 
-**Requirements:**
-1. **Parser Extension** (aql_parser.cpp)
-   - Register `BM25(doc_var)` as built-in function
-   - Return type: numeric (double)
+**Status:** ✅ Implementiert
 
-2. **Query Engine Integration** (query_engine.cpp)
-   - Extend `ExecutionContext` with score map: `map<string, double> bm25_scores`
-   - When FULLTEXT filter present: call `scanFulltextWithScores`, populate score map
-   - Function evaluation: `BM25(doc)` returns `bm25_scores[doc.pk]` or 0.0
+**Implementation Details:**
+1. Query Engine Extension (query_engine.cpp)
+   - Neue Methode: `executeAndKeysWithScores()` liefert `KeysWithScores`
+   - Score-Map aus `scanFulltextWithScores()`
+   - Scores bleiben über AND-Intersections mit Strukturprädikaten erhalten
 
-3. **SORT Integration**
-   - `SORT BM25(doc) DESC` uses score field from context
-   - Alternative: Implicit `_score` field for FULLTEXT results
+2. Function Evaluation (query_engine.cpp lines 963-982)
+   - `BM25(doc)` liest Score aus `ctx.getBm25ScoreForPk(pk)`
+   - 0.0 Fallback, wenn kein Score vorhanden
+   - Extrahiert `_key` oder `_pk` aus dem Dokumentobjekt
 
-**Example Query:**
+3. SORT Integration
+   - `SORT BM25(doc) DESC` nutzt Score aus EvaluationContext
+   - Automatische Befüllung via `ctx.setBm25Scores()` bei FULLTEXT
+
+**Beispiel-Query:**
 ```aql
 FOR doc IN articles
   FILTER FULLTEXT(doc.content, "machine learning")
@@ -68,25 +109,15 @@ FOR doc IN articles
   RETURN {title: doc.title, score: BM25(doc)}
 ```
 
-**Effort Estimate:** 1-2 days
-- Parser extension: 2-4 hours
-- ExecutionContext refactoring: 4-6 hours
-- FULLTEXT integration: 4-6 hours
-- Testing: 2-4 hours
+**Tests:** 4/4 grün (`test_aql_bm25.cpp`)
+- BasicBM25FunctionParsing
+- ExecuteAndKeysWithScores
+- BM25ScoresDecreaseWithRelevance
+- NoScoresForNonFulltextQuery
 
-**Complexity:** Medium
-- Requires threading score context through query execution pipeline
-- FULLTEXT operator currently not implemented in AQL (only HTTP)
-- May conflict with existing filter evaluation order
+## Future Work (v2+)
 
-**Priority:** Medium
-- HTTP API is sufficient for most use cases
-- AQL integration provides unified query language
-- Useful for complex multi-stage queries (FILTER → SORT → LIMIT)
-
----
-
-### 🔲 Advanced Analyzer Extensions
+### ✅ Advanced Analyzer Extensions
 
 **Goal:** Extend stemming with additional linguistic features
 
@@ -94,10 +125,13 @@ FOR doc IN articles
 1. ~~Stopword Filtering~~
   - Implemented in v1.2 (Default EN/DE + Custom per Index)
 
-2. **Umlaut Normalization (German)**
+2. ~~**Umlaut Normalization (German)**~~
+   - ✅ **Implemented in v1.2** (normalize_umlauts config option)
    - Normalize "ä→a", "ö→o", "ü→u", "ß→ss"
    - Improves matching for search queries without special chars
    - Example: "läuft" → "lauft" (stems to "lauf")
+   - Implementation: `utils::Normalizer::normalizeUmlauts()`
+   - Tests: `test_normalization.cpp` (2/2 passing)
 
 3. **Compound Word Splitting (German)**
    - Split "Fußballweltmeisterschaft" → "fußball welt meisterschaft"
@@ -135,9 +169,9 @@ FOR doc IN articles
 
 ---
 
-### 🔲 Phrase Search
+### 🔲 Position-based Phrase Search
 
-**Goal:** Support exact phrase matching (quoted queries)
+**Goal:** Replace substring-based phrases with true position-aware phrase matching
 
 **Example:**
 ```json
@@ -148,11 +182,11 @@ FOR doc IN articles
 ```
 
 **Requirements:**
-- Store token positions in index (extend TF keys with position arrays)
+- Extend index to store token positions (position arrays alongside TF)
 - Phrase query parser: detect quoted strings
-- Proximity verification: ensure tokens appear consecutively
+- Proximity verification: ensure tokens appear consecutively (or within k-window)
 
-**Effort:** 2-3 days
+**Effort:** 2-3 days (incremental over current substring approach)
 
 ---
 
@@ -244,10 +278,40 @@ FOR doc IN articles
 
 ## Documentation TODOs
 
-- [ ] AQL Syntax Guide: FULLTEXT operator, BM25(doc) function
-- [ ] Index Configuration: Stemming options, language codes
-- [ ] Performance Tuning: efSearch, k_rrf, weight_text recommendations
-- [ ] Migration Guide: v1 → v2 (stemming index rebuild)
+- [x] **AQL Syntax Guide: FULLTEXT operator, BM25(doc) function** ✅ COMPLETE
+  - Dokumentiert in `docs/aql_syntax.md` (Zeilen 172-195, 491-577)
+  - FULLTEXT operator vollständig dokumentiert mit Beispielen
+  - BM25(doc) Funktion für Score-Zugriff dokumentiert
+  - Hybrid Search (FULLTEXT + AND) dokumentiert
+  
+- [x] **Index Configuration: Stemming options, language codes** ✅ COMPLETE
+  - Dokumentiert in `docs/search/fulltext_api.md` (Zeilen 1-150)
+  - Stemming: `stemming_enabled`, `language` (en/de/none)
+  - Stopwords: `stopwords_enabled`, custom `stopwords` array
+  - Umlaut-Normalisierung: `normalize_umlauts` für DE
+  - Vollständige API-Beispiele mit Konfiguration
+
+- [x] **Performance Tuning Guide** ✅ COMPLETE (07.11.2025)
+  - Neu erstellt: `docs/search/performance_tuning.md`
+  - BM25 Parameter Tuning (k1, b) mit Use-Case-Matrix
+  - efSearch für Vector-Queries (20-200 mit Recall/Latency trade-offs)
+  - k_rrf für Hybrid Search Fusion (20-100 Empfehlungen)
+  - weight_text/weight_vector für Weighted Fusion
+  - Index Rebuild Strategy & Maintenance
+  - Performance Benchmarks und Monitoring
+  - Production Checklist
+  
+- [x] **Migration Guide: v1 → v2** ✅ COMPLETE (07.11.2025)
+  - Neu erstellt: `docs/search/migration_guide.md`
+  - Zero-Downtime Migration Strategy (Dual Index)
+  - Maintenance Window Strategy (In-Place)
+  - Incremental Migration für große Datasets (>10M docs)
+  - Rollback Procedures mit Timelines
+  - Backward Compatibility Matrix
+  - Testing Checklist (Pre/During/Post-Migration)
+  - Migration Examples: Stemming, Umlaut-Norm, Vector-Dim-Change
+  - Performance Impact & Monitoring
+  - FAQ & Troubleshooting
 
 ## References
 
@@ -256,7 +320,54 @@ FOR doc IN articles
 - RRF: Cormack, Clarke, Büttcher. SIGIR 2009
 - LambdaMART: Burges (2010)
 
-Nächste sinnvolle Schritte
-Umlaut-/ß-Normalisierung (z. B. „läuft“ -> „lauft“) für DE verbessern.
-Phrase Queries und Highlighting.
-AQL-Integration: FULLTEXT-Operator + BM25 im Sort (geplant für V2).
+## Implementation Status (November 2025)
+
+### ✅ Completed Features
+
+1. **BM25 Fulltext Search** - Production-ready
+   - HTTP API: POST /search/fulltext mit Score-Ranking
+   - Index API: POST /index/create mit config options
+   - Query semantics: AND-logic, optional limit
+   
+2. **Stemming & Normalization** - Production-ready
+   - Languages: EN (Porter subset), DE (suffix stemming)
+   - Stopwords: Built-in lists + custom stopwords
+   - Umlaut normalization: ä→a, ö→o, ü→u, ß→ss (optional)
+   
+3. **Phrase Search** - Production-ready (v1)
+   - Quoted phrases: "exact match" queries
+   - Case-insensitive substring matching
+   - Works with normalize_umlauts
+   
+4. **AQL Integration** - Production-ready (v1.3)
+   - FILTER FULLTEXT(field, query [, limit])
+   - SORT BM25(doc) DESC/ASC
+   - RETURN {doc, score: BM25(doc)}
+   - Hybrid: FULLTEXT + AND predicates
+   - OR combinations: FULLTEXT(...) OR ...
+
+5. **Hybrid Search (Text + Vector)** - Production-ready
+   - RRF fusion (Reciprocal Rank Fusion)
+   - Weighted fusion (configurable text/vector balance)
+   - HTTP API: POST /search/hybrid
+
+### 🟡 Planned Enhancements
+
+**Near-term (Q1 2026):**
+- Highlighting: Mark matched terms in response
+- ~~Performance tuning guide with benchmarks~~ ✅ IMPLEMENTED → siehe `docs/search/performance_tuning.md`
+- ~~Migration guide for index rebuilds~~ ✅ IMPLEMENTED → siehe `docs/search/migration_guide.md`
+
+**Long-term (Q2+ 2026):**
+- Position-based phrase search (faster than substring)
+- Advanced analyzers: n-grams, phonetic matching
+- Query expansion with synonyms
+- LambdaMART learning-to-rank
+
+### Nächste sinnvolle Schritte
+
+1. ~~Umlaut-/ß-Normalisierung~~ ✅ IMPLEMENTED
+2. ~~Phrase Queries~~ ✅ IMPLEMENTED (v1 substring-based)
+3. ~~AQL-Integration: FULLTEXT-Operator + BM25~~ ✅ IMPLEMENTED (v1.3)
+4. Highlighting für matched terms (v2 planned)
+5. ~~Performance Tuning Guide mit Benchmarks~~ ✅ IMPLEMENTED → `docs/search/performance_tuning.md`

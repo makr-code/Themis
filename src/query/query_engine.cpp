@@ -162,6 +162,112 @@ QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
 	return {Status::OK(), std::move(keys)};
 }
 
+std::pair<QueryEngine::Status, QueryEngine::KeysWithScores>
+QueryEngine::executeAndKeysWithScores(const ConjunctiveQuery& q) const {
+	auto span = Tracer::startSpan("QueryEngine.executeAndKeysWithScores");
+	span.setAttribute("query.table", q.table);
+	span.setAttribute("query.fulltext", q.fulltextPredicate.has_value());
+	
+	// If no FULLTEXT predicate, delegate to standard method (no scores)
+	if (!q.fulltextPredicate.has_value()) {
+		auto [st, keys] = executeAndKeys(q);
+		KeysWithScores result;
+		result.keys = std::move(keys);
+		result.bm25_scores = std::make_shared<std::unordered_map<std::string, double>>();
+		return {st, std::move(result)};
+	}
+	
+	// FULLTEXT query: Extract scores
+	const auto& ft = *q.fulltextPredicate;
+	auto child = Tracer::startSpan("index.scanFulltextWithScores");
+	child.setAttribute("index.table", q.table);
+	child.setAttribute("index.column", ft.column);
+	child.setAttribute("index.query", ft.query);
+	child.setAttribute("index.limit", static_cast<int64_t>(ft.limit));
+	
+	auto [st, results] = secIdx_.scanFulltextWithScores(q.table, ft.column, ft.query, ft.limit);
+	if (!st.ok) {
+		child.setStatus(false, st.message);
+		return {Status::Error(st.message), KeysWithScores{}};
+	}
+	
+	// Build score map and key list
+	auto scoreMap = std::make_shared<std::unordered_map<std::string, double>>();
+	std::vector<std::string> fulltextKeys;
+	fulltextKeys.reserve(results.size());
+	scoreMap->reserve(results.size());
+	
+	for (const auto& res : results) {
+		fulltextKeys.push_back(res.pk);
+		(*scoreMap)[res.pk] = res.score;
+	}
+	
+	child.setAttribute("index.result_count", static_cast<int64_t>(fulltextKeys.size()));
+	child.setStatus(true);
+	
+	// If there are additional predicates (AND combination), intersect with fulltext results
+	if (!q.predicates.empty() || !q.rangePredicates.empty()) {
+		auto intersectSpan = Tracer::startSpan("query.fulltext_and_intersection");
+		intersectSpan.setAttribute("fulltext.result_count", static_cast<int64_t>(fulltextKeys.size()));
+		intersectSpan.setAttribute("additional.eq_count", static_cast<int64_t>(q.predicates.size()));
+		intersectSpan.setAttribute("additional.range_count", static_cast<int64_t>(q.rangePredicates.size()));
+		
+		// Create a temporary query with only the structural predicates
+		ConjunctiveQuery structuralQuery;
+		structuralQuery.table = q.table;
+		structuralQuery.predicates = q.predicates;
+		structuralQuery.rangePredicates = q.rangePredicates;
+		structuralQuery.orderBy = q.orderBy;
+		
+		// Execute structural predicates
+		auto [structStatus, structKeys] = executeAndKeysRangeAware_(structuralQuery);
+		if (!structStatus.ok) {
+			intersectSpan.setStatus(false, structStatus.message);
+			return {structStatus, KeysWithScores{}};
+		}
+		
+		// Intersect fulltext results with structural predicate results
+		std::sort(fulltextKeys.begin(), fulltextKeys.end());
+		std::sort(structKeys.begin(), structKeys.end());
+		
+		std::vector<std::string> intersection;
+		std::set_intersection(
+			fulltextKeys.begin(), fulltextKeys.end(),
+			structKeys.begin(), structKeys.end(),
+			std::back_inserter(intersection)
+		);
+		
+		// Filter score map to only include intersection keys
+		auto filteredScores = std::make_shared<std::unordered_map<std::string, double>>();
+		filteredScores->reserve(intersection.size());
+		for (const auto& pk : intersection) {
+			auto it = scoreMap->find(pk);
+			if (it != scoreMap->end()) {
+				(*filteredScores)[pk] = it->second;
+			}
+		}
+		
+		intersectSpan.setAttribute("intersection.result_count", static_cast<int64_t>(intersection.size()));
+		intersectSpan.setStatus(true);
+		span.setAttribute("query.result_count", static_cast<int64_t>(intersection.size()));
+		span.setStatus(true);
+		
+		KeysWithScores result;
+		result.keys = std::move(intersection);
+		result.bm25_scores = std::move(filteredScores);
+		return {Status::OK(), std::move(result)};
+	}
+	
+	// Standalone FULLTEXT (no additional predicates)
+	span.setAttribute("query.result_count", static_cast<int64_t>(fulltextKeys.size()));
+	span.setStatus(true);
+	
+	KeysWithScores result;
+	result.keys = std::move(fulltextKeys);
+	result.bm25_scores = std::move(scoreMap);
+	return {Status::OK(), std::move(result)};
+}
+
 std::pair<QueryEngine::Status, std::vector<BaseEntity>>
 QueryEngine::executeAndEntities(const ConjunctiveQuery& q) const {
 	auto span = Tracer::startSpan("QueryEngine.executeAndEntities");
@@ -1588,8 +1694,16 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 		GraphIndexManager::PathResult pathResult;
 		GraphIndexManager::Status st;
 		
+	// Use edge_type filtering if specified
+	bool hasTypeFilter = !q.edge_type.empty();
+	std::string graphId = q.graph_id.empty() ? std::string("default") : q.graph_id;
+		
 		if (timestamp_ms.has_value()) {
 			auto [status, result] = graphIdx_->dijkstraAtTime(q.start_node, q.end_node, *timestamp_ms);
+			st = status;
+			pathResult = result;
+		} else if (hasTypeFilter) {
+			auto [status, result] = graphIdx_->dijkstra(q.start_node, q.end_node, q.edge_type, graphId);
 			st = status;
 			pathResult = result;
 		} else {
@@ -1612,12 +1726,20 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 		std::vector<std::string> reachableNodes;
 		GraphIndexManager::Status st;
 		
+	// Use edge_type filtering if specified
+	bool hasTypeFilter = !q.edge_type.empty();
+	std::string graphId = q.graph_id.empty() ? std::string("default") : q.graph_id;
+		
 		if (timestamp_ms.has_value()) {
 			auto [status, nodes] = graphIdx_->bfsAtTime(q.start_node, *timestamp_ms, q.max_depth);
 			st = status;
 			reachableNodes = std::move(nodes);
+		} else if (hasTypeFilter) {
+			auto [status, nodes] = graphIdx_->bfs(q.start_node, static_cast<int>(q.max_depth), q.edge_type, graphId);
+			st = status;
+			reachableNodes = std::move(nodes);
 		} else {
-			auto [status, nodes] = graphIdx_->bfs(q.start_node, q.max_depth);
+			auto [status, nodes] = graphIdx_->bfs(q.start_node, static_cast<int>(q.max_depth));
 			st = status;
 			reachableNodes = std::move(nodes);
 		}

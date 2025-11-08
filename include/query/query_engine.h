@@ -15,6 +15,7 @@ struct RecursivePathQuery {
     std::string start_node;
     std::string end_node;
     std::string edge_type;
+    std::string graph_id; // multi-graph scope (optional, default="default")
     size_t max_depth = 5;
     std::optional<std::string> valid_from;
     std::optional<std::string> valid_to;
@@ -104,7 +105,12 @@ public:
     std::pair<Status, std::vector<BaseEntity>> executeAndEntities(const ConjunctiveQuery& q) const;
     std::pair<Status, std::vector<std::string>> executeAndKeys(const ConjunctiveQuery& q) const;
 
-    
+    // Variant with BM25 score support for FULLTEXT queries
+    struct KeysWithScores {
+        std::vector<std::string> keys;
+        std::shared_ptr<std::unordered_map<std::string, double>> bm25_scores; // pk -> score
+    };
+    std::pair<Status, KeysWithScores> executeAndKeysWithScores(const ConjunctiveQuery& q) const;
 
     // OR-Queries: Union von mehreren AND-Blöcken
     std::pair<Status, std::vector<std::string>> executeOrKeys(const DisjunctiveQuery& q) const;

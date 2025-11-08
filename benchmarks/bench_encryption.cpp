@@ -12,6 +12,7 @@
 #include "storage/rocksdb_wrapper.h"
 #include "index/secondary_index.h"
 #include "storage/base_entity.h"
+#include "utils/hkdf_helper.h"
 
 using themis::MockKeyProvider;
 using themis::FieldEncryption;
@@ -218,5 +219,136 @@ static void BM_Index_Insert_WithEncryptedPayload(benchmark::State& state) {
 // Compare at 100k rows
 BENCHMARK(BM_Index_Insert_Plain)->Arg(100000)->Iterations(1)->Unit(benchmark::kMillisecond)->UseRealTime();
 BENCHMARK(BM_Index_Insert_WithEncryptedPayload)->Arg(100000)->Iterations(1)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+// --- HKDF Derivation Benchmarks (Schema-based Encryption) ---
+
+static void BM_HKDF_Derive_FieldKey(benchmark::State& state) {
+    auto& c = CryptoEnv::instance(); c.initOnce();
+    std::vector<uint8_t> dek = c.provider->getKey("user_pii", 1);
+    std::string user_id = "user_12345";
+    std::vector<uint8_t> salt(user_id.begin(), user_id.end());
+    std::string info = "field:email";
+    
+    for (auto _ : state) {
+        auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+        benchmark::DoNotOptimize(field_key);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+BENCHMARK(BM_HKDF_Derive_FieldKey)->Unit(benchmark::kMicrosecond);
+
+// --- Schema-based Full Field Encryption (HKDF + Encrypt) ---
+
+static void BM_SchemaEncrypt_SingleField(benchmark::State& state) {
+    auto& c = CryptoEnv::instance(); c.initOnce();
+    std::vector<uint8_t> dek = c.provider->getKey("user_pii", 1);
+    std::string user_id = "user_12345";
+    std::string field_name = "email";
+    std::string plaintext = makeRandomString(static_cast<size_t>(state.range(0)));
+    
+    for (auto _ : state) {
+        // HKDF derivation
+        std::vector<uint8_t> salt(user_id.begin(), user_id.end());
+        std::string info = "field:" + field_name;
+        auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+        
+        // Encryption
+        std::vector<uint8_t> plain_bytes(plaintext.begin(), plaintext.end());
+        auto blob = c.enc->encryptWithKey(plain_bytes, "field:" + field_name, 1, field_key);
+        benchmark::DoNotOptimize(blob);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+BENCHMARK(BM_SchemaEncrypt_SingleField)->Arg(64)->Arg(256)->Arg(1024)->Unit(benchmark::kMicrosecond);
+
+// --- Schema-based Full Field Decryption (HKDF + Decrypt) ---
+
+static void BM_SchemaDecrypt_SingleField(benchmark::State& state) {
+    auto& c = CryptoEnv::instance(); c.initOnce();
+    std::vector<uint8_t> dek = c.provider->getKey("user_pii", 1);
+    std::string user_id = "user_12345";
+    std::string field_name = "email";
+    std::string plaintext = makeRandomString(static_cast<size_t>(state.range(0)));
+    
+    // Pre-encrypt
+    std::vector<uint8_t> salt(user_id.begin(), user_id.end());
+    std::string info = "field:" + field_name;
+    auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+    std::vector<uint8_t> plain_bytes(plaintext.begin(), plaintext.end());
+    auto blob = c.enc->encryptWithKey(plain_bytes, "field:" + field_name, 1, field_key);
+    
+    for (auto _ : state) {
+        // HKDF derivation (same as encrypt)
+        auto derived_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+        
+        // Decryption
+        auto decrypted_bytes = c.enc->decryptWithKey(blob, derived_key);
+        benchmark::DoNotOptimize(decrypted_bytes);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+BENCHMARK(BM_SchemaDecrypt_SingleField)->Arg(64)->Arg(256)->Arg(1024)->Unit(benchmark::kMicrosecond);
+
+// --- Multi-Field Entity with Schema Encryption (Realistic Scenario) ---
+
+static void BM_SchemaEncrypt_MultiField_Entity(benchmark::State& state) {
+    auto& c = CryptoEnv::instance(); c.initOnce();
+    std::vector<uint8_t> dek = c.provider->getKey("user_pii", 1);
+    std::string user_id = "user_12345";
+    
+    std::vector<std::string> fields = {"email", "phone", "ssn", "address"};
+    std::vector<std::string> plaintexts = {
+        "alice@example.com",
+        "+1-555-1234",
+        "123-45-6789",
+        "123 Main St, Anytown USA"
+    };
+    
+    for (auto _ : state) {
+        std::vector<EncryptedBlob> blobs;
+        blobs.reserve(fields.size());
+        
+        for (size_t i = 0; i < fields.size(); ++i) {
+            std::vector<uint8_t> salt(user_id.begin(), user_id.end());
+            std::string info = "field:" + fields[i];
+            auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+            std::vector<uint8_t> plain_bytes(plaintexts[i].begin(), plaintexts[i].end());
+            blobs.push_back(c.enc->encryptWithKey(plain_bytes, "field:" + fields[i], 1, field_key));
+        }
+        
+        benchmark::DoNotOptimize(blobs);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+BENCHMARK(BM_SchemaEncrypt_MultiField_Entity)->Unit(benchmark::kMicrosecond);
+
+// --- Vector<float> Encryption (Embeddings) ---
+
+static void BM_VectorFloat_Encryption(benchmark::State& state) {
+    auto& c = CryptoEnv::instance(); c.initOnce();
+    std::vector<uint8_t> dek = c.provider->getKey("user_pii", 1);
+    std::string user_id = "user_12345";
+    std::string field_name = "embedding";
+    
+    // 768-dim embedding (typical BERT size)
+    std::vector<float> embedding(768);
+    for (size_t i = 0; i < 768; ++i) embedding[i] = static_cast<float>(i) * 0.001f;
+    
+    // Serialize to JSON
+    nlohmann::json j_arr = nlohmann::json::array();
+    for (float val : embedding) j_arr.push_back(val);
+    std::string json_str = j_arr.dump();
+    std::vector<uint8_t> plain_bytes(json_str.begin(), json_str.end());
+    
+    for (auto _ : state) {
+        std::vector<uint8_t> salt(user_id.begin(), user_id.end());
+        std::string info = "field:" + field_name;
+        auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+        auto blob = c.enc->encryptWithKey(plain_bytes, "field:" + field_name, 1, field_key);
+        benchmark::DoNotOptimize(blob);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+BENCHMARK(BM_VectorFloat_Encryption)->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_MAIN();

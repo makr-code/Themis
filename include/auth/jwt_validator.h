@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <optional>
 
 namespace themis {
 namespace auth {
@@ -18,6 +19,9 @@ struct JWTClaims {
     std::vector<std::string> roles;
     std::string issuer;
     std::chrono::system_clock::time_point expiration;
+    std::optional<std::chrono::system_clock::time_point> not_before;
+    std::optional<std::chrono::system_clock::time_point> issued_at;
+    std::vector<std::string> audience;
     
     bool isExpired() const {
         return std::chrono::system_clock::now() > expiration;
@@ -33,6 +37,14 @@ struct JWTClaims {
  * - Check expiration and issuer
  * - Extract claims for access control
  */
+struct JWTValidatorConfig {
+    std::string jwks_url;               // Keycloak JWKS endpoint
+    std::string expected_issuer;        // optional: exact match required if set
+    std::string expected_audience;      // optional: must be contained in aud if set
+    std::chrono::seconds cache_ttl{600};
+    std::chrono::seconds clock_skew{60};
+};
+
 class JWTValidator {
 public:
     /**
@@ -41,6 +53,9 @@ public:
      *        Example: https://keycloak.vcc.local/realms/vcc/protocol/openid-connect/certs
      */
     explicit JWTValidator(const std::string& jwks_url);
+
+    /** Initialize with full config */
+    explicit JWTValidator(const JWTValidatorConfig& cfg);
     
     /**
      * @brief Parse and validate JWT token
@@ -71,12 +86,21 @@ public:
     static bool hasAccess(const JWTClaims& claims, const std::string& encryption_context);
 
 private:
-    std::string decodeBase64Url(const std::string& input);
+    std::vector<uint8_t> decodeBase64Url(const std::string& input);
+    std::string decodeBase64UrlToString(const std::string& input);
     nlohmann::json fetchJWKS();
-    bool verifySignature(const std::string& header_payload, 
-                        const std::string& signature,
-                        const nlohmann::json& jwks);
+    const nlohmann::json* findJwkForKid(const nlohmann::json& jwks, const std::string& kid) const;
+    bool verifySignatureRS256(const std::string& header_payload,
+                              const std::vector<uint8_t>& signature,
+                              const nlohmann::json& jwk);
+    bool checkAudience(const nlohmann::json& payload) const;
     
+    // testing helper
+public:
+    void setJWKSForTesting(const nlohmann::json& jwks,
+                           std::chrono::system_clock::time_point t = std::chrono::system_clock::now());
+private:
+    JWTValidatorConfig cfg_;
     std::string jwks_url_;
     nlohmann::json jwks_cache_;
     std::chrono::system_clock::time_point jwks_cache_time_;

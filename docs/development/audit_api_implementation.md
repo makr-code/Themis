@@ -1,7 +1,7 @@
-# ThemisDB Audit API - Implementierung abgeschlossen ✅
+# ThemisDB Audit API – Implementierung & Hardening ✅
 
-**Datum:** 1. November 2025  
-**Status:** REST API erfolgreich implementiert und kompiliert
+**Datum:** 7. November 2025  
+**Status:** REST-API implementiert, Hardening (URL-Decoding, erweiterter ISO8601 Parser, Rate-Limiting) aktiv, Tests grün
 
 ---
 
@@ -58,12 +58,15 @@ struct AuditQueryFilter {
 - Gleiche Query-Parameter
 - Antwort: `text/csv` mit Datei-Download
 
-**Features:**
-- ISO 8601 Datum-Parsing (YYYY-MM-DDTHH:MM:SS)
-- URL-Decoding (%XX, +)
-- Case-insensitive Filterung
+**Features (aktuell):**
+- ISO 8601 Datum-Parsing: Unterstützung für `YYYY-MM-DDTHH:MM:SS`, optionale Millisekunden (`.fff`), sowie Zeitzonen `Z` oder Offset `±HH:MM` (Normalisierung nach UTC)
+- Epoch-Millis als Alternative (numerischer Parameterwert)
+- Vollständiges URL-Decoding (Percent-Encoding inkl. `+` → Leerzeichen)
+- Case-insensitive Filterung der Erfolg-Parameter (`success=true|1|yes`)
 - Automatische Sortierung (neueste zuerst)
-- Integration mit bestehender Audit-Logger-Infrastruktur
+- CSV-Export mit konfigurierbarer Page-Size (bis 10.000)
+- Rate-Limiting pro Minute pro (Route + Authorization-Token oder anonym) mit Retry-After
+- Integration mit Audit-Logger (encrypt-then-sign) Infrastruktur
 
 ---
 
@@ -91,22 +94,10 @@ struct AuditQueryFilter {
 
 ---
 
-## Build-Status
+## Build-Status (Kurz)
 
-### C++ (themis_server)
-```
-✅ themis_core.lib      - Kompiliert erfolgreich
-✅ themis_server.exe    - Kompiliert erfolgreich
-⚠️  2 Warnungen (harmlos):
-   - C4101: Unreferenzierte Variable 'e'
-   - C4505: Nicht referenzierte Funktion 'parseIso8601ToMs'
-```
-
-### .NET (Admin Tools)
-```
-✅ Themis.AdminTools.Shared - Build erfolgreich
-✅ Themis.AuditLogViewer     - Build erfolgreich
-```
+- C++ Server: Endpunkte in `HttpServer` integriert, Unit- und HTTP-Tests vorhanden (siehe `tests/test_http_audit.cpp`).
+- .NET Tools: WPF Viewer vorhanden unter `tools/Themis.AuditLogViewer` (optionale Nutzung).
 
 ---
 
@@ -146,20 +137,20 @@ c:\VCC\themis\
 
 ## Integration in themis_server
 
-### Initialisierung (http_server.cpp, Zeile ~200)
+### Initialisierung (http_server.cpp – Konstruktor)
 ```cpp
-// Audit Logger (bereits vorhanden)
+// Audit Logger (neu)
 themis::utils::AuditLoggerConfig audit_cfg;
 audit_cfg.log_path = "data/logs/audit.jsonl";
 audit_logger_ = std::make_shared<themis::utils::AuditLogger>(
     field_enc, pki_client, audit_cfg);
 
-// Audit API Handler (NEU)
+// Audit API Handler (neu)
 audit_api_ = std::make_unique<themis::server::AuditApiHandler>(
     field_enc, pki_client, audit_cfg.log_path);
 ```
 
-### Routing (http_server.cpp, Zeile ~540)
+### Routing (http_server.cpp)
 ```cpp
 if (path_only == "/api/audit" && method == http::verb::get)
     return Route::AuditQueryGet;
@@ -167,7 +158,7 @@ if (path_only == "/api/audit/export/csv" && method == http::verb::get)
     return Route::AuditExportCsvGet;
 ```
 
-### Handler-Dispatch (http_server.cpp, Zeile ~795)
+### Handler-Dispatch (http_server.cpp)
 ```cpp
 case Route::AuditQueryGet:
     response = handleAuditQuery(req);
@@ -274,11 +265,11 @@ dotnet run
 ## Bekannte Limitierungen
 
 ### C++ API
-- Keine Authentifizierung (API-Key/JWT) implementiert
-- Kein Rate-Limiting
-- Maximale Page-Size: 1000
-- ISO 8601 Parser unterstützt nur YYYY-MM-DDTHH:MM:SS (keine Zeitzonen)
-- URL-Decoder ist minimal (Production: Boost.URL oder ähnliches)
+- Authentifizierung/Autorisierung: Wenn Tokens via Env gesetzt sind, verlangen die Endpunkte den Scope `audit:read`. Der ADMIN‑Token erhält diesen Scope automatisch. (Readonly-Token kann optional erweitert werden.)
+- Rate-Limiting ist aktuell statisch pro Minute (fester 60s Zeitschlitz, keine gleitenden Fenster)
+- Page-Size für JSON Query auf 1000 begrenzt; CSV auf 10.000 – kein Streaming-Paging für große Exporte
+- ISO 8601 Parser deckt kein Wochen-/Ordinaldatum und keine rein Minuten/UTC-Abkürzungen ab (nur Basis-Format + Offset)
+- URL-Decoder deckt kein Unicode-Normalisierungs-Handling ab (Byte-orientiert)
 
 ### .NET App
 - Keine Unit-Tests
@@ -291,22 +282,147 @@ dotnet run
 ## Verbesserungsideen
 
 ### Kurzfristig
-- Authentifizierung (X-API-Key Header)
-- Rate-Limiting (Max. 100 Req/min)
-- Besserer ISO 8601 Parser (std::chrono in C++20)
-- Error-Handling mit HTTP-Statuscodes (401, 429, etc.)
+- Rollen/Scopes feinjustieren (z. B. `readonly` optional mit `audit:read`)
+- Dynamisches Rate-Limiting (gleitende Fenster / Token-Leaky-Bucket)
+- Erweiterter ISO 8601 Parser (Edge Cases, Validierung, Reject invalid)
+- Einheitliches Error-Handling mit strukturiertem Fehlerobjekt (Fehlercode, Tracking-ID)
+
+### Auth & Scopes (Beispiel)
+
+- ADMIN‑Token per Umgebung setzen (erhält `audit:read`):
+  - Windows PowerShell:
+    - `$env:THEMIS_TOKEN_ADMIN = "<geheimer-token>"`
+  - Linux/macOS:
+    - `export THEMIS_TOKEN_ADMIN=<geheimer-token>`
+- Request mit Bearer Header:
+  - `Authorization: Bearer <geheimer-token>`
 
 ### Mittelfristig
 - WebSocket/SSE für Echtzeit-Updates
-- Elasticsearch-Integration für schnelle Suche
+- Elasticsearch / Columnar Secondary Store für schnelle Filterung
 - Grafische Auswertungen (Charts, Heatmaps)
 - Excel-Export zusätzlich zu CSV
 
 ### Langfristig
 - KI-basierte Anomalie-Erkennung
 - SIEM-Integration (Splunk, ELK-Stack)
-- Multi-Tenant-Fähigkeit
-- Audit-Log-Kompression (Gorilla-Codec)
+- Multi-Tenant-Fähigkeit inkl. Mandanten-Trennung der Audit-Dateien
+- Audit-Log-Kompression / Rotation (z. B. zstd + Zeitindex)
+
+---
+
+## Rate-Limiting Details
+
+Die Audit-Endpunkte nutzen ein einfaches Fenster-basiertes Limiting:
+
+| Merkmal | Wert |
+|---------|------|
+| Konfiguration | Env `THEMIS_AUDIT_RATE_LIMIT` (Standard: 100) |
+| Fenster | 60 Sekunden (fixe Zeitscheiben) |
+| Schlüssel | `route + ':' + Authorization-Header` oder `anon` |
+| Antworten bei Limit | HTTP 429 mit Header `Retry-After: 60`, `X-RateLimit-Limit`, `X-RateLimit-Remaining` |
+
+Beispiel:
+```
+GET /api/audit?page=1&page_size=10
+Authorization: Bearer <token>
+→ Nach >N Requests innerhalb einer Minute: 429
+```
+
+Erweiterungsideen:
+- Sliding Window / Token Bucket für gleichmäßigere Verteilung
+- Metriken (Prometheus) für aktuelle Bucket-Auslastung
+- Differenzierte Limits für JSON vs. CSV Export
+
+## URL-Decoding
+
+Aktuelle Implementierung ersetzt:
+- `+` → Leerzeichen
+- `%HH` → Byte (hexadezimal)
+
+Nicht unterstützt:
+- Mehrfache Kodierung (`%252F` → `%2F` → `/` nur einstufig)
+- UTF-8 Validierung – Bytes werden roh übernommen
+
+## Zeitstempel-Parsing
+
+Akzeptierte Formen:
+```
+1730860000000          # Epoch Millis
+2025-11-07T10:15:30Z   # Zulu
+2025-11-07T10:15:30.123Z
+2025-11-07T11:15:30+01:00
+2025-11-07T09:15:30-01:00
+```
+
+Fehlerhafte oder nicht erkannte Eingaben → 0 (Aktuell stillschweigend; zukünftige Änderung: 400 Bad Request)
+
+## Sicherheit & Scopes
+
+Benötigter Scope für beide Endpunkte: `audit:read`.
+Aktuell vergebene Scopes (Umgebungsvariablen):
+
+| Token | Env Variable | Standard-Scopes |
+|-------|--------------|-----------------|
+| Admin | THEMIS_TOKEN_ADMIN | admin, config:read, config:write, cdc:read, cdc:admin, metrics:read, data:read, data:write, audit:read |
+| ReadOnly | THEMIS_TOKEN_READONLY | metrics:read, config:read, data:read, cdc:read, audit:read |
+| Analyst | THEMIS_TOKEN_ANALYST | metrics:read, data:read, cdc:read |
+
+Hinweis: Analyst-Token erhält aktuell keinen `audit:read` Scope – bewusst getrennt.
+
+Header-Beispiel:
+```
+Authorization: Bearer <ADMIN_TOKEN>
+```
+
+## Fehlerantworten (aktuell)
+
+| Status | Grund |
+|--------|-------|
+| 400 | Ungültige Parameter (z. B. page < 1) |
+| 401 | Fehlender oder ungültiger Authorization-Header |
+| 403 | Token ohne erforderlichen Scope |
+| 429 | Rate Limit erreicht |
+| 500 | Interner Fehler beim Lesen/Entschlüsseln |
+
+Struktur (Beispiel 429):
+```json
+{"error":true,"message":"Rate limit exceeded","status_code":429}
+```
+
+Geplante Vereinheitlichung: `{ "error": { "code": "rate_limit", "message": "...", "retry_after": 60 } }`
+
+## Beispiel für erweiterten Query mit Offset und URL-Encoding
+
+```
+GET /api/audit?user=alice%2Badmin&action=VIEW%2FACCESS&start=1969-12-31T00:00:00Z&end=2100-01-01T00:00:00%2B02:00&page=1&page_size=10
+```
+
+## Environment Konfiguration Zusammenfassung
+
+| Variable | Bedeutung |
+|----------|-----------|
+| THEMIS_AUDIT_RATE_LIMIT | Requests pro Minute (0 = kein Limit) |
+| THEMIS_TOKEN_ADMIN | Admin-Token mit umfassenden Scopes |
+| THEMIS_TOKEN_READONLY | Optionaler ReadOnly-Token |
+
+## Tests
+
+`tests/test_http_audit.cpp` enthält u. a.:
+- `QueryReturnsSingleEntry` – Basisfunktion
+- `CsvExportReturnsHeaderAndRow` – CSV-Export
+- `UrlDecodingAndIso8601RangeAndRateLimit` – URL-Decoding, ISO8601 mit Offset, Rate-Limit (429)
+
+## Nächste Dokumentationsschritte
+
+- OpenAPI (`openapi/openapi.yaml`) um 429-Schema erweitern
+- Einheitliches Fehlerobjekt spezifizieren
+- Beispiel für Audit-spezifische Governance-Header aufnehmen
+- Performance-Hinweise (große CSV Exporte vs. JSON Paging)
+
+---
+
+**Erstellt & gepflegt:** VS Code Copilot – Aktualisiert nach Hardening
 
 ---
 

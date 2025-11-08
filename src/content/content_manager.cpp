@@ -4,6 +4,7 @@
 #include "utils/logger.h"
 #include "storage/key_schema.h"
 #include "utils/zstd_codec.h"
+#include "utils/hkdf_helper.h"
 
 #include <algorithm>
 #include <chrono>
@@ -284,14 +285,16 @@ ChunkMeta ChunkMeta::fromJson(const json& j) {
 }
 
 ContentManager::ContentManager(
-    std::shared_ptr<RocksDBWrapper> storage,
-    std::shared_ptr<VectorIndexManager> vector_index,
-    std::shared_ptr<GraphIndexManager> graph_index,
-    std::shared_ptr<SecondaryIndexManager> secondary_index
+        std::shared_ptr<RocksDBWrapper> storage,
+        std::shared_ptr<VectorIndexManager> vector_index,
+        std::shared_ptr<GraphIndexManager> graph_index,
+        std::shared_ptr<SecondaryIndexManager> secondary_index,
+        std::shared_ptr<FieldEncryption> field_encryption
 ) : storage_(std::move(storage))
-  , vector_index_(std::move(vector_index))
-  , graph_index_(std::move(graph_index))
-  , secondary_index_(std::move(secondary_index))
+    , vector_index_(std::move(vector_index))
+    , graph_index_(std::move(graph_index))
+    , secondary_index_(std::move(secondary_index))
+    , field_encryption_(std::move(field_encryption))
 {}
 
 void ContentManager::registerProcessor(std::unique_ptr<IContentProcessor> processor) {
@@ -360,7 +363,7 @@ static ContentCategory detectCategory(const std::string& mime, const std::string
     return ct.mime_type.empty() ? ContentCategory::UNKNOWN : ct.category;
 }
 
-Status ContentManager::importContent(const json& spec, const std::optional<std::string>& blob) {
+Status ContentManager::importContent(const json& spec, const std::optional<std::string>& blob, const std::string& user_context) {
     try {
         if (!spec.is_object() || !spec.contains("content") || !spec["content"].is_object()) {
             return Status::Error("spec.content missing or invalid");
@@ -427,6 +430,39 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                 meta.compression_type.clear();
             }
 
+            // Optional encryption of blob based on config:content_encryption_schema and user_context
+            bool encrypt_blob = false;
+            std::string encryption_key_id;
+            try {
+                if (auto encv = storage_->get("config:content_encryption_schema")) {
+                    std::string es(encv->begin(), encv->end());
+                    json ej = json::parse(es);
+                    // Example schema: {"enabled":true, "key_id":"content_blob", "context":"user"}
+                    encrypt_blob = ej.value("enabled", false);
+                    encryption_key_id = ej.value("key_id", "content_blob");
+                }
+            } catch (...) {}
+            if (encrypt_blob && field_encryption_) {
+                // Kontextuelle Ableitung via HKDF (salt = user_context) – nutzt aktuelle Key-Version.
+                // Falls user_context leer, verwende "anonymous" als Fallback
+                std::string ctx = user_context.empty() ? "anonymous" : user_context;
+                try {
+                    auto kp = field_encryption_->getKeyProvider();
+                    auto key_bytes = kp->getKey(encryption_key_id); // latest active
+                    auto meta_info = kp->getKeyMetadata(encryption_key_id, 0);
+                    // HKDF ableiten (info = "content_blob")
+                    std::vector<uint8_t> salt(ctx.begin(), ctx.end());
+                    auto derived_key = themis::utils::HKDFHelper::derive(key_bytes, salt, "content_blob", key_bytes.size());
+                    auto blobEnc = field_encryption_->encryptWithKey(std::string(to_store.begin(), to_store.end()), encryption_key_id, meta_info.version, derived_key);
+                    json bjson = blobEnc.toJson();
+                    std::string benc = bjson.dump();
+                    to_store.assign(benc.begin(), benc.end());
+                    meta.encrypted = true;
+                    meta.encryption_type = "AES-256-GCM";
+                } catch (const std::exception& e) {
+                    THEMIS_WARN("blob encryption failed: {}", e.what());
+                }
+            }
             if (!storage_->put(bkey, to_store)) {
                 return Status::Error("failed to store blob");
             }
@@ -520,13 +556,77 @@ std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& con
     } catch (...) { return std::nullopt; }
 }
 
-std::optional<std::string> ContentManager::getContentBlob(const std::string& content_id) {
+std::optional<std::string> ContentManager::getContentBlob(const std::string& content_id, const std::string& user_context) {
     std::string id = normalizeId(content_id, "content:");
     std::string key = std::string("content_blob:") + id;
     auto v = storage_->get(key);
     if (!v) return std::nullopt;
     // Inspect meta for compression
     auto m = getContentMeta(id);
+    if (m && m->encrypted && field_encryption_) {
+        // Falls user_context leer, verwende "anonymous" als Fallback für HKDF
+        std::string ctx = user_context.empty() ? "anonymous" : user_context;
+        try {
+            // Attempt decrypt
+            std::string raw(v->begin(), v->end());
+            json bj = json::parse(raw);
+            auto blob = EncryptedBlob::fromJson(bj);
+            // Fetch key and derive contextual key same way
+            auto kp = field_encryption_->getKeyProvider();
+            auto key_bytes = kp->getKey(blob.key_id, blob.key_version);
+            std::vector<uint8_t> salt(ctx.begin(), ctx.end());
+            auto derived_key = themis::utils::HKDFHelper::derive(key_bytes, salt, "content_blob", key_bytes.size());
+            std::string plain = field_encryption_->decryptWithKey(blob, derived_key);
+            
+            // Lazy Re-Encryption: Check if blob uses outdated key version
+            bool needs_reencryption = false;
+            uint32_t latest_version = 0;
+            try {
+                auto latest_meta = kp->getKeyMetadata(blob.key_id, 0); // version=0 -> latest
+                latest_version = latest_meta.version;
+                if (blob.key_version < latest_version) {
+                    needs_reencryption = true;
+                    THEMIS_INFO("Content blob {} uses outdated key version {} (latest: {}), triggering re-encryption", 
+                                id, blob.key_version, latest_version);
+                }
+            } catch (...) {
+                // If metadata check fails, skip re-encryption
+            }
+            
+            if (needs_reencryption) {
+                try {
+                    // Re-encrypt with latest key version
+                    auto latest_key = kp->getKey(blob.key_id); // no version arg -> latest
+                    auto latest_derived = themis::utils::HKDFHelper::derive(latest_key, salt, "content_blob", latest_key.size());
+                    auto new_blob = field_encryption_->encryptWithKey(plain, blob.key_id, latest_version, latest_derived);
+                    json new_bj = new_blob.toJson();
+                    std::string new_raw = new_bj.dump();
+                    std::vector<uint8_t> new_store(new_raw.begin(), new_raw.end());
+                    // Update storage with new encrypted version
+                    if (storage_->put(key, new_store)) {
+                        THEMIS_INFO("Content blob {} successfully re-encrypted to version {}", id, latest_version);
+                    } else {
+                        THEMIS_WARN("Failed to update storage after re-encryption for blob {}", id);
+                    }
+                } catch (const std::exception& re_ex) {
+                    THEMIS_WARN("Re-encryption failed for blob {}: {}", id, re_ex.what());
+                }
+            }
+            
+            // Handle compression after decryption (ciphertext stored compressed? We encrypted post-compression so meta.compressed indicates original compression state)
+            if (m->compressed && m->compression_type == "zstd") {
+#ifdef THEMIS_HAS_ZSTD
+                // Stored was compressed before encryption; decrypt returns compressed bytes now
+                std::vector<uint8_t> tmp(plain.begin(), plain.end());
+                auto decomp = utils::zstd_decompress(tmp);
+                if (!decomp.empty()) return std::string(decomp.begin(), decomp.end());
+#endif
+            }
+            return plain;
+        } catch (const std::exception& e) {
+            THEMIS_WARN("blob decrypt failed: {}", e.what());
+        }
+    }
     if (m && m->compressed && m->compression_type == "zstd") {
 #ifdef THEMIS_HAS_ZSTD
         auto decomp = utils::zstd_decompress(*v);

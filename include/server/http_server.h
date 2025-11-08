@@ -86,8 +86,11 @@ public:
         bool feature_llm_store = false;
         bool feature_cdc = false;
         bool feature_timeseries = false;
+    bool feature_pii_manager = false; // PII mappings persistence (RocksDB CF + API handler)
         // SSE/CDC streaming config
         uint32_t sse_max_events_per_second = 0; // 0 = unlimited; server-side rate limit per connection
+        // API rate limits
+        uint32_t audit_rate_limit_per_minute = 100; // 0 = unlimited
         
         Config() = default;
         Config(std::string h, uint16_t p, size_t threads = 0) 
@@ -199,6 +202,8 @@ private:
     http::response<http::string_body> handleContentConfigPut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleEdgeWeightConfigPut(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleEncryptionSchemaGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleEncryptionSchemaPut(const http::request<http::string_body>& req);
     // Capabilities (Core/Enterprise) endpoint
     http::response<http::string_body> handleCapabilities(const http::request<http::string_body>& req);
 
@@ -256,6 +261,8 @@ private:
 
     // PII API endpoints
     http::response<http::string_body> handlePiiListMappings(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePiiCreateMapping(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePiiGetByUuid(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePiiExportCsv(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePiiDeleteByUuid(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePiiRevealByUuid(const http::request<http::string_body>& req);
@@ -291,6 +298,12 @@ private:
         const http::request<http::string_body>& req
     );
 
+    // Apply governance-related headers (X-Themis-*) to all responses
+    void applyGovernanceHeaders(
+        const http::request<http::string_body>& req,
+        http::response<http::string_body>& res
+    );
+
     // Authorization helper: returns optional error response if unauthorized
     std::optional<http::response<http::string_body>> requireScope(
         const http::request<http::string_body>& req,
@@ -305,10 +318,23 @@ private:
         std::string_view resource_path
     );
 
+    // Extract authentication context (user_id and groups) from JWT token
+    // Returns empty user_id and groups if auth is disabled or token is invalid
+    struct AuthContext {
+        std::string user_id;
+        std::vector<std::string> groups;
+    };
+    AuthContext extractAuthContext(const http::request<http::string_body>& req) const;
+
     std::string extractPathParam(const std::string& path, const std::string& prefix);
 
     // Lazy initialization for PIIPseudonymizer
     void ensurePIIPseudonymizer();
+
+    // Rate limiting helper for Audit endpoints
+    std::optional<http::response<http::string_body>> enforceAuditRateLimit(
+        const http::request<http::string_body>& req,
+        std::string_view route_key);
 
     // Accept new connections
     void doAccept();
@@ -355,6 +381,8 @@ private:
     std::shared_ptr<themis::utils::AuditLogger> audit_logger_;
     // Field encryption for PII mappings
     std::shared_ptr<themis::FieldEncryption> field_encryption_;
+    // Key provider für hierarchische Schluesselverwaltung (DEK, Group-DEKs, Field-Keys)
+    std::shared_ptr<themis::KeyProvider> key_provider_;
     // PII Pseudonymizer (for reveal/erase operations)
     std::shared_ptr<themis::utils::PIIPseudonymizer> pii_pseudonymizer_;
     std::mutex pii_init_mutex_; // For lazy initialization thread-safety
@@ -370,6 +398,7 @@ private:
 
     // PII API Handler
     std::unique_ptr<themis::server::PIIApiHandler> pii_api_;
+    rocksdb::ColumnFamilyHandle* pii_cf_handle_ = nullptr;
     
     // Retention API Handler
     std::unique_ptr<themis::server::RetentionApiHandler> retention_api_;
@@ -401,6 +430,12 @@ private:
     std::atomic<uint64_t> request_count_{0};
     std::atomic<uint64_t> error_count_{0};
     std::chrono::steady_clock::time_point start_time_;
+
+    // Audit rate limiting state
+    struct RateState { uint64_t window_start_ms{0}; uint32_t count{0}; };
+    std::mutex audit_rate_mutex_;
+    std::unordered_map<std::string, RateState> audit_rate_buckets_;
+    uint32_t audit_rate_limit_per_minute_{100};
     
     // Latency histogram buckets (in microseconds): 100us, 500us, 1ms, 5ms, 10ms, 50ms, 100ms, 500ms, 1s, 5s, 10s+
     std::atomic<uint64_t> latency_bucket_100us_{0};

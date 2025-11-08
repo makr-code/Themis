@@ -16,12 +16,13 @@ enum class TokenType {
     FOR, IN, FILTER, SORT, LIMIT, RETURN, LET,
     ASC, DESC, AND, OR, XOR, NOT,
     GRAPH, OUTBOUND, INBOUND, ANY,
+    TYPE,
     COLLECT, AGGREGATE,
     TRUE, FALSE, NULL_LITERAL,
     
     // Operators
     EQ, NEQ, LT, LTE, GT, GTE,
-    PLUS, MINUS, STAR, SLASH,
+    PLUS, MINUS, STAR, SLASH, MODULO,
     ASSIGN,  // Single '=' for assignments (COLLECT var = expr, AGGREGATE var = func)
     
     // Literals
@@ -210,6 +211,7 @@ private:
         if (lower == "outbound") return Token(TokenType::OUTBOUND, value, line, col);
         if (lower == "inbound") return Token(TokenType::INBOUND, value, line, col);
         if (lower == "any") return Token(TokenType::ANY, value, line, col);
+    if (lower == "type") return Token(TokenType::TYPE, value, line, col);
         if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
         if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
         
@@ -252,6 +254,7 @@ private:
             case '-': return Token(TokenType::MINUS, "-", line, col);
             case '*': return Token(TokenType::STAR, "*", line, col);
             case '/': return Token(TokenType::SLASH, "/", line, col);
+            case '%': return Token(TokenType::MODULO, "%", line, col);
             case '.': return Token(TokenType::DOT, ".", line, col);
             case ',': return Token(TokenType::COMMA, ",", line, col);
             case '(': return Token(TokenType::LPAREN, "(", line, col);
@@ -455,6 +458,17 @@ private:
             advance();
 
             // GRAPH keyword and graph name
+            // Optional TYPE "edgeType" vor GRAPH
+            std::string edgeType;
+            if (match(TokenType::TYPE)) {
+                advance();
+                if (!match(TokenType::STRING)) {
+                    throw std::runtime_error("Expected edge type string literal after TYPE");
+                }
+                edgeType = current().value;
+                advance();
+            }
+
             expect(TokenType::GRAPH, "Expected GRAPH keyword in traversal");
             if (!match(TokenType::STRING)) {
                 throw std::runtime_error("Expected graph name string literal after GRAPH");
@@ -472,6 +486,7 @@ private:
             trav->direction = dir;
             trav->startVertex = startVertex;
             trav->graphName = graphName;
+            trav->edgeType = edgeType;
             lastTraversal_ = trav;
 
             // Still return a ForNode for compatibility (collection = "graph")
@@ -645,6 +660,15 @@ private:
     std::shared_ptr<Expression> parseComparison() {
         auto left = parseAdditive();
         
+        // Membership: left IN right (array or variable)
+        // Debug: uncomment to trace tokens
+        // std::cerr << "parseComparison current token: " << (int)current().type << " value='" << current().value << "'\n";
+        if (match(TokenType::IN) || (match(TokenType::IDENTIFIER) && current().value == "IN")) {
+            advance();
+            auto right = parseAdditive();
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::In, left, right);
+        }
+        
         if (match(TokenType::EQ)) {
             advance();
             auto right = parseAdditive();
@@ -695,8 +719,15 @@ private:
     std::shared_ptr<Expression> parseMultiplicative() {
         auto left = parseUnary();
         
-        while (match(TokenType::STAR) || match(TokenType::SLASH)) {
-            BinaryOperator op = match(TokenType::STAR) ? BinaryOperator::Mul : BinaryOperator::Div;
+        while (match(TokenType::STAR) || match(TokenType::SLASH) || match(TokenType::MODULO)) {
+            BinaryOperator op = BinaryOperator::Mul;
+            if (match(TokenType::STAR)) {
+                op = BinaryOperator::Mul;
+            } else if (match(TokenType::SLASH)) {
+                op = BinaryOperator::Div;
+            } else if (match(TokenType::MODULO)) {
+                op = BinaryOperator::Mod;
+            }
             advance();
             auto right = parseUnary();
             left = std::make_shared<BinaryOpExpr>(op, left, right);

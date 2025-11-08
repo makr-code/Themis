@@ -146,6 +146,7 @@ set(THEMIS_CORE_SOURCES
     
     src/index/secondary_index.cpp
     src/index/graph_index.cpp
+    src/index/temporal_graph.cpp
     src/index/property_graph.cpp
     src/index/gnn_embeddings.cpp
     src/index/vector_index.cpp
@@ -347,6 +348,7 @@ if(THEMIS_BUILD_TESTS)
               tests/test_aql_fulltext.cpp
               tests/test_aql_or.cpp
               tests/test_aql_fulltext_hybrid.cpp
+              tests/test_aql_bm25.cpp
         tests/test_metrics_api.cpp
         tests/test_http_query_range.cpp
         tests/test_http_aql.cpp
@@ -367,6 +369,7 @@ if(THEMIS_BUILD_TESTS)
     tests/test_stemming.cpp
         tests/test_stopwords.cpp
         tests/test_http_governance.cpp
+        tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
@@ -375,9 +378,11 @@ if(THEMIS_BUILD_TESTS)
         tests/test_backup_restore.cpp
         tests/test_cursor.cpp
         tests/test_temporal_graph.cpp
+        tests/test_temporal_aggregation.cpp
         tests/test_recursive_path_query.cpp
         tests/test_timerange_query.cpp
         tests/test_property_graph.cpp
+        tests/test_graph_type_filtering.cpp
         tests/test_gnn_embeddings.cpp
         tests/test_semantic_cache.cpp
         tests/test_tsstore.cpp
@@ -388,6 +393,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_adaptive_index.cpp
         tests/test_http_adaptive_index.cpp
         tests/test_encryption.cpp
+        tests/test_encryption_e2e.cpp
         tests/test_vault_key_provider.cpp
         tests/test_audit_logger.cpp
         tests/test_pii_detector.cpp
@@ -398,6 +404,10 @@ if(THEMIS_BUILD_TESTS)
         tests/test_pki_client.cpp
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
+        tests/test_http_pii_lazy_init.cpp
+    tests/test_http_pii_manager_new.cpp
+        tests/test_jwt_validator.cpp
+        tests/test_group_dek.cpp
     )
     
     target_link_libraries(themis_tests

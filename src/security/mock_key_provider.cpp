@@ -214,8 +214,16 @@ uint32_t MockKeyProvider::createKeyFromBytes(
     }
     
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    uint32_t new_version = getLatestVersion(key_id) + 1;
+    // Compute next version without calling getLatestVersion (would re-lock mutex_)
+    uint32_t new_version = 1;
+    auto it = keys_.find(key_id);
+    if (it != keys_.end() && !it->second.empty()) {
+        uint32_t max_version = 0;
+        for (const auto& [v, _] : it->second) {
+            if (v > max_version) max_version = v;
+        }
+        new_version = max_version + 1;
+    }
     
     KeyEntry entry;
     entry.key = key_bytes;

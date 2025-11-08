@@ -23,7 +23,11 @@ protected:
         
         db_ = std::make_unique<themis::RocksDBWrapper>(config);
         ASSERT_TRUE(db_->open());
-        ts_store_ = std::make_unique<themis::TSStore>(db_->getRawDB());
+        
+        // Configure TSStore without compression for unit tests
+        themis::TSStore::Config ts_config;
+        ts_config.compression = themis::TSStore::CompressionType::None;
+        ts_store_ = std::make_unique<themis::TSStore>(db_->getRawDB(), nullptr, ts_config);
         
         // Setup test timestamps
         base_time_ = std::chrono::system_clock::now().time_since_epoch();

@@ -212,6 +212,23 @@ TEST(AQLParserTest, LogicalOperators) {
     ASSERT_TRUE(result2.success) << result2.error.toString();
 }
 
+TEST(AQLParserTest, MembershipInArray) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN users FILTER doc.role IN [\"admin\", \"analyst\"] RETURN doc");
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->filters.size(), 1);
+    // Expect BinaryOp IN at filter root
+    auto cond = result.query->filters[0]->condition;
+    ASSERT_EQ(cond->getType(), ASTNodeType::BinaryOp);
+}
+
+TEST(AQLParserTest, MembershipInVariable) {
+    AQLParser parser;
+    auto result = parser.parse("FOR u IN users LET allowed = [\"de\", \"us\"] FILTER u.country IN allowed RETURN u");
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->filters.size(), 1);
+}
+
 // ============================================================================
 // Field Access Tests
 // ============================================================================
@@ -380,6 +397,120 @@ TEST(AQLParserTest, DoubleForEqualityJoinParsing) {
     ASSERT_TRUE(result.success) << result.error.toString();
     ASSERT_FALSE(result.query->for_nodes.empty());
     ASSERT_EQ(result.query->for_nodes.size(), 2);
+}
+
+// ============================================================================
+// Graph Traversal Tests
+// ============================================================================
+
+TEST(AQLParserTest, GraphTraversalWithTypeFilter) {
+    AQLParser parser;
+    auto result = parser.parse("FOR v IN 1..2 OUTBOUND \"users/1\" TYPE \"follows\" GRAPH \"social\" RETURN v");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query, nullptr);
+    // For compatibility, collection is set to "graph"
+    EXPECT_EQ(result.query->for_node.collection, "graph");
+    ASSERT_NE(result.query->traversal, nullptr);
+    EXPECT_EQ(result.query->traversal->minDepth, 1);
+    EXPECT_EQ(result.query->traversal->maxDepth, 2);
+    EXPECT_EQ(result.query->traversal->startVertex, "users/1");
+    EXPECT_EQ(result.query->traversal->graphName, "social");
+    EXPECT_EQ(result.query->traversal->edgeType, "follows");
+}
+
+TEST(AQLParserTest, GraphTraversalWithoutType) {
+    AQLParser parser;
+    auto result = parser.parse("FOR v IN 2..3 INBOUND \"users/42\" GRAPH \"g\" RETURN v");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query->traversal, nullptr);
+    EXPECT_EQ(result.query->traversal->minDepth, 2);
+    EXPECT_EQ(result.query->traversal->maxDepth, 3);
+    EXPECT_EQ(result.query->traversal->edgeType, "");
+}
+
+// ============================================================================
+// Vector Search Function Tests
+// ============================================================================
+
+TEST(AQLParserTest, VectorSearchFunctionCall) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN products LET similar = VECTOR_SEARCH(\"products\", doc.embedding, 10) RETURN similar");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query, nullptr);
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    EXPECT_EQ(result.query->let_nodes[0].variable, "similar");
+    ASSERT_NE(result.query->let_nodes[0].expression, nullptr);
+    EXPECT_EQ(result.query->let_nodes[0].expression->getType(), ASTNodeType::FunctionCall);
+}
+
+TEST(AQLParserTest, VectorSearchInLet) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN products LET results = VECTOR_SEARCH(\"products\", doc.embedding, 5) RETURN results");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    EXPECT_EQ(result.query->let_nodes[0].variable, "results");
+    ASSERT_NE(result.query->let_nodes[0].expression, nullptr);
+    // Verify the expression is a function call
+    EXPECT_EQ(result.query->let_nodes[0].expression->getType(), ASTNodeType::FunctionCall);
+}
+
+// ============================================================================
+// Content/File Helper Function Tests
+// ============================================================================
+
+TEST(AQLParserTest, ContentMetaFunction) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN documents LET meta = CONTENT_META(doc._key) RETURN meta");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    EXPECT_EQ(result.query->let_nodes[0].variable, "meta");
+    ASSERT_NE(result.query->let_nodes[0].expression, nullptr);
+    EXPECT_EQ(result.query->let_nodes[0].expression->getType(), ASTNodeType::FunctionCall);
+}
+
+TEST(AQLParserTest, ContentChunksFunction) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN documents LET chunks = CONTENT_CHUNKS(doc._key) RETURN chunks");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->let_nodes.size(), 1);
+    EXPECT_EQ(result.query->let_nodes[0].variable, "chunks");
+    ASSERT_NE(result.query->let_nodes[0].expression, nullptr);
+    EXPECT_EQ(result.query->let_nodes[0].expression->getType(), ASTNodeType::FunctionCall);
+}
+
+TEST(AQLParserTest, ContentFunctionsInReturn) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN documents RETURN {meta: CONTENT_META(doc._key), chunks: CONTENT_CHUNKS(doc._key)}");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query->return_node, nullptr);
+    EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::ObjectConstruct);
+}
+
+TEST(AQLParserTest, ModulusOperator) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN numbers FILTER doc.value % 2 == 0 RETURN doc");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_EQ(result.query->filters.size(), 1);
+    // Verify the filter contains a modulus operation
+    auto cond = result.query->filters[0]->condition;
+    ASSERT_EQ(cond->getType(), ASTNodeType::BinaryOp);
+}
+
+TEST(AQLParserTest, ModulusInReturn) {
+    AQLParser parser;
+    auto result = parser.parse("FOR doc IN numbers RETURN {value: doc.num, remainder: doc.num % 10}");
+
+    ASSERT_TRUE(result.success) << result.error.toString();
+    ASSERT_NE(result.query->return_node, nullptr);
+    EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::ObjectConstruct);
 }
 
 int main(int argc, char** argv) {

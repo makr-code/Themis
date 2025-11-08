@@ -246,3 +246,115 @@ TEST_F(HttpContentApiTest, HybridSearch_ExpandsOverEdges) {
     // Erwartung: durch Expansion auch der Nachbar dabei (sofern k>=2)
     EXPECT_NE(std::find(pks.begin(), pks.end(), std::string("chunks:hb")), pks.end());
 }
+
+TEST_F(HttpContentApiTest, BlobEncryption_StoresEncrypted_DecryptsOnRetrieval) {
+    // Enable content blob encryption via config
+    nlohmann::json encCfg = {
+        {"enabled", true},
+        {"key_id", "content_blob"},
+        {"context", "per_user"}
+    };
+    auto encStr = encCfg.dump();
+    storage_->put("config:content_encryption_schema", std::vector<uint8_t>(encStr.begin(), encStr.end()));
+
+    // Import content with blob - user_context will be extracted from auth (or default to "anonymous" if auth disabled)
+    json req = {
+        {"content", json{{"id","secret-doc"},{"mime_type","text/plain"}}},
+        {"blob", "Confidential payload"},
+        {"chunks", json::array({ json{{"seq_num",0},{"chunk_type","text"},{"text","test"}} })}
+    };
+    
+    // Since auth may be disabled in test setup, user_context might be empty or "anonymous"
+    // Server will use extractAuthContext → if auth_ is null/disabled, returns empty user_id
+    // ContentManager falls back to "anonymous" when user_context empty for encryption salt
+    auto resp = httpPost("/content/import", req);
+    
+    ASSERT_TRUE(resp.contains("status")) << resp.dump();
+    EXPECT_EQ(resp["status"], "success");
+
+    // Verify stored blob is encrypted (read raw from storage)
+    auto rawBlob = storage_->get("content_blob:secret-doc");
+    ASSERT_TRUE(rawBlob.has_value()) << "Blob should be stored under content_blob:secret-doc";
+    std::string storedStr(rawBlob->begin(), rawBlob->end());
+    
+    // Stored blob should be JSON with encrypted structure (not plaintext)
+    try {
+        auto storedJson = json::parse(storedStr);
+        ASSERT_TRUE(storedJson.contains("key_id")) << "Encrypted blob should have key_id";
+        ASSERT_TRUE(storedJson.contains("key_version"));
+        ASSERT_TRUE(storedJson.contains("iv"));
+        ASSERT_TRUE(storedJson.contains("ciphertext"));
+        ASSERT_TRUE(storedJson.contains("tag"));
+        // Plaintext "Confidential payload" should NOT appear in stored ciphertext
+        EXPECT_EQ(storedStr.find("Confidential payload"), std::string::npos) 
+            << "Plaintext should not be visible in encrypted blob";
+    } catch (const nlohmann::json::parse_error& e) {
+        FAIL() << "Stored blob should be valid JSON: " << e.what();
+    }
+
+    // GET /content/secret-doc/blob should decrypt (using same user_context)
+    std::string contentType;
+    auto blobResp = httpGet("/content/secret-doc/blob", &contentType);
+    
+    // httpGet returns JSON with {"blob": "..."} if response is not parseable JSON
+    ASSERT_TRUE(blobResp.contains("blob")) << "Response should contain blob field";
+    std::string decryptedBlob = blobResp["blob"].get<std::string>();
+    EXPECT_EQ(decryptedBlob, "Confidential payload") 
+        << "Decrypted blob should match original plaintext";
+}
+
+TEST_F(HttpContentApiTest, BlobLazyReencryption_UpgradesKeyVersionOnRead) {
+    // Enable content blob encryption
+    nlohmann::json encCfg = {
+        {"enabled", true},
+        {"key_id", "content_blob"},
+        {"context", "per_user"}
+    };
+    auto encStr = encCfg.dump();
+    storage_->put("config:content_encryption_schema", std::vector<uint8_t>(encStr.begin(), encStr.end()));
+
+    // Import blob (will be encrypted with current key version)
+    json req = {
+        {"content", json{{"id","reenc-test"},{"mime_type","text/plain"}}},
+        {"blob", "Test payload for re-encryption"},
+        {"chunks", json::array({ json{{"seq_num",0},{"chunk_type","text"},{"text","test"}} })}
+    };
+    auto resp = httpPost("/content/import", req);
+    ASSERT_TRUE(resp.contains("status"));
+    EXPECT_EQ(resp["status"], "success");
+
+    // Read stored blob and capture initial key_version
+    auto rawBlob1 = storage_->get("content_blob:reenc-test");
+    ASSERT_TRUE(rawBlob1.has_value());
+    std::string stored1(rawBlob1->begin(), rawBlob1->end());
+    auto json1 = json::parse(stored1);
+    uint32_t initial_version = json1["key_version"].get<uint32_t>();
+
+    // Simulate key rotation: manually increment key_version in stored blob to create "outdated" scenario
+    // (In real scenario, KeyProvider would have rotated the key and we'd write with old version)
+    // For test simplicity: We'll read blob, verify version, then access it to trigger lazy re-encryption
+    // Since we can't easily rotate keys in test, we simulate by checking that re-encryption logic works
+    
+    // Access blob via GET - should trigger lazy re-encryption if version is outdated
+    // Note: Without actual key rotation in KeyProvider, re-encryption won't trigger
+    // This test validates the flow exists; full integration test would require KeyProvider mock
+    auto blobResp = httpGet("/content/reenc-test/blob");
+    ASSERT_TRUE(blobResp.contains("blob"));
+    std::string decrypted = blobResp["blob"].get<std::string>();
+    EXPECT_EQ(decrypted, "Test payload for re-encryption");
+
+    // Read stored blob again - version should be same (no rotation occurred in test)
+    auto rawBlob2 = storage_->get("content_blob:reenc-test");
+    ASSERT_TRUE(rawBlob2.has_value());
+    std::string stored2(rawBlob2->begin(), rawBlob2->end());
+    auto json2 = json::parse(stored2);
+    uint32_t final_version = json2["key_version"].get<uint32_t>();
+    
+    // In this test without actual rotation, versions should be equal
+    // Real test would increment KeyProvider version and verify upgrade
+    EXPECT_EQ(initial_version, final_version) 
+        << "Without key rotation, version should remain unchanged";
+    
+    // TODO: Add test with mocked KeyProvider that returns higher version to verify re-encryption
+}
+

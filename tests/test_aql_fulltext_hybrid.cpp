@@ -342,7 +342,8 @@ TEST_F(AQLFulltextHybridTest, ExecuteFulltextAndNoIntersection) {
 // Edge Cases
 // ============================================================================
 
-TEST_F(AQLFulltextHybridTest, FulltextOrStillNotSupported) {
+TEST_F(AQLFulltextHybridTest, FulltextOrNowSupported) {
+    // Test FULLTEXT in OR - now supported via DisjunctiveQuery
     std::string aql = R"(
         FOR doc IN articles
         FILTER FULLTEXT(doc.content, "AI") OR doc.year == "2024"
@@ -354,9 +355,9 @@ TEST_F(AQLFulltextHybridTest, FulltextOrStillNotSupported) {
     ASSERT_TRUE(parseResult.success);
     
     auto translateResult = AQLTranslator::translate(parseResult.query);
-    // Should fail - FULLTEXT in OR not supported yet
-    EXPECT_FALSE(translateResult.success);
-    EXPECT_NE(translateResult.error_message.find("FULLTEXT"), std::string::npos);
+    // Should succeed - FULLTEXT in OR is now supported
+    EXPECT_TRUE(translateResult.success) << "Translation error: " << translateResult.error_message;
+    EXPECT_TRUE(translateResult.disjunctive.has_value()) << "Should produce DisjunctiveQuery for OR";
 }
 
 TEST_F(AQLFulltextHybridTest, ReverseOrderFulltextAnd) {

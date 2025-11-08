@@ -257,6 +257,80 @@ GraphIndexManager::bfs(std::string_view startPk, int maxDepth) const {
 			auto it = outEdges_.find(node);
 			if (it != outEdges_.end()) {
 				for (const auto& adj : it->second) {
+					// Non-typed BFS: traverse all graphs
+					if (!visited.count(adj.targetPk)) {
+						visited.insert(adj.targetPk);
+						q.emplace(adj.targetPk, depth + 1);
+					}
+				}
+			}
+		}
+		return {Status::OK(), std::move(order)};
+	}
+
+	// Fallback to RocksDB scan-based BFS (all graphs)
+	while (!q.empty()) {
+		auto [node, depth] = q.front();
+		q.pop();
+
+		order.push_back(node);
+		if (depth == maxDepth) continue;
+
+		const std::string prefix = std::string("graph:out:");
+		db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val){
+			// Parse key to check if it belongs to this node
+			std::string graphId, fromPk, edgeId;
+			if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
+			if (fromPk != node) return true;
+			
+			std::string neigh(val);
+			if (!visited.count(neigh)) {
+				visited.insert(neigh);
+				q.emplace(neigh, depth + 1);
+			}
+			return true;
+		});
+	}
+	return {Status::OK(), std::move(order)};
+}
+
+// BFS with edge type filtering and graph scope (server-side)
+std::pair<GraphIndexManager::Status, std::vector<std::string>>
+GraphIndexManager::bfs(std::string_view startPk, int maxDepth, std::string_view edge_type, std::string_view graph_id) const {
+	if (!db_.isOpen()) return {Status::Error("bfs: Datenbank ist nicht geöffnet"), {}};
+	if (startPk.empty()) return {Status::Error("bfs: startPk darf nicht leer sein"), {}};
+	if (maxDepth < 0) return {Status::Error("bfs: maxDepth muss >= 0 sein"), {}};
+
+	std::vector<std::string> order;
+	std::unordered_set<std::string> visited;
+	std::queue<std::pair<std::string,int>> q;
+
+	q.emplace(std::string(startPk), 0);
+	visited.insert(std::string(startPk));
+
+	std::string typeFilter(edge_type);
+	std::string graphFilter(graph_id);
+
+	// Use in-memory topology for faster BFS if available
+	if (topologyLoaded_) {
+		while (!q.empty()) {
+			auto [node, depth] = q.front();
+			q.pop();
+
+			order.push_back(node);
+			if (depth == maxDepth) continue;
+
+			std::lock_guard<std::mutex> lock(topology_mutex_);
+			auto it = outEdges_.find(node);
+			if (it != outEdges_.end()) {
+				for (const auto& adj : it->second) {
+					// Filter by graph and edge type
+					if (!graphFilter.empty() && adj.graphId != graphFilter) continue;
+					std::string edgeType = getEdgeType_(adj.graphId, adj.edgeId);
+					if (!typeFilter.empty() && edgeType != typeFilter) {
+						continue; // Skip edges with different type
+					}
+
 					if (!visited.count(adj.targetPk)) {
 						visited.insert(adj.targetPk);
 						q.emplace(adj.targetPk, depth + 1);
@@ -275,8 +349,22 @@ GraphIndexManager::bfs(std::string_view startPk, int maxDepth) const {
 		order.push_back(node);
 		if (depth == maxDepth) continue;
 
-		const std::string prefix = std::string("graph:out:") + node + ":";
-		db_.scanPrefix(prefix, [&](std::string_view /*key*/, std::string_view val){
+		if (graphFilter.empty()) {
+			// graph_id required for on-disk scan in multi-graph mode
+			return {Status::Error("bfs: graph_id required for scan without topology"), {}};
+		}
+		const std::string prefix = std::string("graph:out:") + graphFilter + ":" + std::string(node) + ":";
+		db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val){
+			// Extract edgeId from key
+			std::string gid, from, edgeId;
+			if (!parseOutKey_(key, gid, from, edgeId)) return true;
+
+			// Filter by edge type
+			std::string edgeType = getEdgeType_(gid, edgeId);
+			if (!typeFilter.empty() && edgeType != typeFilter) {
+				return true; // Skip edges with different type
+			}
+
 			std::string neigh(val);
 			if (!visited.count(neigh)) {
 				visited.insert(neigh);
@@ -301,45 +389,22 @@ GraphIndexManager::Status GraphIndexManager::rebuildTopology() {
 	outEdges_.clear();
 	inEdges_.clear();
 
-	// Scan all outgoing edges: graph:out:fromPk:edgeId -> toPk
+	// Scan all outgoing edges: graph:out:<graph_id>:<fromPk>:<edgeId> -> toPk
 	db_.scanPrefix("graph:out:", [this](std::string_view key, std::string_view val) {
-		// Parse key: graph:out:<fromPk>:<edgeId>
-		std::string keyStr(key);
-		// Remove "graph:out:" prefix
-		size_t pos = keyStr.find("graph:out:");
-		if (pos == std::string::npos) return true;
-		keyStr = keyStr.substr(10); // skip "graph:out:"
-		
-		// Split at last ':' to separate fromPk and edgeId
-		size_t lastColon = keyStr.rfind(':');
-		if (lastColon == std::string::npos) return true;
-
-		std::string fromPk = keyStr.substr(0, lastColon);
-		std::string edgeId = keyStr.substr(lastColon + 1);
+		std::string graphId, fromPk, edgeId;
+		if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
 		std::string toPk(val);
-
 		// Add to outEdges_
-		outEdges_[fromPk].push_back({edgeId, toPk});
+		outEdges_[fromPk].push_back({edgeId, toPk, graphId});
 		return true;
 	});
 
-	// Scan all incoming edges: graph:in:toPk:edgeId -> fromPk
+	// Scan all incoming edges: graph:in:<graph_id>:<toPk>:<edgeId> -> fromPk
 	db_.scanPrefix("graph:in:", [this](std::string_view key, std::string_view val) {
-		// Parse key: graph:in:<toPk>:<edgeId>
-		std::string keyStr(key);
-		size_t pos = keyStr.find("graph:in:");
-		if (pos == std::string::npos) return true;
-		keyStr = keyStr.substr(9); // skip "graph:in:"
-		
-		size_t lastColon = keyStr.rfind(':');
-		if (lastColon == std::string::npos) return true;
-
-		std::string toPk = keyStr.substr(0, lastColon);
-		std::string edgeId = keyStr.substr(lastColon + 1);
+		std::string graphId, toPk, edgeId;
+		if (!parseInKey_(key, graphId, toPk, edgeId)) return true;
 		std::string fromPk(val);
-
-		// Add to inEdges_
-		inEdges_[toPk].push_back({edgeId, fromPk});
+		inEdges_[toPk].push_back({edgeId, fromPk, graphId});
 		return true;
 	});
 
@@ -398,14 +463,52 @@ size_t GraphIndexManager::getTopologyEdgeCount() const {
 // Shortest-Path-Algorithmen
 // ────────────────────────────────────────────────────────────────────────────
 
-double GraphIndexManager::getEdgeWeight_(std::string_view edgeId) const {
-	const std::string edgeKey = KeySchema::makeGraphEdgeKey(edgeId);
+double GraphIndexManager::getEdgeWeight_(std::string_view graphId, std::string_view edgeId) const {
+	const std::string edgeKey = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
 	auto blob = db_.get(edgeKey);
 	if (!blob) return 1.0; // Default weight
 	
 	BaseEntity edge = BaseEntity::deserialize(std::string(edgeId), *blob);
 	auto weightOpt = edge.getFieldAsDouble("_weight");
 	return weightOpt.value_or(1.0);
+}
+
+std::string GraphIndexManager::getEdgeType_(std::string_view graphId, std::string_view edgeId) const {
+	const std::string edgeKey = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
+	auto blob = db_.get(edgeKey);
+	if (!blob) return ""; // No type
+	
+	BaseEntity edge = BaseEntity::deserialize(std::string(edgeId), *blob);
+	auto typeOpt = edge.getFieldAsString("_type");
+	return typeOpt.value_or("");
+}
+
+bool GraphIndexManager::parseOutKey_(std::string_view key, std::string& graphId, std::string& fromPk, std::string& edgeId) {
+	// Expect: graph:out:<graph_id>:<fromPk>:<edgeId>
+	if (key.rfind("graph:out:", 0) != 0) return false;
+	std::string s(key.substr(10)); // after prefix
+	size_t first = s.find(':');
+	if (first == std::string::npos) return false;
+	size_t last = s.rfind(':');
+	if (last == std::string::npos || last == first) return false;
+	graphId = s.substr(0, first);
+	fromPk = s.substr(first + 1, last - first - 1);
+	edgeId = s.substr(last + 1);
+	return true;
+}
+
+bool GraphIndexManager::parseInKey_(std::string_view key, std::string& graphId, std::string& toPk, std::string& edgeId) {
+	// Expect: graph:in:<graph_id>:<toPk>:<edgeId>
+	if (key.rfind("graph:in:", 0) != 0) return false;
+	std::string s(key.substr(9)); // after prefix
+	size_t first = s.find(':');
+	if (first == std::string::npos) return false;
+	size_t last = s.rfind(':');
+	if (last == std::string::npos || last == first) return false;
+	graphId = s.substr(0, first);
+	toPk = s.substr(first + 1, last - first - 1);
+	edgeId = s.substr(last + 1);
+	return true;
 }
 
 std::pair<GraphIndexManager::Status, GraphIndexManager::PathResult>
@@ -447,9 +550,115 @@ GraphIndexManager::dijkstra(std::string_view startPk, std::string_view targetPk)
 			auto it = outEdges_.find(node);
 			if (it != outEdges_.end()) {
 				for (const auto& adj : it->second) {
+					// Non-typed Dijkstra: traverse all graphs
 					neighbors.push_back(adj.targetPk);
 					// Edge-Weight ermitteln
-					double weight = getEdgeWeight_(adj.edgeId);
+					double weight = getEdgeWeight_(adj.graphId, adj.edgeId);
+					double newCost = dist[node] + weight;
+					
+					if (!dist.count(adj.targetPk) || newCost < dist[adj.targetPk]) {
+						dist[adj.targetPk] = newCost;
+						prev[adj.targetPk] = node;
+						pq.emplace(newCost, adj.targetPk);
+					}
+				}
+			}
+		} else {
+			// Fallback: RocksDB scan (all graphs)
+			const std::string prefix = std::string("graph:out:");
+			db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val) {
+				// Parse key to check if it belongs to this node
+				std::string graphId, fromPk, edgeId;
+				if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
+				if (fromPk != node) return true;
+				
+				std::string neighbor(val);
+				double weight = getEdgeWeight_(graphId, edgeId);
+				double newCost = dist[node] + weight;
+				
+				if (!dist.count(neighbor) || newCost < dist[neighbor]) {
+					dist[neighbor] = newCost;
+					prev[neighbor] = node;
+					pq.emplace(newCost, neighbor);
+				}
+				return true;
+			});
+		}
+	}
+
+	// Pfad rekonstruieren
+	if (!prev.count(target) && target != start) {
+		return {Status::Error("dijkstra: Kein Pfad gefunden"), {}};
+	}
+
+	PathResult result;
+	result.totalCost = dist[target];
+	
+	std::vector<std::string> path;
+	std::string current = target;
+	while (current != start) {
+		path.push_back(current);
+		auto it = prev.find(current);
+		if (it == prev.end()) break;
+		current = it->second;
+	}
+	path.push_back(start);
+	std::reverse(path.begin(), path.end());
+	result.path = std::move(path);
+
+	return {Status::OK(), std::move(result)};
+}
+
+// Dijkstra with edge type filtering and graph scope (server-side)
+std::pair<GraphIndexManager::Status, GraphIndexManager::PathResult>
+GraphIndexManager::dijkstra(std::string_view startPk, std::string_view targetPk, std::string_view edge_type, std::string_view graph_id) const {
+	if (!db_.isOpen()) return {Status::Error("dijkstra: Datenbank ist nicht geöffnet"), {}};
+	if (startPk.empty() || targetPk.empty()) {
+		return {Status::Error("dijkstra: Start und Ziel dürfen nicht leer sein"), {}};
+	}
+
+	std::string start(startPk);
+	std::string target(targetPk);
+	std::string typeFilter(edge_type);
+	std::string graphFilter(graph_id);
+
+	// Priority Queue: (cost, node)
+	using QueueItem = std::pair<double, std::string>;
+	auto cmp = [](const QueueItem& a, const QueueItem& b) { return a.first > b.first; };
+	std::priority_queue<QueueItem, std::vector<QueueItem>, decltype(cmp)> pq(cmp);
+
+	std::unordered_map<std::string, double> dist;
+	std::unordered_map<std::string, std::string> prev;
+	std::unordered_set<std::string> visited;
+
+	dist[start] = 0.0;
+	pq.emplace(0.0, start);
+
+	while (!pq.empty()) {
+		auto [cost, node] = pq.top();
+		pq.pop();
+
+		if (visited.count(node)) continue;
+		visited.insert(node);
+
+		// Ziel erreicht?
+		if (node == target) break;
+
+		// Nachbarn holen (In-Memory falls verfügbar)
+		if (topologyLoaded_) {
+			std::lock_guard<std::mutex> lock(topology_mutex_);
+			auto it = outEdges_.find(node);
+			if (it != outEdges_.end()) {
+				for (const auto& adj : it->second) {
+					// Filter by graph and edge type
+					if (!graphFilter.empty() && adj.graphId != graphFilter) continue;
+					std::string edgeType = getEdgeType_(adj.graphId, adj.edgeId);
+					if (!typeFilter.empty() && edgeType != typeFilter) {
+						continue; // Skip edges with different type
+					}
+
+					// Edge-Weight ermitteln
+					double weight = getEdgeWeight_(adj.graphId, adj.edgeId);
 					double newCost = dist[node] + weight;
 					
 					if (!dist.count(adj.targetPk) || newCost < dist[adj.targetPk]) {
@@ -461,16 +670,22 @@ GraphIndexManager::dijkstra(std::string_view startPk, std::string_view targetPk)
 			}
 		} else {
 			// Fallback: RocksDB scan
-			const std::string prefix = std::string("graph:out:") + node + ":";
+			if (graphFilter.empty()) {
+				return {Status::Error("dijkstra: graph_id required for scan without topology"), {}};
+			}
+			const std::string prefix = std::string("graph:out:") + graphFilter + ":" + std::string(node) + ":";
 			db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val) {
-				std::string keyStr(key);
-				size_t lastColon = keyStr.rfind(':');
-				if (lastColon == std::string::npos) return true;
-				
-				std::string edgeId = keyStr.substr(lastColon + 1);
+				std::string gid, from, edgeId;
+				if (!parseOutKey_(key, gid, from, edgeId)) return true;
+
+				// Filter by edge type
+				std::string edgeType = getEdgeType_(gid, edgeId);
+				if (!typeFilter.empty() && edgeType != typeFilter) {
+					return true; // Skip edges with different type
+				}
+
 				std::string neighbor(val);
-				
-				double weight = getEdgeWeight_(edgeId);
+				double weight = getEdgeWeight_(gid, edgeId);
 				double newCost = dist[node] + weight;
 				
 				if (!dist.count(neighbor) || newCost < dist[neighbor]) {
@@ -549,9 +764,10 @@ GraphIndexManager::aStar(std::string_view startPk, std::string_view targetPk, He
 			auto it = outEdges_.find(node);
 			if (it != outEdges_.end()) {
 				for (const auto& adj : it->second) {
+					// Non-typed A*: traverse all graphs
 					if (visited.count(adj.targetPk)) continue;
 
-					double weight = getEdgeWeight_(adj.edgeId);
+					double weight = getEdgeWeight_(adj.graphId, adj.edgeId);
 					double tentative_g = g_score[node] + weight;
 
 					if (!g_score.count(adj.targetPk) || tentative_g < g_score[adj.targetPk]) {
@@ -563,19 +779,18 @@ GraphIndexManager::aStar(std::string_view startPk, std::string_view targetPk, He
 				}
 			}
 		} else {
-			// Fallback: RocksDB scan
-			const std::string prefix = std::string("graph:out:") + node + ":";
+			// Fallback: RocksDB scan (all graphs)
+			const std::string prefix = std::string("graph:out:");
 			db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val) {
-				std::string keyStr(key);
-				size_t lastColon = keyStr.rfind(':');
-				if (lastColon == std::string::npos) return true;
+				// Parse key to check if it belongs to this node
+				std::string graphId, fromPk, edgeId;
+				if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
+				if (fromPk != node) return true;
 				
-				std::string edgeId = keyStr.substr(lastColon + 1);
 				std::string neighbor(val);
-
 				if (visited.count(neighbor)) return true;
 
-				double weight = getEdgeWeight_(edgeId);
+				double weight = getEdgeWeight_(graphId, edgeId);
 				double tentative_g = g_score[node] + weight;
 
 				if (!g_score.count(neighbor) || tentative_g < g_score[neighbor]) {
@@ -906,6 +1121,82 @@ GraphIndexManager::getOutEdgesInTimeRange(std::string_view fromPk, int64_t range
 	});
 
 	return {Status::OK(), result};
+}
+
+std::pair<GraphIndexManager::Status, TemporalStats>
+GraphIndexManager::getTemporalStats(int64_t range_start_ms, int64_t range_end_ms, bool require_full_containment) const {
+	if (!db_.isOpen()) {
+		return {Status::Error("getTemporalStats: Datenbank ist nicht geöffnet"), {}};
+	}
+
+	TimeRangeFilter filter = TimeRangeFilter::between(range_start_ms, range_end_ms);
+	TemporalStats stats;
+
+	// Scan all edges with prefix "graph:out:"
+	std::string prefix = "graph:out:";
+	db_.scanPrefix(prefix, [this, &filter, require_full_containment, &stats](std::string_view key, std::string_view /*val*/) {
+		// Parse key: graph:out:<from_pk>:<edge_id>
+		std::string keyStr(key);
+		size_t thirdColon = keyStr.rfind(':');
+		if (thirdColon == std::string::npos) return true;
+
+		std::string edgeId = keyStr.substr(thirdColon + 1);
+
+		// Load edge entity to check temporal fields
+		std::string edgeKey = "edge:" + edgeId;
+		auto blob = db_.get(edgeKey);
+		if (!blob.has_value()) return true;
+
+		BaseEntity edge = BaseEntity::deserialize(edgeId, *blob);
+		std::optional<int64_t> valid_from = edge.getFieldAsInt("valid_from");
+		std::optional<int64_t> valid_to = edge.getFieldAsInt("valid_to");
+
+		// Check if edge is in time range
+		bool has_overlap = filter.hasOverlap(valid_from, valid_to);
+		bool fully_contained = filter.fullyContains(valid_from, valid_to);
+
+		if (require_full_containment ? fully_contained : has_overlap) {
+			stats.edge_count++;
+			
+			if (fully_contained) {
+				stats.fully_contained_count++;
+			}
+
+			// Update temporal range
+			if (valid_from.has_value()) {
+				if (!stats.earliest_start.has_value() || *valid_from < *stats.earliest_start) {
+					stats.earliest_start = valid_from;
+				}
+			}
+			if (valid_to.has_value()) {
+				if (!stats.latest_end.has_value() || *valid_to > *stats.latest_end) {
+					stats.latest_end = valid_to;
+				}
+			}
+
+			// Calculate duration statistics for bounded edges
+			if (valid_from.has_value() && valid_to.has_value()) {
+				int64_t duration = *valid_to - *valid_from;
+				stats.bounded_edge_count++;
+				stats.total_duration_ms += static_cast<double>(duration);
+
+				if (!stats.min_duration_ms.has_value() || duration < *stats.min_duration_ms) {
+					stats.min_duration_ms = duration;
+				}
+				if (!stats.max_duration_ms.has_value() || duration > *stats.max_duration_ms) {
+					stats.max_duration_ms = duration;
+				}
+			}
+		}
+		return true;
+	});
+
+	// Calculate average duration
+	if (stats.bounded_edge_count > 0) {
+		stats.avg_duration_ms = stats.total_duration_ms / static_cast<double>(stats.bounded_edge_count);
+	}
+
+	return {Status::OK(), stats};
 }
 
 } // namespace themis

@@ -13,6 +13,7 @@
 #include "index/vector_index.h"
 #include "index/graph_index.h"
 #include "index/secondary_index.h"
+#include "security/encryption.h"
 
 namespace themis {
 namespace content {
@@ -124,7 +125,8 @@ public:
         std::shared_ptr<RocksDBWrapper> storage,
         std::shared_ptr<VectorIndexManager> vector_index,
         std::shared_ptr<GraphIndexManager> graph_index,
-        std::shared_ptr<SecondaryIndexManager> secondary_index
+        std::shared_ptr<SecondaryIndexManager> secondary_index,
+        std::shared_ptr<FieldEncryption> field_encryption = nullptr
     );
     
     ~ContentManager() = default;
@@ -145,7 +147,8 @@ public:
      * @param blob Optionaler Binärblob (wird unter content_blob:<id> gespeichert)
      * @return Status mit message; bei Erfolg ist message="ok"
      */
-    Status importContent(const json& spec, const std::optional<std::string>& blob = std::nullopt);
+    // user_context: z.B. Benutzer-ID für kontextabhängige Verschlüsselung
+    Status importContent(const json& spec, const std::optional<std::string>& blob = std::nullopt, const std::string& user_context = "");
 
     /**
      * @brief Get content metadata
@@ -161,7 +164,7 @@ public:
      * @param content_id Content UUID
      * @return Blob as string if found
      */
-    std::optional<std::string> getContentBlob(const std::string& content_id);
+    std::optional<std::string> getContentBlob(const std::string& content_id, const std::string& user_context = "");
 
     /**
      * @brief Get all chunks for content (ordered by seq_num)
@@ -241,6 +244,7 @@ private:
     std::shared_ptr<VectorIndexManager> vector_index_;
     std::shared_ptr<GraphIndexManager> graph_index_;
     std::shared_ptr<SecondaryIndexManager> secondary_index_;
+    std::shared_ptr<FieldEncryption> field_encryption_;
     
     // Processor registry (Category → Processor)
     std::unordered_map<ContentCategory, std::unique_ptr<IContentProcessor>> processors_;

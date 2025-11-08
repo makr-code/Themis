@@ -29,6 +29,7 @@ public:
     struct AdjacencyInfo {
         std::string edgeId;
         std::string targetPk;
+        std::string graphId; // multi-graph identifier
     };
 
     struct Status {
@@ -108,16 +109,39 @@ public:
         bool require_full_containment = false
     ) const;
 
+    // Temporal aggregations over time ranges
+    std::pair<Status, TemporalStats> getTemporalStats(
+        int64_t range_start_ms,
+        int64_t range_end_ms,
+        bool require_full_containment = false
+    ) const;
+
     // Traversierungen
     std::pair<Status, std::vector<std::string>> bfs(
         std::string_view startPk,
         int maxDepth = 3
     ) const;
 
+    // BFS with edge type filtering and graph scope (server-side)
+    std::pair<Status, std::vector<std::string>> bfs(
+        std::string_view startPk,
+        int maxDepth,
+        std::string_view edge_type,
+        std::string_view graph_id
+    ) const;
+
     // Dijkstra: Kürzester Pfad von start zu target
     std::pair<Status, PathResult> dijkstra(
         std::string_view startPk,
         std::string_view targetPk
+    ) const;
+
+    // Dijkstra with edge type filtering and graph scope (server-side)
+    std::pair<Status, PathResult> dijkstra(
+        std::string_view startPk,
+        std::string_view targetPk,
+        std::string_view edge_type,
+        std::string_view graph_id
     ) const;
 
     // A*: Kürzester Pfad mit Heuristik (optional)
@@ -147,7 +171,15 @@ private:
     void removeEdgeFromTopology_(const std::string& edgeId, const std::string& from, const std::string& to);
     
     // Edge-Weight-Parsing (liest _weight aus Edge-Entity, default 1.0)
-    double getEdgeWeight_(std::string_view edgeId) const;
+    double getEdgeWeight_(std::string_view graphId, std::string_view edgeId) const;
+
+    // Edge-Type-Parsing (liest _type aus Edge-Entity, empty wenn nicht gesetzt)
+    std::string getEdgeType_(std::string_view graphId, std::string_view edgeId) const;
+
+    // Parse keys: graph:out:<graph_id>:<fromPk>:<edgeId>
+    static bool parseOutKey_(std::string_view key, std::string& graphId, std::string& fromPk, std::string& edgeId);
+    // Parse keys: graph:in:<graph_id>:<toPk>:<edgeId>
+    static bool parseInKey_(std::string_view key, std::string& graphId, std::string& toPk, std::string& edgeId);
     
     static std::vector<uint8_t> toBytes(std::string_view sv);
 };

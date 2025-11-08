@@ -128,12 +128,30 @@ Hinweis: Alle Geo-bezogenen Arbeiten (Storage, Indizes, AQL ST_*) werden in dies
 Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Vergleich zu AWS/Azure/GCP:
 
 ### 5.1 Multi-Hop Reasoning & Advanced Graph (vs. Neptune/Cosmos DB)
-**Gap:** Keine rekursiven Pfadabfragen, Graph Neural Networks, temporale Graphen
-- [ ] Recursive CTEs für variable Pfadtiefe ohne Limit
-- [ ] Graph Neural Network Embeddings (DGL/PyG Integration)
-- [ ] Temporal Graph Support (zeitabhängige Kanten mit valid_from/valid_to)
-- [ ] Property Graph Model vollständig (Node-Labels, Relationship-Types)
-- [ ] Multi-Graph Federation (Cross-Graph Joins)
+**Status Update (07.11.2025):** Meiste Features bereits implementiert ✅
+
+- [x] **Recursive CTEs für variable Pfadtiefe** ✅ IMPLEMENTED (15.01.2025)
+  - Siehe: `docs/recursive_path_queries.md`
+  - executeRecursivePathQuery() mit max_depth Parameter
+  
+- [x] **Graph Neural Network Embeddings** ✅ IMPLEMENTED (16.01.2025)
+  - Siehe: `docs/gnn_embeddings.md`
+  - GNNEmbedder class mit GCN/GAT/GraphSAGE support
+  
+- [x] **Temporal Graph Support** ✅ IMPLEMENTED (15.01.2025)
+  - Siehe: `docs/temporal_time_range_queries.md`
+  - valid_from/valid_to für zeitabhängige Kanten
+  - bfsAtTime, dijkstraAtTime, getEdgesInTimeRange
+  
+- [x] **Property Graph Model vollständig** ✅ IMPLEMENTED (15.01.2025)
+  - Siehe: `docs/property_graph_model.md`
+  - Node-Labels, Relationship-Types
+  - Server-side Type-Filtering (07.11.2025)
+  
+- [x] **Multi-Graph Federation** ✅ IMPLEMENTED (15.01.2025)
+  - Cross-Graph support via PropertyGraphManager
+  - Multi-graph-aware traversal mit graph_id
+  
 - **Design-Beispiel:**
   ```cypher
   MATCH p=(n:Document)-[:REFERENCES*1..5 {valid_from <= $timestamp <= valid_to}]->(m:Concept)
@@ -186,6 +204,10 @@ Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Ve
   - [x] Implementierung: Schema-Erweiterung (PropertyGraphManager), Cross-Graph support, Label/Type-Indices
   - [x] Test: 13/13 Unit-Tests PASSED (AddNode_WithLabels, AddNodeLabel, RemoveNodeLabel, DeleteNode, AddEdge_WithType, GetEdgesByType, GetTypedOutEdges, MultiGraph_Isolation, ListGraphs, GetGraphStats, FederatedQuery, Batch operations)
   - [x] Doku: `docs/property_graph_model.md` vollständig (API-Referenz, Cypher-like Beispiele, Federation, Performance, Migration Guide)
+  - [x] **Server-Side Type-Filtering ✅ (07.11.2025):** BFS/Dijkstra mit edge_type + graph_id Filterung implementiert
+    - GraphIndexManager erweitert: Multi-graph-aware traversal (parseOutKey/parseInKey helpers)
+    - RecursivePathQuery: edge_type + graph_id support
+    - Tests: 4/4 PASSED (BFS/Dijkstra type filtering, RecursivePathQuery integration)
   - **Status:** Production-ready, erweitert graph capabilities mit Property Graph semantics
 
   ## 4. Graph Neural Network Embeddings ✅ ABGESCHLOSSEN (16.01.2025)
@@ -506,7 +528,8 @@ Diese Navigation gruppiert die bestehenden Inhalte thematisch. Die Details stehe
 
 - Observability & Ops
   - /stats und /metrics (Prometheus), RocksDB-Stats, Server-Lifecycle
-  - Geplant: Tracing, Backup/Restore, POST /config, strukturierte Logs (siehe Priorität 2)
+  - Geplant: Tracing, POST /config, strukturierte Logs (siehe Priorität 2)
+  - Implementiert: Backup/Restore via Checkpoints (siehe Zeile 945)
 
 - Security, Governance & Compliance
   - Security by Design: Entity Hashing/Manifest, Immutable Audit-Log, Encryption at Rest
@@ -1002,7 +1025,7 @@ Ist-Zustand (themis): HNSWlib integriert, L2 vorhanden, Cosine geplant, Whitelis
 Ziel: Vergleichbare Funktionstiefe zu Milvus/Pinecone/Qdrant.
 
 - Index & Persistenz
-  - [ ] HNSW Persistenz (save/load), Snapshot beim Shutdown, Hintergrund-Save, Versionsierung
+  - [x] HNSW Persistenz (save/load), Snapshot beim Shutdown, Hintergrund-Save, Versionsierung
   - [ ] Konfigurierbare HNSW-Parameter pro Index (M, efConstruction, efSearch) + Hot-Update efSearch
   - [ ] Vektor-Dimension/Typ-Validierung, Normalisierung für Cosine/Dot
 

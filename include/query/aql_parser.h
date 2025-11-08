@@ -77,7 +77,7 @@ enum class BinaryOperator {
     Mod,                // %
     
     // String
-    In                  // IN (for membership tests)
+    In                  // IN (for membership tests: value IN [array] / value IN variable)
 };
 
 enum class UnaryOperator {
@@ -345,10 +345,11 @@ struct Query {
         Direction direction = Direction::Outbound;
         std::string startVertex; // Primary Key des Startknotens
         std::string graphName;   // Graph-Name (aktuell informativ)
+        std::string edgeType;    // optional: Kanten-Typ-Filter (wenn gesetzt)
 
         nlohmann::json toJSON() const {
             const char* dir = direction == Direction::Outbound ? "OUTBOUND" : (direction == Direction::Inbound ? "INBOUND" : "ANY");
-            return {
+            nlohmann::json j = {
                 {"type", "traversal"},
                 {"varVertex", varVertex},
                 {"varEdge", varEdge},
@@ -359,6 +360,10 @@ struct Query {
                 {"startVertex", startVertex},
                 {"graphName", graphName}
             };
+            if (!edgeType.empty()) {
+                j["edgeType"] = edgeType;
+            }
+            return j;
         }
     };
     std::shared_ptr<TraversalNode> traversal;
@@ -485,6 +490,8 @@ private:
     std::shared_ptr<Expression> parseExpression(const std::string& expr_str);
     std::shared_ptr<Expression> parsePrimaryExpression(const std::string& expr_str);
     BinaryOperator stringToOperator(const std::string& op_str);
+    // New: parse membership expression left IN right
+    std::shared_ptr<Expression> parseMembership(std::shared_ptr<Expression> left);
 };
 
 }  // namespace query

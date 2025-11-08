@@ -514,7 +514,7 @@ auto [st, result] = pgm.federatedQuery(patterns);
 
 **Optimization:**
 - Type index enables fast `getEdgesByType()` queries
-- Typed traversal filters edges client-side (TODO: server-side filtering)
+- Server-side type filtering during traversal ✅ (BFS/Dijkstra/RPQ)
 
 ### Multi-Graph Operations
 
@@ -674,9 +674,8 @@ RecursivePathQuery rpq;
 rpq.start_node = "alice";
 rpq.end_node = "charlie";
 rpq.max_depth = 3;
-// Then filter path edges by type using getEdgesByType()
-
-// TODO: Add type parameter to executeRecursivePathQuery()
+rpq.edge_type = "FOLLOWS";   // ✅ server-side type filtering
+rpq.graph_id = "social";     // optional, defaults to "default"
 ```
 
 ---
@@ -685,8 +684,10 @@ rpq.max_depth = 3;
 
 1. **Labels as String:** Labels stored as comma-separated string (not array)
    - **Workaround:** Parse string manually or extend BaseEntity
-2. **No Server-Side Type Filtering in Traversal:** `getTypedOutEdges()` loads all edges then filters
-   - **Future:** Add type-aware BFS/Dijkstra
+2. ~~**No Server-Side Type Filtering in Traversal:**~~ **✅ IMPLEMENTED:** Server-side type filtering now available
+   - `GraphIndexManager::bfs(start, depth, edge_type, graph_id)` - BFS with type filtering
+   - `GraphIndexManager::dijkstra(start, target, edge_type, graph_id)` - Dijkstra with type filtering
+   - `RecursivePathQuery` supports `edge_type` and `graph_id` fields for filtered traversals
 3. **No Property Constraints:** Cannot enforce label/type schemas
    - **Future:** Add schema validation
 4. **Federation is Simplified:** No complex joins (only union of patterns)
@@ -707,15 +708,34 @@ rpq.max_depth = 3;
 alice.setField("_labels", std::vector<std::string>{"Person", "Employee"});
 ```
 
-### 2. Type-Aware Graph Traversal
+### 2. ~~Type-Aware Graph Traversal~~ ✅ **IMPLEMENTED (Nov 2025)**
 
-**Problem:** BFS/Dijkstra don't filter by type  
-**Solution:** Add type parameter to traversal algorithms
+~~**Problem:** BFS/Dijkstra don't filter by type~~  
+**Status:** Server-side type filtering now available in GraphIndexManager
 
+**Implementation:**
 ```cpp
-auto [st, path] = graph.dijkstra("alice", "bob", "FOLLOWS");
+// BFS with type filtering
+auto [st, nodes] = graphIdx->bfs("alice", 3, "FOLLOWS", "social");
+// Returns nodes reachable via FOLLOWS edges only
+
+// Dijkstra with type filtering
+auto [st, path] = graphIdx->dijkstra("alice", "bob", "FOLLOWS", "social");
 // Only traverse FOLLOWS edges
+
+// RecursivePathQuery integration
+RecursivePathQuery q;
+q.start_node = "alice";
+q.edge_type = "FOLLOWS";
+q.graph_id = "social";
+q.max_depth = 5;
+auto [st, paths] = queryEngine->executeRecursivePathQuery(q);
 ```
+
+**Features:**
+- Multi-graph aware: `graph_id` parameter scopes traversal to specific graph
+- Server-side filtering: Edge type checked during traversal (not post-processing)
+- Full integration: Works with temporal filters and recursive path queries
 
 ### 3. Schema Validation
 

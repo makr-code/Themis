@@ -4,6 +4,7 @@ FROM ubuntu:22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build git curl zip unzip pkg-config ca-certificates \
+    python3 perl nasm \
     && rm -rf /var/lib/apt/lists/*
 
 # Install vcpkg

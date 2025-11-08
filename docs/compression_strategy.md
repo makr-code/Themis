@@ -58,6 +58,35 @@ if (header.compression == "gorilla") {
 }
 ```
 
+### HTTP Runtime-Konfiguration (/ts/config)
+Zur Laufzeit kann die Kompressionsart und Chunk-Größe ohne Neustart angepasst werden.
+
+GET /ts/config
+Antwort:
+```json
+{
+  "compression": "gorilla",
+  "chunk_size_hours": 24
+}
+```
+
+PUT /ts/config
+Request:
+```json
+{
+  "compression": "none",            // oder "gorilla"
+  "chunk_size_hours": 12             // gültiger Bereich: 1–168
+}
+```
+Antwort:
+```json
+{
+  "status": "ok",
+  "compression": "none",
+  "chunk_size_hours": 12
+}
+```
+
 ### Trade-offs
 - ✅ **Speicherersparnis**: 10-20x (100GB → 5-10GB)
 - ✅ **I/O-Reduktion**: Weniger Disk-IOPS → schnellere Aggregationen
@@ -244,10 +273,10 @@ ZSTD                  18 MB       2.8x       +12%
 **Tasks:**
 1. ✅ Gorilla Codec implementiert + getestet
 2. ✅ TSStore Integration (Config, Header, Encode/Decode)
-3. ❌ HTTP-Endpoint `/timeseries/compression/config` (GET/PUT) — optional
+3. ✅ HTTP-Endpoint `/ts/config` (GET/PUT) implementiert (Runtime-Änderung von `compression` und `chunk_size_hours`)
 4. ✅ Benchmarks (compression_ratio, encode_time, decode_time)
 
-**Status:** Integration abgeschlossen; läuft defaultmäßig (Gorilla-Chunk-basiert) in `TSStore`.
+**Status:** Integration abgeschlossen; läuft defaultmäßig (Gorilla-Chunk-basiert) in `TSStore`. Runtime-Konfiguration über `/ts/config` aktiv.
 
 ### Phase 2: Content-Blob ZSTD (MEDIUM PRIORITY) 🟡 ✅ DONE
 **Aufwand:** ~1 Tag  
@@ -286,7 +315,7 @@ ZSTD                  18 MB       2.8x       +12%
     "blob_size_threshold": 4096       // ✅ >4KB → BlobDB
   },
   "timeseries": {
-    "compression": "gorilla",          // 🔴 TODO: IMPLEMENTIEREN
+    "compression": "gorilla",          // ✅ IMPLEMENTIERT (Runtime via GET/PUT /ts/config; Werte: "none" | "gorilla")
     "chunk_size_hours": 24
   },
   "content": {
@@ -348,6 +377,6 @@ ELSE:
 3. ✅ **Vector SQ8** (DONE – auto ab 1M, hohe Komplexität nun implementiert)
 
 **Nächste Schritte:**
-- Recall/Speed-Benchmarks für SQ8 nachmessen
-- Optional: HTTP-Endpoint `/ts/config` für Gorilla-Optionen
+ - Recall/Speed-Benchmarks für SQ8 nachmessen
+ - Erweiterte Metriken für Time-Series Config Changes (Prometheus: ts_config_updates_total)
 - Migration Tool für bestehende Float32-Vektoren → SQ8

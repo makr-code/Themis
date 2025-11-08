@@ -100,7 +100,9 @@ private:
     std::shared_ptr<PIIDetector> detector_;
     std::shared_ptr<AuditLogger> audit_logger_;
     
-    std::mutex mu_;
+    // Recursive to avoid EDEADLK when higher-level helpers call into multiple operations
+    // (e.g., eraseAll -> erasePII) within the same thread context.
+    std::recursive_mutex mu_;
     std::string key_id_ = "pii_mapping_key";
 };
 

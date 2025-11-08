@@ -1,5 +1,6 @@
 #include "utils/pii_pseudonymizer.h"
 #include "storage/rocksdb_wrapper.h"
+#include "utils/logger.h"
 
 #include <openssl/rand.h>
 #include <iomanip>
@@ -71,6 +72,8 @@ std::pair<nlohmann::json, std::vector<std::string>> PIIPseudonymizer::pseudonymi
     
     nlohmann::json pseudonymized = data;
     std::vector<std::string> created_uuids;
+    // Use atomic write batch to avoid per-item write conflicts and ensure atomicity
+    auto batch = db_->createWriteBatch();
     
     // Iterate over all JSON paths and their findings
     for (const auto& [json_path, findings] : findings_map) {
@@ -92,7 +95,7 @@ std::pair<nlohmann::json, std::vector<std::string>> PIIPseudonymizer::pseudonymi
             
             std::string mapping_str = mapping.dump();
             std::vector<uint8_t> mapping_bytes(mapping_str.begin(), mapping_str.end());
-            db_->put(dbKey(pii_uuid), mapping_bytes);
+            batch->put(dbKey(pii_uuid), mapping_bytes);
             
             // Replace in JSON using json_path
             // Simplified: Replace all occurrences of value with UUID
@@ -109,6 +112,11 @@ std::pair<nlohmann::json, std::vector<std::string>> PIIPseudonymizer::pseudonymi
                 pseudonymized = data;
             }
         }
+    }
+    // Commit atomically; on failure, we keep pseudonymized JSON but return no created UUIDs
+    if (!batch->commit()) {
+        THEMIS_ERROR("PIIPseudonymizer: WriteBatch commit failed during pseudonymize() - returning empty UUID list");
+        created_uuids.clear();
     }
     
     return {pseudonymized, created_uuids};
@@ -149,59 +157,88 @@ std::optional<std::string> PIIPseudonymizer::revealPII(const std::string& pii_uu
         
         return original;
         
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return std::nullopt;
     }
 }
 
 bool PIIPseudonymizer::erasePII(const std::string& pii_uuid) {
     std::scoped_lock lk(mu_);
-    
-    // Check if exists
-    auto mapping_str = db_->get(dbKey(pii_uuid));
-    if (!mapping_str) {
-        return false;
+    // Use short-lived transaction for read-check + delete to avoid conflicts
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        auto txn = db_->beginTransaction();
+        if (!txn) return false;
+        auto mapping_opt = txn->get(dbKey(pii_uuid));
+        if (!mapping_opt) {
+            txn->rollback();
+            return false;
+        }
+        if (!txn->del(dbKey(pii_uuid))) {
+            txn->rollback();
+            continue;
+        }
+        if (txn->commit()) {
+            if (audit_logger_) {
+                audit_logger_->logEvent({
+                    {"action", "PII_ERASE"},
+                    {"pii_uuid", pii_uuid},
+                    {"timestamp", std::time(nullptr)}
+                });
+            }
+            return true;
+        }
+        // Retry on busy/conflict
     }
-    
-    // Delete mapping
-    db_->del(dbKey(pii_uuid));
-    
-    // Audit PII erasure (DSGVO Art. 17 & Art. 30 compliance)
-    if (audit_logger_) {
-        audit_logger_->logEvent({
-            {"action", "PII_ERASE"},
-            {"pii_uuid", pii_uuid},
-            {"timestamp", std::time(nullptr)}
-        });
-    }
-    
-    return true;
+    THEMIS_WARN("PIIPseudonymizer: erasePII commit failed after retries for {}", pii_uuid);
+    return false;
 }
 
 bool PIIPseudonymizer::softDeletePII(const std::string& pii_uuid, const std::string& user_id) {
     std::scoped_lock lk(mu_);
-    auto mapping_str = db_->get(dbKey(pii_uuid));
-    if (!mapping_str) return false;
-    try {
-        auto mapping = nlohmann::json::parse(*mapping_str);
-        mapping["active"] = false;
-        mapping["deleted_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                      std::chrono::system_clock::now().time_since_epoch()).count();
-        std::string out = mapping.dump();
-        std::vector<uint8_t> bytes(out.begin(), out.end());
-        db_->put(dbKey(pii_uuid), bytes);
-        if (audit_logger_) {
-            audit_logger_->logEvent({
-                {"action", "PII_SOFT_DELETE"},
-                {"pii_uuid", pii_uuid},
-                {"user_id", user_id},
-                {"timestamp", std::time(nullptr)}
-            });
+    // Use transactional read-modify-write with small retry loop
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        auto txn = db_->beginTransaction();
+        if (!txn) return false;
+        auto mapping_opt = txn->get(dbKey(pii_uuid));
+        if (!mapping_opt) {
+            txn->rollback();
+            return false;
         }
-        return true;
-    } catch (...) {
-        return false;
+        try {
+            std::string json_str(reinterpret_cast<const char*>(mapping_opt->data()), mapping_opt->size());
+            auto mapping = nlohmann::json::parse(json_str);
+            mapping["active"] = false;
+            mapping["deleted_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                          std::chrono::system_clock::now().time_since_epoch()).count();
+            std::string out = mapping.dump();
+            std::vector<uint8_t> bytes(out.begin(), out.end());
+            if (!txn->put(dbKey(pii_uuid), bytes)) {
+                txn->rollback();
+                continue;
+            }
+            if (txn->commit()) {
+                if (audit_logger_) {
+                    audit_logger_->logEvent({
+                        {"action", "PII_SOFT_DELETE"},
+                        {"pii_uuid", pii_uuid},
+                        {"user_id", user_id},
+                        {"timestamp", std::time(nullptr)}
+                    });
+                }
+                return true;
+            }
+            // commit failed - retry
+        } catch (const std::exception& e) {
+            txn->rollback();
+            THEMIS_WARN("PIIPseudonymizer: softDeletePII JSON parse/update failed for {}: {}", pii_uuid, e.what());
+            return false;
+        } catch (...) {
+            txn->rollback();
+            return false;
+        }
     }
+    THEMIS_WARN("PIIPseudonymizer: softDeletePII commit failed after retries for {}", pii_uuid);
+    return false;
 }
 
 std::vector<std::string> PIIPseudonymizer::findPIIForEntity(const std::string& entity_pk) {

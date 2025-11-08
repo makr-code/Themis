@@ -391,7 +391,7 @@ for (const auto& edgeInfo : edges) {
 | Shortest path at time T | ✅ `dijkstraAtTime()` | ❌ | Implemented |
 | Find edges in window | ❌ | ✅ `getEdgesInTimeRange()` | Implemented ✨ |
 | Find node edges in window | ❌ | ✅ `getOutEdgesInTimeRange()` | Implemented ✨ |
-| Temporal aggregation | ❌ | ❌ | Future work |
+| Temporal aggregation | ❌ | ✅ `getTemporalStats()` | Implemented ✨ |
 
 ---
 
@@ -422,13 +422,23 @@ rpq.window_end = 2000000;
 
 ### 3. Temporal Aggregations
 
-**Problem:** No aggregate queries over time windows  
-**Solution:** Add temporal statistics
+✅ **Implemented!** Temporal statistics now available:
 
 ```cpp
-auto stats = graph.getTemporalStats(1000, 2000);
-// { edge_count, avg_duration, node_degree_distribution, ... }
+auto [status, stats] = graph.getTemporalStats(1000, 2000);
+// Returns: TemporalStats{
+//   edge_count, fully_contained_count, bounded_edge_count,
+//   avg_duration_ms, total_duration_ms, min/max_duration_ms,
+//   earliest_start, latest_end
+// }
+std::cout << stats.toString();
 ```
+
+**Features:**
+- Count edges with overlap or full containment
+- Duration statistics (AVG, SUM, MIN, MAX) for bounded edges
+- Temporal range coverage (earliest start, latest end)
+- 6/6 tests passing ✅
 
 ### 4. Streaming Time-Range Queries
 

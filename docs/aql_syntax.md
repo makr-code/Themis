@@ -104,6 +104,25 @@ FOR user IN users
 - Join-Bedingung muss in FILTER sein (keine impliziten Joins)
 - Nur Equality-Joins (`==`) optimiert
 
+**Best Practices für Multi-FOR Joins:**
+- 📌 **Explizite Join-Prädikate:** Verwende immer klare Gleichheitsbedingungen zwischen FOR-Variablen
+  ```aql
+  FOR u IN users
+    FOR o IN orders
+      FILTER o.user_id == u._key  -- Expliziter Join
+      RETURN {user: u.name, order: o.id}
+  ```
+- 📌 **Reihenfolge optimieren:** Platziere kleinere Collections zuerst für bessere Performance
+- 📌 **Index-Nutzung:** Stelle sicher, dass Join-Felder (z.B. `user_id`, `_key`) indexiert sind
+- 📌 **Filter kombinieren:** Nutze zusätzliche FILTER-Bedingungen, um Zwischenergebnisse zu reduzieren
+  ```aql
+  FOR u IN users
+    FILTER u.active == true       -- Reduziert äußere Loop
+    FOR o IN orders
+      FILTER o.user_id == u._key AND o.status == "shipped"
+      RETURN {user: u.name, order: o.id}
+  ```
+
 ---
 
 ### 2. FILTER - Bedingungen
@@ -636,6 +655,58 @@ IS_STRING(value)
 IS_ARRAY(value)
 IS_OBJECT(value)
 ```
+
+### Content/File-Funktionen
+
+Ermöglichen Zugriff auf Metadaten und Chunks von ingestierten Dateien über die Content-Pipeline.
+
+```aql
+CONTENT_META(document_id)      // Gibt Metadaten-Objekt zurück (name, size, mimeType, etc.)
+CONTENT_CHUNKS(document_id)    // Gibt Array von Chunks zurück (chunk_id, text, embedding, etc.)
+```
+
+**Beispiel - Dokument-Metadaten abfragen:**
+```aql
+FOR doc IN documents
+  FILTER doc.status == "indexed"
+  LET meta = CONTENT_META(doc._key)
+  RETURN {
+    id: doc._key,
+    filename: meta.filename,
+    size_bytes: meta.size,
+    mime_type: meta.mimeType,
+    pages: meta.pages
+  }
+```
+
+**Beispiel - Chunks mit Volltext-Suche:**
+```aql
+FOR doc IN documents
+  FILTER FULLTEXT(doc.content, "machine learning")
+  LET chunks = CONTENT_CHUNKS(doc._key)
+  RETURN {
+    document: doc.title,
+    chunk_count: LENGTH(chunks),
+    first_chunk: chunks[0].text
+  }
+```
+
+**Beispiel - Vektor-Suche über Chunks:**
+```aql
+FOR doc IN documents
+  LET chunks = CONTENT_CHUNKS(doc._key)
+  LET similar = VECTOR_SEARCH("chunks", @query_embedding, 5)
+  FILTER doc._key IN similar
+  RETURN {
+    document: doc.title,
+    relevant_chunks: chunks
+  }
+```
+
+**MVP-Hinweise:**
+- `CONTENT_META` und `CONTENT_CHUNKS` sind Funktionen, die vom Parser als `FunctionCallExpr` erkannt werden
+- Engine-Integration erfordert Content-Storage-API (siehe `docs/content_architecture.md`)
+- Chunks enthalten: `chunk_id`, `text`, `embedding`, `page_number`, `bbox` (optional)
 
 ---
 

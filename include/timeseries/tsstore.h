@@ -52,7 +52,8 @@ public:
     };
     
     struct Config {
-        CompressionType compression = CompressionType::None;
+        // Default to Gorilla compression for better storage efficiency
+        CompressionType compression = CompressionType::Gorilla;
         int chunk_size_hours = 24;  // Gorilla chunk size (hours)
     };
     
