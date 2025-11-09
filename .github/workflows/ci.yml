@@ -21,36 +21,57 @@ jobs:
         with:
           submodules: false
 
+      - name: Set VCPKG_ROOT
+        run: echo "VCPKG_ROOT=$HOME/vcpkg" > $GITHUB_ENV
+
       - name: Cache vcpkg
         uses: actions/cache@v4
         with:
           path: |
             ~/vcpkg
-            !~/vcpkg/buildtrees
-            !~/vcpkg/downloads
+            ~/vcpkg/installed
+            ~/vcpkg/downloads
+            ~/vcpkg/buildtrees
           key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-
 
-      - name: Install vcpkg
+      - name: Install vcpkg (bootstrap if needed)
         run: |
-          if [ ! -d ~/vcpkg ]; then
-            git clone https://github.com/microsoft/vcpkg.git ~/vcpkg
-            cd ~/vcpkg
+          if [ ! -d "$HOME/vcpkg" ]; then
+            git clone https://github.com/microsoft/vcpkg.git $HOME/vcpkg
+            cd $HOME/vcpkg
             git checkout beea85fdd8bf6b716acdac191cde9bfc7c72b73b
             if [ "$RUNNER_OS" = "Windows" ]; then
-              ./bootstrap-vcpkg.bat
+              ./bootstrap-vcpkg.bat || true
             else
               ./bootstrap-vcpkg.sh
             fi
           fi
         shell: bash
 
+      - name: Install vcpkg manifest packages
+        run: |
+          export VCPKG_ROOT="$HOME/vcpkg"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            TRIPLET=x64-windows
+          else
+            TRIPLET=x64-linux
+          fi
+          $VCPKG_ROOT/vcpkg install --manifest --triplet $TRIPLET --clean-after-build
+        shell: bash
+
       - name: Configure CMake
         run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            TRIPLET=x64-windows
+          else
+            TRIPLET=x64-linux
+          fi
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_DEFAULT_TRIPLET=${TRIPLET}
         shell: bash
 
       - name: Build

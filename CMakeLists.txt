@@ -91,7 +91,16 @@ endfunction()
 find_package(RocksDB CONFIG REQUIRED)
 find_package(simdjson CONFIG REQUIRED)
 find_package(TBB CONFIG REQUIRED)
-find_package(Arrow CONFIG REQUIRED)
+find_package(Arrow CONFIG)
+# Defensive check: Ensure Arrow targets exist after find_package
+if(NOT TARGET Arrow::arrow_shared AND NOT TARGET Arrow::arrow)
+    message(FATAL_ERROR
+        "Required CMake target 'Arrow::arrow_shared' or 'Arrow::arrow' not found. "
+        "Ensure Arrow was installed by vcpkg manifest before configuring. "
+        "On CI, run: '$HOME/vcpkg/vcpkg install --manifest --triplet <triplet> --clean-after-build' "
+        "before running cmake configure. "
+        "Locally, ensure vcpkg.json manifest dependencies are installed via 'vcpkg install --manifest'.")
+endif()
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
