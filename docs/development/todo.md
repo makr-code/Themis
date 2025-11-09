@@ -54,7 +54,11 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 >   - **45 Tests validiert gesamt** (alle bestanden)
 >   - Dokumentation synchronisiert: `future_work.md`, `property_graph_model.md`, `temporal_time_range_queries.md`
 > 
-> - **Verbleibende TODOs:** 8 Encryption-Features (PKI, JWT, HKDF, Schema-Encryption, Graph/Vector/Audit)
+> - **Verbleibende TODOs (aktualisiert):**
+>   - ⏳ Column-Level Key Rotation, Dynamic Data Masking, RBAC-Basis
+>   - ⏳ Inkrementelle Backups, Auto-Scaling-Strategie
+>   - ℹ️ Security-Stack implementiert & getestet: VCCPKIClient (6/6), PKIKeyProvider (10/10), JWTValidator (6/6)
+>   - ℹ️ Vector-Metadaten-Verschlüsselung aktiv; Policy-Konfiguration für Schreibrechte erforderlich
 
 > **Update – 08. November 2025**
 > - **Time-Series Engine**: ✅ VOLLSTÄNDIG IMPLEMENTIERT

@@ -1,10 +1,13 @@
-# Graph Traversal Path Constraints
-
-**Version:** 1.0 Draft  
-**Datum:** 28. Oktober 2025  
-**Status:** Konzept – Noch nicht implementiert
-
 ---
+title: ARCHIVED – Graph Traversal Path Constraints (Concept)
+status: archived
+archived_at: 2025-11-09
+replacement: recursive_path_queries.md
+---
+
+Dieses Dokument beschreibt ein Konzept und wurde archiviert. Für die implementierten Traversal-Features siehe `recursive_path_queries.md`.
+
+Ursprünglicher Inhalt (Kurzfassung):
 
 ## Motivation
 

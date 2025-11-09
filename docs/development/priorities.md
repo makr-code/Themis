@@ -1,6 +1,6 @@
 # Themis - Priorisierte Roadmap für Production Readiness
-**Stand:** 29. Oktober 2025, 22:15  
-**Basis:** IMPLEMENTATION_STATUS.md Audit-Ergebnisse
+**Stand:** 09. November 2025  
+**Basis:** Aktualisiertes IMPLEMENTATION_STATUS.md & Code-Audit (PKI/Ranger)
 
 ---
 
@@ -8,19 +8,27 @@
 
 | Feature | Impact | Aufwand | Risiko | Prio | Empfehlung |
 |---------|--------|---------|--------|------|------------|
-| ~~**Prometheus Histogramme (kumulative Buckets)**~~ | Mittel | 2-4h | Niedrig | ✅ **ERLEDIGT** | **Quick Win** - Abgeschlossen |
-| ~~**HNSW Persistenz**~~ | Hoch | 1-2 Tage | Mittel | ✅ **ERLEDIGT** | **Datenverlust-Risiko eliminiert** |
-| ~~**COLLECT/GROUP BY MVP**~~ | Hoch | 3-5 Tage | Mittel | ✅ **ERLEDIGT** | **Basisfunktionalität implementiert** |
-| ~~**Vector Search HTTP Endpoint**~~ | Hoch | 1-2 Tage | Niedrig | ✅ **ERLEDIGT** | **API-Integration vollständig** |
-| ~~**OR Query Index-Merge**~~ | Mittel | 2-3 Tage | Mittel | ✅ **ERLEDIGT** | **DisjunctiveQuery implementiert** |
-| ~~**OpenTelemetry Tracing**~~ | Mittel | 3-5 Tage | Niedrig | ✅ **ERLEDIGT** | **Production-Debugging enabled** |
-| **Inkrementelle Backups** | Niedrig | 5-7 Tage | Hoch | 📋 P2 | Nice-to-Have |
-| **RBAC (Basic)** | Hoch | 7-10 Tage | Hoch | 📋 P2 | Security (später) |
-| **Apache Arrow Integration** | Niedrig | 10-15 Tage | Mittel | 📋 P3 | Analytics (später) |
+| ~~Prometheus Histogramme (kumulative Buckets)~~ | Mittel | 2-4h | Niedrig | ✅ | Abgeschlossen |
+| ~~HNSW Persistenz~~ | Hoch | 1-2 Tage | Mittel | ✅ | Abgeschlossen |
+| ~~COLLECT/GROUP BY MVP~~ | Hoch | 3-5 Tage | Mittel | ✅ | Abgeschlossen |
+| ~~Vector Search HTTP Endpoint~~ | Hoch | 1-2 Tage | Niedrig | ✅ | Abgeschlossen |
+| ~~OpenTelemetry Tracing~~ | Mittel | 3-5 Tage | Niedrig | ✅ | Abgeschlossen |
+| PKI: Echte RSA/X.509 Signaturen | Hoch (Compliance) | 5-7 Tage | Hoch | 🔥 P0 | Start sofort |
+| RBAC (Basic Rollen + Scopes) | Hoch (Security) | 7-10 Tage | Hoch | 🔥 P0 | Planung + Implementierung |
+| Ranger Adapter Hardening (Pooling, Backoff, Timeouts Erweiterung) | Mittel | 2-3 Tage | Mittel | ⚠️ P1 | Nach PKI/RBAC |
+| Inkrementelle Backups + WAL-Archiving | Mittel | 5-7 Tage | Mittel | ⚠️ P1 | Daten-Schutz |
+| Strukturierte JSON-Logs (Audit & Request) | Mittel | 2-3 Tage | Niedrig | ⚠️ P1 | Sichtbarkeit |
+| AQL Joins & OR/NOT & DISTINCT | Hoch (Abfrageflexibilität) | 6-9 Tage | Mittel | ⚠️ P1 | Parallel zu Ops |
+| Multi-Gruppen COLLECT & Subqueries | Mittel | 5-8 Tage | Mittel | 📋 P2 | Nach Basis-Flex Features |
+| Graph Path Constraints (PATH.ALL/NONE/ANY) | Mittel | 3-5 Tage | Niedrig | 📋 P2 | Graph Erweiterung |
+| Vector Quantization (SQ/PQ) | Mittel | 7-12 Tage | Mittel | 📋 P2 | Performance bei >1M Vektoren |
+| Apache Arrow Integration | Niedrig | 10-15 Tage | Mittel | 📋 P3 | Analytics langfristig |
 
-**Status Update (30. Oktober 2025, 13:50):**
-- ✅ **Alle P0-Features abgeschlossen!**
-- ✅ **P1 OpenTelemetry Tracing: VOLLSTÄNDIG IMPLEMENTIERT**
+**Status Update (09. November 2025):**
+- ✅ Alle bisherigen Infrastruktur-P0 abgeschlossen (Persistenz, Tracing, Metrics, Aggregationen)
+- ✅ LET Runtime für AQL hinzugefügt (FILTER + SORT + RETURN)
+- ✅ BM25(doc) AQL Scoring integriert
+- 🔥 Neue P0-Fokusbereiche: PKI echte Signaturen & RBAC Basis
   - ✅ Infrastruktur: Tracer-Wrapper, OTLP HTTP Exporter, CMake integration
   - ✅ HTTP-Handler instrumentiert (7 Endpoints)
   - ✅ QueryEngine instrumentiert (11 Methoden + Child-Spans)
@@ -29,13 +37,13 @@
   - Build erfolgreich, Server-Test bestanden
   - **ALLE P1-TASKS ABGESCHLOSSEN!**
 
-**Abgeschlossene Features:**
-- ✅ HNSW-Persistenz: Automatisches Save/Load implementiert
-- ✅ COLLECT/GROUP BY MVP: Parser + In-Memory Aggregation (COUNT, SUM, AVG, MIN, MAX)
-- ✅ Prometheus-Histogramme: Kumulative Buckets implementiert + validiert
-- ✅ Vector Search HTTP Endpoint: POST /vector/search mit k-NN Suche
-- ✅ OR Query Index-Merge: DisjunctiveQuery mit Index-Union
-- ✅ OpenTelemetry Distributed Tracing: End-to-End Instrumentierung (HTTP → QueryEngine → AQL Operators)
+**Abgeschlossene Kern-Features:**
+- HNSW Persistenz & Dynamic Config
+- COLLECT/GROUP BY MVP
+- Prometheus (kumulative Buckets)
+- OpenTelemetry Tracing
+- Vector Search Endpoints & Hybrid Fusion
+- LET Runtime & BM25(doc) Scoring
 
 **Legende:**
 - 🔥 P0 = Kritisch (sofort/diese Woche) - ✅ **ALLE ERLEDIGT**
@@ -45,9 +53,30 @@
 
 ---
 
-## 🚀 Empfohlene Reihenfolge (Batch 1: Diese Woche)
+## 🚀 Empfohlene Reihenfolge (Nächste Iteration: KW 46)
 
-### Option A: Quick Wins zuerst (Momentum aufbauen) ✅ ABGESCHLOSSEN
+### Phase 1 (Security & Compliance)
+1. PKI echte RSA/X.509 Signaturen (Sign/Verify, Zertifikatskette prüfen)
+2. RBAC Basis (Rollen, Ressourcen-Typen: collection, graph, vector; Operationen: read/write/admin)
+
+### Phase 2 (Ops & Observability)
+3. Ranger Adapter Hardening (Pooling via CURLSH_SHARE, Retry Exponential Backoff mit Jitter, konfigurierbare Timeouts)
+4. Strukturierte JSON-Logs (Request + Audit + Error Payloads)
+5. Inkrementelle Backups (Differential + WAL-Archiving)
+
+### Phase 3 (Query Flex & Performance)
+6. AQL: Joins (Nested LOOP, Early Filter Pushdown)
+7. AQL: OR/NOT (Index-Merge & Predicate Tree Normalisierung)
+8. AQL: DISTINCT (Hash-Set Pipeline vor LIMIT)
+9. Multi-Gruppen COLLECT (Composite Key Hash)
+
+### Phase 4 (Graph & Vector Erweiterung)
+10. Graph Path Constraints (Pruning-Regeln implementieren)
+11. Vector Quantization (SQ8 erstmal, speicherorientiert)
+
+### Phase 5 (Longer-Term)
+12. Subqueries (Execution Context Stack)
+13. Apache Arrow Integration (Columnar Export + SIMD Aggregationen)
 ```
 Tag 1-2:  Prometheus Histogramme (kumulative Buckets) ✅
 Tag 2-4:  OR/NOT Index-Merge (Query-Flexibilität) ✅
@@ -269,15 +298,25 @@ FOR doc IN orders
 
 ---
 
-## 🎯 Entscheidung erforderlich
+## 🔥 Top Offene Gaps (Snapshot 09.11.2025)
+- PKI echte Signaturen (Compliance, Audit Integrität)
+- RBAC Basis (Rollen/Scopes, Autorisierungslayer)
+- Inkrementelle Backups/WAL-Archiving (RPO Verbesserung)
+- Strukturierte JSON-Logs (bessere Analyse & Korrelation)
+- AQL Joins & OR/NOT & DISTINCT (Query-Flexibilität)
+- Ranger Adapter Hardening (Resilienz & Performance)
 
-**Bitte wählen:**
-1. **Option A:** Quick Wins zuerst (Prometheus → OR/NOT → HNSW)
-2. **Option B:** Strategisch (COLLECT → HNSW → Prometheus)
-3. **Option C:** Risiko-Minimierung (HNSW → COLLECT → Prometheus)
-4. **Empfehlung:** Hybrid (Prometheus [Quick Win] → HNSW [Risiko] → COLLECT [Strategisch])
+## ✅ Definition of Done P0 (Security & RBAC)
+- Signaturen: OpenSSL RSA Sign/Verify mit SHA-256; Zertifikatskette validiert
+- PKIClient ersetzt Stub (kein Base64-Fake)
+- RBAC: Policy-Store (RocksDB CF rbac_policies), Enforcement im HTTP-Dispatcher
+- Tests: 90%+ Coverage für Sign/Verify und Policy Checks
 
-**Oder eigene Priorisierung nennen.**
+## 📌 Messgrößen nach Umsetzung
+- Audit-Log Einträge mit echter Signatur (FLAG: signature_verified=true)
+- RBAC Denied Counter (metrics: rbac_denied_total)
+- Backup-Differential Größe pro Intervall
+- Log Parsing Latenz (structured_logs_parse_ms_bucket)
 
 ---
 

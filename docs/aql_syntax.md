@@ -748,8 +748,8 @@ FOR loc IN restaurants
 ```
 
 **Optimizer:**
-- Nutzt Geo-Index f�r Bounding-Box-Scan
-- Post-Filter f�r exakte Distanz-Berechnung
+- Nutzt Geo-Index für Bounding-Box-Scan
+- Post-Filter für exakte Distanz-Berechnung
 
 ---
 
@@ -769,8 +769,8 @@ FOR product IN products
 ```
 
 **Pre-Filtering vs Post-Filtering:**
-- Pre-Filter: Bitset f�r `price < 100 AND in_stock == true` ? k-NN
-- Post-Filter: k-NN (20) ? Filter ? Top-10
+- Pre-Filter: Bitset für `price < 100 AND in_stock == true` → k-NN
+- Post-Filter: k-NN (20) → Filter → Top-10
 
 ---
 
@@ -838,7 +838,7 @@ POST /query/aql
 }
 ```
 
-### Index-Hints (sp�ter)
+### Index-Hints (später)
 
 ```aql
 FOR doc IN users USE INDEX idx_age_city
@@ -868,7 +868,7 @@ enum class ASTNodeType {
     Variable          // doc, user, etc.
 };
 
-// Beispiel-AST f�r: FOR u IN users FILTER u.age > 18 RETURN u.name
+// Beispiel-AST für: FOR u IN users FILTER u.age > 18 RETURN u.name
 ForNode {
     variable: "u",
     collection: "users",
@@ -910,7 +910,7 @@ ForNode {
 - Geo-Queries (GEO_DISTANCE, GEO_BOX)
 - Fulltext (FULLTEXT, BM25)
 
-### Phase 4 (sp�ter):
+### Phase 4 (später):
 - Joins (Multi-Collection)
 - Subqueries
 - Transactions (BEGIN, COMMIT, ROLLBACK)
@@ -918,7 +918,7 @@ ForNode {
 
 ---
 
-## Performance-�berlegungen
+## Performance-Überlegungen
 
 **Index-Nutzung:**
 - FILTER mit `==` ? Equality-Index
@@ -928,20 +928,20 @@ ForNode {
 
 **Optimizer-Strategien:**
 - **Filter-Pushdown:** FILTER vor SORT (reduziert Sortier-Kosten)
-- **Index-Auswahl:** Kleinster gesch�tzter Index zuerst
-- **Short-Circuit:** LIMIT fr�h anwenden (z.B. Top-K)
+- **Index-Auswahl:** Kleinster geschätzter Index zuerst
+- **Short-Circuit:** LIMIT früh anwenden (z.B. Top-K)
 
 **Vermeiden:**
 - Full-Table-Scans ohne LIMIT
-- Sortierung ohne Index auf gro�en Datasets
+- Sortierung ohne Index auf großen Datasets
 - Aggregationen ohne COLLECT (ineffizient)
 
 ---
 
-## Kompatibilit�t & Erweiterungen
+## Kompatibilität & Erweiterungen
 
 **ArangoDB AQL:**
-- �hnliche Syntax (FOR, FILTER, SORT, LIMIT, RETURN)
+- Ähnliche Syntax (FOR, FILTER, SORT, LIMIT, RETURN)
 - Unterschiede: THEMIS nutzt natives MVCC, kein `_key` zwingend
 
 **SQL-Vergleich:**

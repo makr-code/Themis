@@ -229,6 +229,61 @@ TEST_F(HttpAqlApiTest, AqlSort_LimitOffset_ReturnsAlice) {
     }
 }
 
+TEST_F(HttpAqlApiTest, AqlReturnDistinctSimple) {
+    // Insert duplicate city projection via DISTINCT
+    json req = {
+        {"query", "FOR user IN users RETURN DISTINCT user.city"},
+        {"allow_full_scan", true}
+    };
+    auto res = post("/query/aql", req);
+    ASSERT_EQ(res.result(), http::status::ok) << res.body();
+    auto body = json::parse(res.body());
+    ASSERT_TRUE(body.contains("entities"));
+    std::set<std::string> cities;
+    for (const auto& v : body["entities"]) {
+        if (v.is_string()) cities.insert(v.get<std::string>());
+        else if (v.is_object() && v.contains("city") && v["city"].is_string()) cities.insert(v["city"].get<std::string>());
+    }
+    // From setup we inserted 15 users with 15 distinct cities (except Berlin appears twice -> still 15 unique?)
+    // Actually Berlin appears twice, others once, so unique should be 15 cities.
+    EXPECT_EQ(cities.size(), body["count"].get<size_t>());
+    EXPECT_GE(cities.size(), 10u); // Basic sanity
+}
+
+TEST_F(HttpAqlApiTest, AqlReturnDistinctOnObjects) {
+    // DISTINCT on constructed object with same key should reduce duplicates
+    // Build a projection that normalizes city to lower() to create potential collisions if case differed
+    json req = {
+        {"query", "FOR user IN users RETURN DISTINCT { city: lower(user.city) }"},
+        {"allow_full_scan", true}
+    };
+    auto res = post("/query/aql", req);
+    ASSERT_EQ(res.result(), http::status::ok) << res.body();
+    auto body = json::parse(res.body());
+    ASSERT_TRUE(body.contains("entities"));
+    std::set<std::string> cities;
+    for (const auto& v : body["entities"]) {
+        if (v.is_object() && v.contains("city")) {
+            cities.insert(v["city"].get<std::string>());
+        }
+    }
+    EXPECT_EQ(cities.size(), body["count"].get<size_t>());
+}
+
+TEST_F(HttpAqlApiTest, AqlReturnDistinctWithLimit) {
+    // Apply LIMIT after DISTINCT
+    json req = {
+        {"query", "FOR user IN users LIMIT 0, 5 RETURN DISTINCT user.city"},
+        {"allow_full_scan", true}
+    };
+    auto res = post("/query/aql", req);
+    ASSERT_EQ(res.result(), http::status::ok) << res.body();
+    auto body = json::parse(res.body());
+    ASSERT_EQ(body["count"].get<size_t>(), 5u);
+    ASSERT_TRUE(body["entities"].is_array());
+    EXPECT_EQ(body["entities"].size(), 5u);
+}
+
 TEST_F(HttpAqlApiTest, CursorPagination_FirstPage) {
     // Request first 2 users with cursor pagination
     json req = {

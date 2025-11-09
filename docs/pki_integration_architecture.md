@@ -523,11 +523,14 @@ bool PKIKeyProvider::validateCertificate(const X509Cert& cert) {
 
 ---
 
-**Nächste Schritte:**
+**Nächste Schritte (Aktualisiert 09. Nov 2025):**
 1. ✅ Design-Review (dieses Dokument)
-2. ⏳ Implementierung VCCPKIClient (TODO #3)
-3. ⏳ Implementierung PKIKeyProvider (TODO #2)
-4. ⏳ Integration-Tests mit Python PKI-Server
-5. ⏳ Production-Deployment
+2. ✅ Implementierung VCCPKIClient (Tests: 6/6 PASS)
+3. ✅ Implementierung PKIKeyProvider (GroupDEK Tests: 10/10 PASS)
+4. ✅ JWTValidator Integration (Tests: 6/6 PASS)
+5. ⏳ End-to-End Load/Failure Injection Tests (PKI-Ausfall Szenarien)
+6. ⏳ Production-Deployment Checkliste (Monitoring, Dashboards, Alerts)
 
-**Timeline:** 4-5 Wochen bis Production-Ready
+**Status:** Kernkomponenten implementiert & getestet; verbleibend: resilienz-orientierte Tests + Betriebsartefakte.
+
+**Geänderte Timeline:** Feature-Complete; Production-Ready nach Abschluss der Resilienz-/Monitoring-Aufgaben (ETA 1 Woche).

@@ -13,7 +13,7 @@ namespace query {
 
 enum class TokenType {
     // Keywords
-    FOR, IN, FILTER, SORT, LIMIT, RETURN, LET,
+    FOR, IN, FILTER, SORT, LIMIT, RETURN, LET, DISTINCT,
     ASC, DESC, AND, OR, XOR, NOT,
     GRAPH, OUTBOUND, INBOUND, ANY,
     TYPE,
@@ -195,7 +195,8 @@ private:
         if (lower == "in") return Token(TokenType::IN, value, line, col);
         if (lower == "filter") return Token(TokenType::FILTER, value, line, col);
         if (lower == "sort") return Token(TokenType::SORT, value, line, col);
-        if (lower == "limit") return Token(TokenType::LIMIT, value, line, col);
+    if (lower == "limit") return Token(TokenType::LIMIT, value, line, col);
+    if (lower == "distinct") return Token(TokenType::DISTINCT, value, line, col);
     if (lower == "return") return Token(TokenType::RETURN, value, line, col);
     if (lower == "let") return Token(TokenType::LET, value, line, col);
         if (lower == "asc") return Token(TokenType::ASC, value, line, col);
@@ -572,9 +573,16 @@ private:
     
     std::shared_ptr<ReturnNode> parseReturnClause() {
         expect(TokenType::RETURN, "Expected RETURN");
-        
+        bool isDistinct = false;
+        if (match(TokenType::DISTINCT)) {
+            // Support syntax: RETURN DISTINCT <expr>
+            advance();
+            isDistinct = true;
+        }
         auto expr = parseExpression();
-        return std::make_shared<ReturnNode>(expr);
+        auto node = std::make_shared<ReturnNode>(expr);
+        node->distinct = isDistinct;
+        return node;
     }
 
     std::shared_ptr<CollectNode> parseCollectClause() {

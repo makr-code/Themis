@@ -5676,6 +5676,138 @@ http::response<http::string_body> HttpServer::handleQueryAql(
         sliced.reserve(res.second.size());
         sliced = std::move(res.second);
 
+        // Post-filter: Evaluate FILTER expressions that reference LET variables (runtime evaluation)
+        if (parse_result.query && !parse_result.query->filters.empty() && !parse_result.query->let_nodes.empty()) {
+            auto filterSpan = Tracer::startSpan("aql.post_filter_let");
+
+            using namespace themis::query;
+            // Minimal local evaluator for post-filter (keeps this block self-contained)
+            std::function<nlohmann::json(const std::shared_ptr<Expression>&,
+                                         const themis::BaseEntity&,
+                                         const std::unordered_map<std::string, nlohmann::json>&)> pfEval;
+
+            // Build a dot-path column name from a FieldAccess expression, ignoring the root variable name
+            auto columnFromFA = [&](const std::shared_ptr<Expression>& e)->std::optional<std::string>{
+                auto* fa = dynamic_cast<FieldAccessExpr*>(e.get());
+                if (!fa) return std::nullopt;
+                std::vector<std::string> parts; parts.push_back(fa->field);
+                auto* cur = fa->object.get();
+                while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) { parts.push_back(fa2->field); cur = fa2->object.get(); }
+                // Ignore the root (variable) name
+                std::string col;
+                for (auto it = parts.rbegin(); it != parts.rend(); ++it) { if (!col.empty()) col += "."; col += *it; }
+                return col;
+            };
+
+            pfEval = [&](const std::shared_ptr<Expression>& expr,
+                         const themis::BaseEntity& ent,
+                         const std::unordered_map<std::string, nlohmann::json>& env)->nlohmann::json {
+                if (!expr) return nlohmann::json();
+                switch (expr->getType()) {
+                    case ASTNodeType::Literal: {
+                        return static_cast<LiteralExpr*>(expr.get())->toJSON()["value"]; }
+                    case ASTNodeType::Variable: {
+                        auto* v = static_cast<VariableExpr*>(expr.get());
+                        auto it = env.find(v->name); if (it != env.end()) return it->second; 
+                        // Treat unknown variable as the loop entity object
+                        return ent.toJson(); }
+                    case ASTNodeType::FieldAccess: {
+                        auto colOpt = columnFromFA(expr);
+                        if (colOpt.has_value()) {
+                            auto asDouble = ent.getFieldAsDouble(*colOpt); if (asDouble.has_value()) return *asDouble;
+                            auto asStr = ent.getFieldAsString(*colOpt); if (asStr.has_value()) return *asStr; return nullptr;
+                        } else {
+                            auto* fa = static_cast<FieldAccessExpr*>(expr.get());
+                            auto base = pfEval(fa->object, ent, env);
+                            if (base.is_object()) { auto it = base.find(fa->field); if (it != base.end()) return *it; }
+                            return nullptr;
+                        }
+                    }
+                    case ASTNodeType::BinaryOp: {
+                        auto* bo = static_cast<BinaryOpExpr*>(expr.get());
+                        auto left = pfEval(bo->left, ent, env);
+                        auto right = pfEval(bo->right, ent, env);
+                        auto toNumber = [](const nlohmann::json& j, double& out)->bool{
+                            if (j.is_number()) { out = j.get<double>(); return true; }
+                            if (j.is_boolean()) { out = j.get<bool>() ? 1.0 : 0.0; return true; }
+                            if (j.is_string()) { char* end=nullptr; std::string s=j.get<std::string>(); out = strtod(s.c_str(), &end); return end && *end=='\0'; }
+                            return false;
+                        };
+                        switch (bo->op) {
+                            case BinaryOperator::Eq:  return left == right;
+                            case BinaryOperator::Neq: return left != right;
+                            case BinaryOperator::Lt:  return left < right;
+                            case BinaryOperator::Lte: return left <= right;
+                            case BinaryOperator::Gt:  return left > right;
+                            case BinaryOperator::Gte: return left >= right;
+                            case BinaryOperator::And: {
+                                bool lb = left.is_boolean() ? left.get<bool>() : (!left.is_null());
+                                bool rb = right.is_boolean() ? right.get<bool>() : (!right.is_null());
+                                return nlohmann::json(lb && rb);
+                            }
+                            case BinaryOperator::Or:  {
+                                bool lb = left.is_boolean() ? left.get<bool>() : (!left.is_null());
+                                bool rb = right.is_boolean() ? right.get<bool>() : (!right.is_null());
+                                return nlohmann::json(lb || rb);
+                            }
+                            case BinaryOperator::Add: { double a,b; if (toNumber(left,a) && toNumber(right,b)) return a+b; return nullptr; }
+                            case BinaryOperator::Sub: { double a,b; if (toNumber(left,a) && toNumber(right,b)) return a-b; return nullptr; }
+                            case BinaryOperator::Mul: { double a,b; if (toNumber(left,a) && toNumber(right,b)) return a*b; return nullptr; }
+                            case BinaryOperator::Div: { double a,b; if (toNumber(left,a) && toNumber(right,b) && b!=0.0) return a/b; return nullptr; }
+                            default: return nullptr;
+                        }
+                    }
+                    case ASTNodeType::UnaryOp: {
+                        auto* u = static_cast<UnaryOpExpr*>(expr.get());
+                        auto val = pfEval(u->operand, ent, env);
+                        switch (u->op) {
+                            case UnaryOperator::Not:   return val.is_boolean() ? nlohmann::json(!val.get<bool>()) : nlohmann::json(false);
+                            case UnaryOperator::Minus: { if (val.is_number()) return -val.get<double>(); return nullptr; }
+                            case UnaryOperator::Plus:  { if (val.is_number()) return val.get<double>(); return nullptr; }
+                            default: return nullptr;
+                        }
+                    }
+                    case ASTNodeType::ArrayLiteral: {
+                        auto* ar = static_cast<ArrayLiteralExpr*>(expr.get());
+                        nlohmann::json arr = nlohmann::json::array();
+                        for (const auto& el : ar->elements) arr.push_back(pfEval(el, ent, env));
+                        return arr; }
+                    case ASTNodeType::ObjectConstruct: {
+                        auto* oc = static_cast<ObjectConstructExpr*>(expr.get());
+                        nlohmann::json obj = nlohmann::json::object();
+                        for (const auto& kv : oc->fields) obj[kv.first] = pfEval(kv.second, ent, env);
+                        return obj; }
+                    default:
+                        return nullptr;
+                }
+            };
+
+            std::vector<themis::BaseEntity> filtered;
+            filtered.reserve(sliced.size());
+            size_t filtered_out = 0;
+            for (const auto& ent : sliced) {
+                // Build LET environment for this row
+                std::unordered_map<std::string, nlohmann::json> env;
+                for (const auto& ln : parse_result.query->let_nodes) {
+                    auto val = pfEval(ln.expression, ent, env);
+                    env[ln.variable] = std::move(val);
+                }
+                // Evaluate all FILTER conditions (AND-combined)
+                bool pass = true;
+                for (const auto& filter : parse_result.query->filters) {
+                    auto result = pfEval(filter->condition, ent, env);
+                    bool cond = result.is_boolean() ? result.get<bool>() : (!result.is_null() && result != false);
+                    if (!cond) { pass = false; break; }
+                }
+                if (pass) filtered.push_back(ent); else filtered_out++;
+            }
+            filterSpan.setAttribute("post_filter.input_count", static_cast<int64_t>(sliced.size()));
+            filterSpan.setAttribute("post_filter.output_count", static_cast<int64_t>(filtered.size()));
+            filterSpan.setAttribute("post_filter.filtered_out", static_cast<int64_t>(filtered_out));
+            filterSpan.setStatus(true);
+            sliced.swap(filtered);
+        }
+
         // If SORT uses BM25/FULLTEXT_SCORE, compute scores and sort now (pre-LIMIT)
         if (sortByScoreFunction) {
             if (!q.fulltextPredicate.has_value()) {
@@ -5707,7 +5839,98 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             });
         }
 
-        if (!use_cursor && parse_result.query && parse_result.query->limit) {
+        // SORT with LET variables (expression-based), performed in-memory if SORT references LET variables
+        if (parse_result.query && parse_result.query->sort && !parse_result.query->let_nodes.empty() && !sliced.empty()) {
+            auto sortSpan = Tracer::startSpan("aql.sort_let");
+            using namespace themis::query;
+            auto specs = parse_result.query->sort->specifications;
+            if (!specs.empty()) {
+                // Helper to check whether an expression references any LET variable
+                std::function<bool(const std::shared_ptr<Expression>&)> refsLet;
+                refsLet = [&](const std::shared_ptr<Expression>& ex)->bool{
+                    if (!ex) return false;
+                    if (auto* v = dynamic_cast<VariableExpr*>(ex.get())) {
+                        for (const auto& ln : parse_result.query->let_nodes) if (ln.variable == v->name) return true; return false;
+                    }
+                    if (auto* bo = dynamic_cast<BinaryOpExpr*>(ex.get())) return refsLet(bo->left) || refsLet(bo->right);
+                    if (auto* u = dynamic_cast<UnaryOpExpr*>(ex.get())) return refsLet(u->operand);
+                    if (auto* fa = dynamic_cast<FieldAccessExpr*>(ex.get())) return refsLet(fa->object);
+                    if (auto* fc = dynamic_cast<FunctionCallExpr*>(ex.get())) { for (const auto& a : fc->arguments) if (refsLet(a)) return true; return false; }
+                    if (auto* oc = dynamic_cast<ObjectConstructExpr*>(ex.get())) { for (const auto& kv : oc->fields) if (refsLet(kv.second)) return true; return false; }
+                    if (auto* ar = dynamic_cast<ArrayLiteralExpr*>(ex.get())) { for (const auto& el : ar->elements) if (refsLet(el)) return true; return false; }
+                    return false;
+                };
+
+                const auto& spec = specs[0];
+                if (refsLet(spec.expression)) {
+                    // Reuse local evaluator from post-filter to compute sort keys
+                    std::unordered_map<std::string, nlohmann::json> sortKeyByPk;
+                    sortKeyByPk.reserve(sliced.size());
+
+                    // Define evaluator (duplicate minimal logic to keep self-contained before main evalExpr block)
+                    std::function<nlohmann::json(const std::shared_ptr<Expression>&,
+                                                 const themis::BaseEntity&,
+                                                 const std::unordered_map<std::string, nlohmann::json>&)> sortEval;
+
+                    // Helper similar to columnFromFA above
+                    auto sortColumnFromFA = [&](const std::shared_ptr<Expression>& e)->std::optional<std::string>{
+                        auto* fa = dynamic_cast<FieldAccessExpr*>(e.get());
+                        if (!fa) return std::nullopt;
+                        std::vector<std::string> parts; parts.push_back(fa->field);
+                        auto* cur = fa->object.get();
+                        while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) { parts.push_back(fa2->field); cur = fa2->object.get(); }
+                        std::string col; for (auto it = parts.rbegin(); it != parts.rend(); ++it) { if (!col.empty()) col += "."; col += *it; }
+                        return col;
+                    };
+                    sortEval = [&](const std::shared_ptr<Expression>& ex,
+                                   const themis::BaseEntity& ent,
+                                   const std::unordered_map<std::string, nlohmann::json>& env)->nlohmann::json {
+                        if (!ex) return nlohmann::json();
+                        switch (ex->getType()) {
+                            case ASTNodeType::Literal: return static_cast<LiteralExpr*>(ex.get())->toJSON()["value"];
+                            case ASTNodeType::Variable: {
+                                auto* v = static_cast<VariableExpr*>(ex.get());
+                                auto it = env.find(v->name); if (it != env.end()) return it->second; return ent.toJson(); }
+                            case ASTNodeType::FieldAccess: {
+                                auto colOpt = sortColumnFromFA(ex);
+                                if (colOpt.has_value()) {
+                                    auto asDouble = ent.getFieldAsDouble(*colOpt); if (asDouble.has_value()) return *asDouble;
+                                    auto asStr = ent.getFieldAsString(*colOpt); if (asStr.has_value()) return *asStr; return nullptr;
+                                } else {
+                                    auto* fa = static_cast<FieldAccessExpr*>(ex.get());
+                                    auto base = sortEval(fa->object, ent, env);
+                                    if (base.is_object()) { auto it = base.find(fa->field); if (it != base.end()) return *it; }
+                                    return nullptr;
+                                }
+                            }
+                            default: return nullptr;
+                        }
+                    };
+
+                    for (const auto& ent : sliced) {
+                        std::unordered_map<std::string, nlohmann::json> env;
+                        for (const auto& ln : parse_result.query->let_nodes) { env[ln.variable] = sortEval(ln.expression, ent, env); }
+                        sortKeyByPk.emplace(ent.getPrimaryKey(), sortEval(spec.expression, ent, env));
+                    }
+
+                    bool asc = spec.ascending;
+                    std::sort(sliced.begin(), sliced.end(), [&](const themis::BaseEntity& a, const themis::BaseEntity& b){
+                        const auto& ka = sortKeyByPk[a.getPrimaryKey()];
+                        const auto& kb = sortKeyByPk[b.getPrimaryKey()];
+                        if (asc) return ka < kb; else return ka > kb;
+                    });
+                    sortSpan.setAttribute("sort_let.sorted", true);
+                } else {
+                    sortSpan.setAttribute("sort_let.sorted", false);
+                }
+            }
+            sortSpan.setAttribute("sort_let.count", static_cast<int64_t>(sliced.size()));
+            sortSpan.setStatus(true);
+        }
+
+        // Apply LIMIT only if not using RETURN DISTINCT (distinct is applied on projection later)
+        bool returnDistinct = (parse_result.query && parse_result.query->return_node && parse_result.query->return_node->distinct);
+        if (!use_cursor && parse_result.query && parse_result.query->limit && !returnDistinct) {
             auto limitSpan = Tracer::startSpan("aql.limit");
             // Klassisches LIMIT offset,count Verhalten
             auto off = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->offset));
@@ -5883,7 +6106,7 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             return makeResponse(http::status::ok, response_body.dump(), req);
         }
 
-        // Serialize entities or projections with LET support
+    // Serialize entities or projections with LET support (with optional DISTINCT on RETURN)
         auto returnSpan = Tracer::startSpan("aql.return");
         returnSpan.setAttribute("return.input_count", static_cast<int64_t>(sliced.size()));
 
@@ -6176,24 +6399,75 @@ http::response<http::string_body> HttpServer::handleQueryAql(
 
         json entities = json::array();
         if (simpleReturnLoopVar) {
-            for (const auto& e : sliced) entities.push_back(e.toJson());
-        } else {
-            for (const auto& e : sliced) {
-                // Build LET environment per row
-                std::unordered_map<std::string, nlohmann::json> env;
-                for (const auto& ln : parse_result.query->let_nodes) {
-                    // Only allow Literal, FieldAccess and Variable
-                    auto val = evalExpr(ln.expression, e, env);
-                    env[ln.variable] = std::move(val);
+            if (returnDistinct) {
+                std::unordered_set<std::string> seen;
+                for (const auto& e : sliced) {
+                    auto s = e.toJson();
+                    if (seen.insert(s).second) entities.push_back(std::move(s));
                 }
-                // Evaluate RETURN expression; if missing, default to loop var entity
-                if (parse_result.query->return_node && parse_result.query->return_node->expression) {
-                    auto out = evalExpr(parse_result.query->return_node->expression, e, env);
-                    entities.push_back(std::move(out));
-                } else {
-                    entities.push_back(e.toJson());
+            } else {
+                for (const auto& e : sliced) entities.push_back(e.toJson());
+            }
+        } else {
+            if (returnDistinct) {
+                std::unordered_set<std::string> seen;
+                for (const auto& e : sliced) {
+                    // Build LET environment per row
+                    std::unordered_map<std::string, nlohmann::json> env;
+                    for (const auto& ln : parse_result.query->let_nodes) {
+                        auto val = evalExpr(ln.expression, e, env);
+                        env[ln.variable] = std::move(val);
+                    }
+                    // Evaluate RETURN expression or default to entity
+                    nlohmann::json out;
+                    if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+                        out = evalExpr(parse_result.query->return_node->expression, e, env);
+                    } else {
+                        out = e.toJson(); // string
+                    }
+                    std::string key = out.dump();
+                    if (seen.insert(key).second) {
+                        entities.push_back(std::move(out));
+                    }
+                }
+            } else {
+                for (const auto& e : sliced) {
+                    // Build LET environment per row
+                    std::unordered_map<std::string, nlohmann::json> env;
+                    for (const auto& ln : parse_result.query->let_nodes) {
+                        // Only allow Literal, FieldAccess and Variable
+                        auto val = evalExpr(ln.expression, e, env);
+                        env[ln.variable] = std::move(val);
+                    }
+                    // Evaluate RETURN expression; if missing, default to loop var entity
+                    if (parse_result.query->return_node && parse_result.query->return_node->expression) {
+                        auto out = evalExpr(parse_result.query->return_node->expression, e, env);
+                        entities.push_back(std::move(out));
+                    } else {
+                        entities.push_back(e.toJson());
+                    }
                 }
             }
+        }
+
+        // If DISTINCT was requested, apply LIMIT on the resulting entities (post-projection) for non-cursor requests
+        if (!use_cursor && parse_result.query && parse_result.query->limit && returnDistinct) {
+            auto limitSpan = Tracer::startSpan("aql.limit_distinct");
+            auto off = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->offset));
+            auto cnt = static_cast<size_t>(std::max<int64_t>(0, parse_result.query->limit->count));
+            limitSpan.setAttribute("limit.offset", static_cast<int64_t>(off));
+            limitSpan.setAttribute("limit.count", static_cast<int64_t>(cnt));
+            limitSpan.setAttribute("limit.input_count", static_cast<int64_t>(entities.size()));
+            if (off < entities.size()) {
+                size_t last = std::min(entities.size(), off + cnt);
+                json tmp = json::array();
+                for (size_t i = off; i < last; ++i) tmp.push_back(entities[i]);
+                entities.swap(tmp);
+            } else {
+                entities = json::array();
+            }
+            limitSpan.setAttribute("limit.output_count", static_cast<int64_t>(entities.size()));
+            limitSpan.setStatus(true);
         }
         
         returnSpan.setStatus(true);
@@ -6228,9 +6502,10 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             response_body = paged.toJSON();
         } else {
             // Traditional response format
+            // Count reflects number of returned entities; for DISTINCT this is entities.size()
             response_body = {
                 {"table", table},
-                {"count", sliced.size()},
+                {"count", returnDistinct ? entities.size() : sliced.size()},
                 {"entities", entities}
             };
             // Provide "result" alias for compatibility

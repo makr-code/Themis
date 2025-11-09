@@ -1,9 +1,14 @@
 ---
 
-# Change Data Capture (CDC)
+---
+title: DEPRECATED – Change Data Capture (CDC)
+status: archived
+archived_at: 2025-11-09
+replacement: docs/change_data_capture.md
+---
 
-Diese Seite ist veraltet. Bitte nutze die konsolidierte und code‑abgeglichene Doku:
+Diese Seite wurde archiviert. Bitte nutze die konsolidierte, aktuelle Dokumentation:
 
-- Change Data Capture (aktuell): `docs/change_data_capture.md`
+- Aktuell: `docs/change_data_capture.md`
 
-Hinweis: Die neue Seite beschreibt alle derzeit implementierten Endpunkte (GET `/changefeed`, GET `/changefeed/stats`, POST `/changefeed/retention`) sowie das experimentelle SSE‑Streaming (`GET /changefeed/stream`).
+Notiz: Die neue Seite beschreibt alle implementierten Endpunkte (GET `/changefeed`, GET `/changefeed/stats`, POST `/changefeed/retention`) sowie das experimentelle SSE‑Streaming (`GET /changefeed/stream`).

@@ -24,7 +24,7 @@ enum class ASTNodeType {
     FilterNode,         // FILTER condition
     SortNode,           // SORT expr [ASC|DESC]
     LimitNode,          // LIMIT offset, count
-    ReturnNode,         // RETURN expression
+    ReturnNode,         // RETURN expression (optionally DISTINCT)
     LetNode,            // LET variable = expression
     CollectNode,        // COLLECT ... AGGREGATE ... (Phase 2)
     
@@ -259,6 +259,7 @@ struct LimitNode {
 
 struct ReturnNode {
     std::shared_ptr<Expression> expression;
+    bool distinct = false; // NEW: whether RETURN DISTINCT was specified
     
     explicit ReturnNode(std::shared_ptr<Expression> expr)
         : expression(std::move(expr)) {}
@@ -266,7 +267,8 @@ struct ReturnNode {
     nlohmann::json toJSON() const {
         return {
             {"type", "return"},
-            {"expression", expression->toJSON()}
+            {"expression", expression->toJSON()},
+            {"distinct", distinct}
         };
     }
 };
