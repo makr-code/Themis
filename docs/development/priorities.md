@@ -13,7 +13,7 @@
 | ~~COLLECT/GROUP BY MVP~~ | Hoch | 3-5 Tage | Mittel | ✅ | Abgeschlossen |
 | ~~Vector Search HTTP Endpoint~~ | Hoch | 1-2 Tage | Niedrig | ✅ | Abgeschlossen |
 | ~~OpenTelemetry Tracing~~ | Mittel | 3-5 Tage | Niedrig | ✅ | Abgeschlossen |
-| PKI: Echte RSA/X.509 Signaturen | Hoch (Compliance) | 5-7 Tage | Hoch | 🔥 P0 | Start sofort |
+| PKI: Echte RSA/X.509 Signaturen + Chain/Revocation | Hoch (Compliance) | 5-7 Tage | Hoch | 🔥 P0 | Start sofort |
 | RBAC (Basic Rollen + Scopes) | Hoch (Security) | 7-10 Tage | Hoch | 🔥 P0 | Planung + Implementierung |
 | Ranger Adapter Hardening (Pooling, Backoff, Timeouts Erweiterung) | Mittel | 2-3 Tage | Mittel | ⚠️ P1 | Nach PKI/RBAC |
 | Inkrementelle Backups + WAL-Archiving | Mittel | 5-7 Tage | Mittel | ⚠️ P1 | Daten-Schutz |
@@ -56,7 +56,7 @@
 ## 🚀 Empfohlene Reihenfolge (Nächste Iteration: KW 46)
 
 ### Phase 1 (Security & Compliance)
-1. PKI echte RSA/X.509 Signaturen (Sign/Verify, Zertifikatskette prüfen)
+1. PKI echte RSA/X.509 Signaturen (Sign/Verify, Zertifikatskette + Revocation + Mode Flag)
 2. RBAC Basis (Rollen, Ressourcen-Typen: collection, graph, vector; Operationen: read/write/admin)
 
 ### Phase 2 (Ops & Observability)
@@ -307,13 +307,13 @@ FOR doc IN orders
 - Ranger Adapter Hardening (Resilienz & Performance)
 
 ## ✅ Definition of Done P0 (Security & RBAC)
-- Signaturen: OpenSSL RSA Sign/Verify mit SHA-256; Zertifikatskette validiert
-- PKIClient ersetzt Stub (kein Base64-Fake)
+- Signaturen: OpenSSL RSA Sign/Verify mit SHA-256; Zertifikatskette validiert; `mode` Kennzeichnung
+- PKIClient: Kein Silent Stub mehr (Stub explizit markiert)
 - RBAC: Policy-Store (RocksDB CF rbac_policies), Enforcement im HTTP-Dispatcher
 - Tests: 90%+ Coverage für Sign/Verify und Policy Checks
 
 ## 📌 Messgrößen nach Umsetzung
-- Audit-Log Einträge mit echter Signatur (FLAG: signature_verified=true)
+- Audit-Log Einträge mit echter Signatur (Flags: `signature_mode`, `signature_verified`, optional `verify_error`)
 - RBAC Denied Counter (metrics: rbac_denied_total)
 - Backup-Differential Größe pro Intervall
 - Log Parsing Latenz (structured_logs_parse_ms_bucket)

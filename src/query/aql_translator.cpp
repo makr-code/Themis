@@ -57,38 +57,61 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
     }
     
     if (hasOr) {
-        // Build DisjunctiveQuery using DNF conversion
+        // Build DisjunctiveQuery using DNF conversion across ALL filters (AND-merge between filters)
         DisjunctiveQuery disjQuery;
         disjQuery.table = ast->for_node.collection;
-        
-        // Convert all filters to DNF and merge
+
+        auto mergeConj = [&](const ConjunctiveQuery& a, const ConjunctiveQuery& b) -> std::optional<ConjunctiveQuery> {
+            ConjunctiveQuery merged; merged.table = ast->for_node.collection;
+            // Merge equality predicates
+            merged.predicates = a.predicates;
+            merged.predicates.insert(merged.predicates.end(), b.predicates.begin(), b.predicates.end());
+            // Merge ranges
+            merged.rangePredicates = a.rangePredicates;
+            merged.rangePredicates.insert(merged.rangePredicates.end(), b.rangePredicates.begin(), b.rangePredicates.end());
+            // Merge FULLTEXT: allow at most one
+            if (a.fulltextPredicate.has_value() && b.fulltextPredicate.has_value()) {
+                return std::nullopt; // invalid: two FULLTEXT in same conjunct
+            }
+            if (a.fulltextPredicate.has_value()) merged.fulltextPredicate = a.fulltextPredicate;
+            if (b.fulltextPredicate.has_value()) merged.fulltextPredicate = b.fulltextPredicate;
+            return merged;
+        };
+
+        bool first = true;
+        std::vector<ConjunctiveQuery> acc;
         for (const auto& filter : ast->filters) {
             if (!filter || !filter->condition) {
                 return TranslationResult::Error("Invalid filter node");
             }
-            
-            auto disjuncts = convertToDNF(filter->condition, disjQuery.table, error);
+            auto parts = convertToDNF(filter->condition, disjQuery.table, error);
             if (!error.empty()) {
                 return TranslationResult::Error("OR filter translation failed: " + error);
             }
-            
-            // Merge disjuncts (for now, just append - proper DNF merge would distribute)
-            if (disjQuery.disjuncts.empty()) {
-                disjQuery.disjuncts = std::move(disjuncts);
+            if (first) {
+                acc = std::move(parts);
+                first = false;
             } else {
-                // Multiple filters with OR: combine via cartesian product (DNF expansion)
-                // For simplicity in v1, require single FILTER with OR
-                if (ast->filters.size() > 1) {
-                    return TranslationResult::Error("Multiple FILTER clauses with OR not yet supported - combine into single FILTER");
+                // AND-merge: cartesian product between acc and parts
+                std::vector<ConjunctiveQuery> mergedList;
+                for (const auto& l : acc) {
+                    for (const auto& r : parts) {
+                        auto m = mergeConj(l, r);
+                        if (!m.has_value()) {
+                            return TranslationResult::Error("Cannot combine multiple FULLTEXT() predicates in AND - only one per clause allowed");
+                        }
+                        mergedList.push_back(std::move(*m));
+                    }
                 }
+                acc.swap(mergedList);
             }
         }
-        
+        disjQuery.disjuncts = std::move(acc);
+
         // Process SORT + LIMIT
         if (ast->sort) {
             disjQuery.orderBy = extractOrderBy(ast->sort, ast->limit);
         }
-        
         return TranslationResult::SuccessDisjunctive(std::move(disjQuery));
     }
     
@@ -96,6 +119,14 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
     for (const auto& filter : ast->filters) {
         if (!filter || !filter->condition) {
             return TranslationResult::Error("Invalid filter node");
+        }
+
+        // Skip NOT filters entirely (runtime evaluation via post-filter)
+        if (filter->condition->getType() == ASTNodeType::UnaryOp) {
+            auto* u = static_cast<UnaryOpExpr*>(filter->condition.get());
+            if (u->op == UnaryOperator::Not) {
+                continue; // do not attempt push-down translation
+            }
         }
         
         // Check if filter is a FULLTEXT function call
@@ -175,6 +206,12 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
         std::function<void(const std::shared_ptr<Expression>&, std::vector<std::shared_ptr<Expression>>&)> collectNonFulltext;
         collectNonFulltext = [&](const std::shared_ptr<Expression>& e, std::vector<std::shared_ptr<Expression>>& preds) {
             if (!e) return;
+
+            // Ignore NOT subtrees completely (operand evaluated at runtime)
+            if (e->getType() == ASTNodeType::UnaryOp) {
+                auto* u = static_cast<UnaryOpExpr*>(e.get());
+                if (u->op == UnaryOperator::Not) return; // skip
+            }
             
             if (e->getType() == ASTNodeType::FunctionCall) {
                 auto fc = std::static_pointer_cast<FunctionCallExpr>(e);
@@ -279,6 +316,14 @@ bool AQLTranslator::extractPredicates(
     if (!expr) {
         error = "Null expression";
         return false;
+    }
+
+    // Skip NOT operand for push-down (evaluated at runtime)
+    if (expr->getType() == ASTNodeType::UnaryOp) {
+        auto u = std::static_pointer_cast<UnaryOpExpr>(expr);
+        if (u->op == UnaryOperator::Not) {
+            return true; // treat as success without adding predicates
+        }
     }
     
     // Check for FULLTEXT function call in FILTER
@@ -514,7 +559,7 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
         return {};
     }
     
-    // Base case: Single predicate (leaf node)
+    // Base case: Single predicate / logical op
     if (expr->getType() == ASTNodeType::BinaryOp) {
         auto binOp = std::static_pointer_cast<BinaryOpExpr>(expr);
         
@@ -577,7 +622,7 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
             return result;
         }
         
-        // Leaf comparison (==, <, >, etc.)
+    // Leaf comparison (==, <, >, etc.)
         // Create single-predicate conjunctive query
         ConjunctiveQuery conj;
         conj.table = table;
@@ -592,6 +637,12 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
         conj.predicates = std::move(eqPreds);
         conj.rangePredicates = std::move(rangePreds);
         
+        return {conj};
+    }
+
+    // Unary NOT: no push-down; return a neutral conjunct and rely on post-filter evaluation in executor
+    if (expr->getType() == ASTNodeType::UnaryOp) {
+        ConjunctiveQuery conj; conj.table = table; // no predicates
         return {conj};
     }
     

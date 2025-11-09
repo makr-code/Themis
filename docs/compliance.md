@@ -8,7 +8,7 @@ Vollständige DSGVO/eIDAS/HGB-konforme Datenverarbeitung für hochsensible Anwen
 |---------|--------------|--------|
 | **Data Governance** | Klassifizierung (offen/vs-nfd/geheim/streng_geheim) | ✅ Produktiv |
 | **PII Detection** | Automatische Erkennung von 7+ PII-Typen | ✅ Produktiv |
-| **Audit Logging** | Encrypt-then-Sign mit PKI | ✅ Produktiv |
+| **Audit Logging** | Encrypt-then-Sign mit PKI | ⚠️ Partial (Signatur Stub-Fallback möglich) |
 | **Retention Management** | Automatische Archivierung & Löschung | ✅ Produktiv |
 | **Field Encryption** | AES-256-GCM für sensitive Felder | ✅ Produktiv |
 
@@ -58,12 +58,12 @@ python demo_compliance.py
 
 | Komponente | Funktion | Status |
 |------------|----------|--------|
-| Qualifizierte Signatur | PKI-Client (RSA-SHA256) | ✅ **Produktiv** (mit ENV-Konfiguration) / ⚙️ Stub (ohne ENV) |
+| Qualifizierte Signatur | PKI-Client (RSA-SHA256) | ⚠️ Teilweise (echte RSA ohne Chain/Revocation) / Stub-Fallback |
 | Zeitstempel | Präzise Zeiterfassung | ✅ |
 | Langzeitarchivierung | Archive-Handler (S3/Tape) | ⚙️ Konfigurierbar |
 | Nachweisbarkeit | Tamper-proof Audit-Logs | ✅ Mit konfiguriertem PKI |
 
-**✅ PKI Update (Nov 2025):** Die PKI-Implementierung (`src/utils/pki_client.cpp`) unterstützt jetzt echte RSA-Signaturen via OpenSSL. **Produktiv eIDAS-konform** wenn ENV-Variablen gesetzt sind (`THEMIS_PKI_PRIVATE_KEY`, `THEMIS_PKI_CERTIFICATE`). Ohne ENV läuft Stub-Modus (Base64, nur Development). Details: `docs/security/pki_rsa_integration.md`.
+> WARNUNG (PKI Stand 09.11.2025): Echte RSA-Signaturen sind vorhanden, aber es fehlen Chain-/Revocation-/KeyUsage-Prüfungen. Ohne Keys fällt der Client in einen Base64-Stub zurück. Audit-Logs sind daher aktuell nicht eIDAS-konform. Siehe `docs/pki_signatures.md` und Hardening Roadmap.
 
 ### HGB §257
 

@@ -33,6 +33,7 @@ Diese Roadmap skizziert priorisierte Vorhaben für ThemisDB nach Abschluss der C
 - ⏳ Query Optimizer: Cost-based Index Selection, Join Order Optimization
 
 ### Security & Compliance
+- ⏳ PKI Hardening: Chain Validation, Revocation (CRL/OCSP), Canonical JSON, Mode/Flags in Audit
 - ⏳ Column-Level Key Rotation APIs
 - ⏳ Dynamic Data Masking (Erweiterte Regeln)
 - ⏳ Externe KMS-Integration (Vault/AWS KMS optional)

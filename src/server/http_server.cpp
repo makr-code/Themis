@@ -4202,6 +4202,38 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                 "AQL translation error: " + translate_result.error_message, req);
         }
         translateSpan.setStatus(true);
+
+        // If NOT filters caused no push-down predicates, force full scan fallback
+        if (!translate_result.disjunctive.has_value() && !translate_result.join.has_value() && !translate_result.traversal.has_value()) {
+            if (translate_result.query.predicates.empty() && translate_result.query.rangePredicates.empty() && !translate_result.query.fulltextPredicate.has_value()) {
+                // Detect NOT anywhere in original FILTERs
+                bool hasNot = false;
+                std::function<bool(const std::shared_ptr<themis::query::Expression>&)> detectNot;
+                detectNot = [&](const std::shared_ptr<themis::query::Expression>& ex)->bool{
+                    using namespace themis::query;
+                    if (!ex) return false;
+                    if (ex->getType() == ASTNodeType::UnaryOp) {
+                        auto* u = static_cast<UnaryOpExpr*>(ex.get());
+                        if (u->op == UnaryOperator::Not) return true;
+                        return detectNot(u->operand);
+                    }
+                    if (ex->getType() == ASTNodeType::BinaryOp) {
+                        auto* b = static_cast<BinaryOpExpr*>(ex.get());
+                        return detectNot(b->left) || detectNot(b->right);
+                    }
+                    return false;
+                };
+                if (parse_result.query) {
+                    for (const auto& f : parse_result.query->filters) {
+                        if (f && f->condition && detectNot(f->condition)) { hasNot = true; break; }
+                    }
+                }
+                if (hasNot && !allow_full_scan) {
+                    allow_full_scan = true; // enable fallback scan to allow runtime NOT evaluation
+                    span.setAttribute("aql.force_full_scan_due_to_not", true);
+                }
+            }
+        }
         
     // If traversal present, execute via GraphIndexManager
         if (translate_result.traversal.has_value()) {
@@ -5327,7 +5359,8 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                     try {
                         themis::BaseEntity::Blob entity_blob(blob->begin(), blob->end());
                         auto entity = themis::BaseEntity::deserialize(key, entity_blob);
-                        entities.push_back(nlohmann::json::parse(entity.toJson()));
+                        // For consistency with non-OR path, store each entity as serialized JSON string
+                        entities.push_back(entity.toJson());
                     } catch (...) {
                         // Skip malformed entities
                     }
@@ -5676,8 +5709,44 @@ http::response<http::string_body> HttpServer::handleQueryAql(
         sliced.reserve(res.second.size());
         sliced = std::move(res.second);
 
-        // Post-filter: Evaluate FILTER expressions that reference LET variables (runtime evaluation)
-        if (parse_result.query && !parse_result.query->filters.empty() && !parse_result.query->let_nodes.empty()) {
+        // Post-filter: Evaluate FILTER expressions that reference LET variables or contain NOT (runtime evaluation)
+        std::function<bool(const std::shared_ptr<themis::query::Expression>&)> exprHasNot;
+        exprHasNot = [&](const std::shared_ptr<themis::query::Expression>& ex)->bool{
+            using namespace themis::query;
+            if (!ex) return false;
+            switch (ex->getType()) {
+                case ASTNodeType::UnaryOp: {
+                    auto* u = static_cast<UnaryOpExpr*>(ex.get());
+                    return (u->op == UnaryOperator::Not) || exprHasNot(u->operand);
+                }
+                case ASTNodeType::BinaryOp: {
+                    auto* b = static_cast<BinaryOpExpr*>(ex.get());
+                    return exprHasNot(b->left) || exprHasNot(b->right);
+                }
+                case ASTNodeType::FieldAccess: {
+                    auto* f = static_cast<FieldAccessExpr*>(ex.get());
+                    return exprHasNot(f->object);
+                }
+                case ASTNodeType::FunctionCall: {
+                    auto* fc = static_cast<FunctionCallExpr*>(ex.get());
+                    for (const auto& a : fc->arguments) if (exprHasNot(a)) return true; return false;
+                }
+                case ASTNodeType::ObjectConstruct: {
+                    auto* oc = static_cast<ObjectConstructExpr*>(ex.get());
+                    for (const auto& kv : oc->fields) if (exprHasNot(kv.second)) return true; return false;
+                }
+                case ASTNodeType::ArrayLiteral: {
+                    auto* ar = static_cast<ArrayLiteralExpr*>(ex.get());
+                    for (const auto& el : ar->elements) if (exprHasNot(el)) return true; return false;
+                }
+                default: return false;
+            }
+        };
+        bool hasNotFilter = false;
+        if (parse_result.query) {
+            for (const auto& f : parse_result.query->filters) { if (f && f->condition && exprHasNot(f->condition)) { hasNotFilter = true; break; } }
+        }
+        if (parse_result.query && !parse_result.query->filters.empty() && (!parse_result.query->let_nodes.empty() || hasNotFilter)) {
             auto filterSpan = Tracer::startSpan("aql.post_filter_let");
 
             using namespace themis::query;

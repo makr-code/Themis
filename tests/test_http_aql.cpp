@@ -284,6 +284,56 @@ TEST_F(HttpAqlApiTest, AqlReturnDistinctWithLimit) {
     EXPECT_EQ(body["entities"].size(), 5u);
 }
 
+TEST_F(HttpAqlApiTest, AqlFilter_NotBerlin) {
+    json req = {
+        {"query", "FOR user IN users FILTER NOT (user.city == \"Berlin\") RETURN user"},
+        {"allow_full_scan", false}
+    };
+    auto res = post("/query/aql", req);
+    ASSERT_EQ(res.result(), http::status::ok) << res.body();
+    auto body = json::parse(res.body());
+    // 15 users total, 2 in Berlin -> 13
+    EXPECT_EQ(body["count"], 13);
+    for (const auto& s : body["entities"]) {
+        auto ent = json::parse(s.get<std::string>());
+        EXPECT_NE(ent["city"], "Berlin");
+    }
+}
+
+TEST_F(HttpAqlApiTest, AqlFilter_AndNotAgeGe30) {
+    json req = {
+        {"query", "FOR user IN users FILTER user.age >= 30 AND NOT (user.city == \"Berlin\") RETURN user"},
+        {"allow_full_scan", false}
+    };
+    auto res = post("/query/aql", req);
+    ASSERT_EQ(res.result(), http::status::ok) << res.body();
+    auto body = nlohmann::json::parse(res.body());
+    ASSERT_TRUE(body["entities"].is_array());
+    for (const auto& s : body["entities"]) {
+        auto ent = json::parse(s.get<std::string>());
+        int age = std::stoi(ent["age"].get<std::string>());
+        EXPECT_GE(age, 30);
+        EXPECT_NE(ent["city"], "Berlin");
+    }
+}
+
+TEST_F(HttpAqlApiTest, AqlMultipleFiltersWithOr_DNFMerge) {
+    // Two FILTERs: (city==Berlin OR city==Munich) AND age>=30 => should return only Charlie (Munich, 30)
+    json req = {
+        {"query", "FOR user IN users FILTER user.city == \"Berlin\" OR user.city == \"Munich\" FILTER user.age >= 30 RETURN user"},
+        {"allow_full_scan", false},
+        {"optimize", true}
+    };
+    auto res = post("/query/aql", req);
+    ASSERT_EQ(res.result(), http::status::ok) << res.body();
+    auto body = nlohmann::json::parse(res.body());
+    EXPECT_EQ(body["count"], 1);
+    ASSERT_EQ(body["entities"].size(), 1);
+    auto ent = json::parse(body["entities"][0].get<std::string>());
+    EXPECT_EQ(ent["name"], "Charlie");
+    EXPECT_EQ(ent["city"], "Munich");
+}
+
 TEST_F(HttpAqlApiTest, CursorPagination_FirstPage) {
     // Request first 2 users with cursor pagination
     json req = {

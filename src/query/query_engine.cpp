@@ -1393,6 +1393,12 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 						
 						// Evaluate RETURN expression
 						if (return_node) {
+							// Early-out if LIMIT reached (hash-join)
+							if (limit && limit->count >= 0) {
+								if (static_cast<int64_t>(results.size()) >= limit->offset + limit->count) {
+									return true; // Stop probing further build matches
+								}
+							}
 							auto result = evaluateExpression(return_node->expression, ctx);
 							results.push_back(std::move(result));
 						}
@@ -1434,6 +1440,12 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 				
 				// Evaluate RETURN expression
 				if (return_node) {
+					// Early-out if LIMIT reached (nested-loop)
+					if (limit && limit->count >= 0) {
+						if (static_cast<int64_t>(results.size()) >= limit->offset + limit->count) {
+							return; // Stop deeper accumulation
+						}
+					}
 					auto result = evaluateExpression(return_node->expression, ctx);
 					results.push_back(std::move(result));
 				}
@@ -1477,6 +1489,10 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 					newCtx.bind(for_node.variable, doc);
 					
 					// Recurse to next FOR level
+					// Abort deeper recursion if LIMIT already satisfied
+					if (limit && limit->count >= 0 && static_cast<int64_t>(results.size()) >= limit->offset + limit->count) {
+						return true; // stop scanning this prefix
+					}
 					nestedLoop(depth + 1, newCtx);
 				} catch (...) {
 					// Skip malformed entities

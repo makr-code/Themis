@@ -117,18 +117,31 @@
   - ✅ Function Call Expression Evaluator (Zeile 4250+ in http_server.cpp)
   - ✅ ISO 8601 Date Parsing & Manipulation
 
+  - ✅ **OR/NOT in FILTER:**
+    - Parser: UnaryOp NOT, BinaryOp OR vollständig unterstützt
+    - Translator: DNF-Konvertierung (convertToDNF) für OR; NOT-Filter überspringen Pushdown
+    - Executor: Post-Filter-Auswertung für NOT (runtime); OR via DisjunctiveQuery
+    - DNF-Merge über mehrere FILTER-Klauseln (AND-Verknüpfung via kartesisches Produkt)
+    - Tests: 3/3 PASS (AqlFilter_NotBerlin, AqlFilter_AndNotAgeGe30, AqlMultipleFiltersWithOr_DNFMerge)
+    - Einschränkung: NOT erzwingt Full-Scan-Fallback wenn keine anderen Pushdown-Prädikate vorhanden
+  - ✅ **DISTINCT Keyword:**
+    - Parser: TokenType::DISTINCT; ReturnNode.distinct Flag
+    - Executor: De-Duplizierung nach Projektion (vor LIMIT); Hash-basiert für Skalare/Objekte
+    - Tests: 3/3 PASS (AqlReturnDistinctSimple, AqlReturnDistinctOnObjects, AqlReturnDistinctWithLimit)
+    - Syntax: `RETURN DISTINCT expr` (LIMIT muss im Query vor RETURN erscheinen, wird aber nach DISTINCT angewandt)
+
 **NICHT implementiert:**
   - ❌ Multi-Gruppen COLLECT (nur 1 Gruppierungsfeld)
-  - ❌ Joins (doppeltes FOR + FILTER)
-  - ❌ OR/NOT in FILTER (nur AND-Konjunktionen)
-  - ❌ DISTINCT Keyword
+  - ❌ Joins (doppeltes FOR + FILTER) - MVP in Planung
   - ❌ Subqueries
 
 **Verifikation:**
 - AQL Core erfüllt 100% der Basisfunktionen (FOR/FILTER/SORT/LIMIT/RETURN)
 - LET-Runtime durch HTTP-AQL-Tests verifiziert (HttpAqlLetTest.* PASS)
 - COLLECT MVP deckt Standard-Aggregationen ab
-- Offene Advanced Features: Joins, OR/NOT, DISTINCT, Subqueries, Multi-Gruppen COLLECT
+- OR/NOT vollständig implementiert: OR über DNF, NOT via runtime Post-Filter
+- DISTINCT vollständig implementiert: Hash-basierte De-Duplizierung in Projektion
+- Offene Advanced Features: Joins (MVP geplant), Multi-Gruppen COLLECT, Subqueries
 
 ---
 
@@ -460,9 +473,9 @@
 - **Status:** ❌ Nicht implementiert
 - **todo.md:** Phase 7.4 (Zeilen 1350+)
 
-#### ⚠️ PKI-Integration (Stub)
-- **Status:** Demo-Stub (Base64 statt echte Signaturen) → eIDAS nicht konform
-- **Code-Hinweis:** `VCCPKIClient::signHash` / `verifyHash` verwenden kein RSA; echte Implementierung erforderlich
+#### ⚠️ PKI-Integration (teilweise)
+- **Status:** Dual-Modus: Echte RSA-Signaturen via OpenSSL, jedoch ohne Chain-/Revocation-/KU/EKU-Prüfung; Fallback ist Base64-Stub → aktuell nicht eIDAS-konform
+- **Code-Hinweis:** `VCCPKIClient::signHash`/`verifyHash` nutzen RSA, wenn Key/Cert & passende Hashlänge vorliegen; sonst Stub. Hardening (Chain/Revocation/Canonicalization) offen
 
 ---
 
@@ -472,7 +485,10 @@
 - Offene Punkte: Joins, OR/NOT (Index-Merge Optimierung), DISTINCT, Subqueries, Multi-Gruppen COLLECT, Path Constraints (Graph)
 
 ### Security/Governance
-- PKI echte RSA/X.509 Signaturen fehlen; RBAC nicht implementiert; strukturierte Audit-Log-Erweiterung und DSGVO eIDAS Compliance pending
+- PKI: RSA vorhanden, aber Chain/Revocation/Usage/Canonicalization offen → eIDAS nicht konform
+- RBAC nicht implementiert
+- Strukturierte Audit-Logs & Signatur-Verifikationsflags fehlen
+- DSGVO Art. 30 Integrität eingeschränkt (Stub-Fallback möglich)
 
 ### Observability Erweiterungen
 - Inkrementelle Backups/WAL-Archiving, erweiterte Compaction-Metriken, strukturierte JSON-Logs, Config API für selektive Live-Tuning (teilweise vorhanden)

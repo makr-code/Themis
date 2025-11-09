@@ -20,6 +20,8 @@ using query::LiteralValue;
 using query::ASTNodeType;
 using query::FunctionCallExpr;
 using query::BinaryOperator;
+using query::UnaryOpExpr;
+using query::UnaryOperator;
 
 /**
  * Translates AQL AST to QueryEngine ConjunctiveQuery

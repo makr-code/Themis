@@ -16,58 +16,47 @@
 
 ## 📊 Detaillierte Findings
 
-### 🟡 STUB #1: PKI Client (Signatur-Simulation)
+### 🟡 PKI Client (Teilimplementierung mit Stub-Fallback)
 **Datei:** `src/utils/pki_client.cpp`  
-**Zeilen:** 53-68  
 **Severity:** 🟡 MEDIUM (Security-relevant)
 
-**Code:**
-```cpp
-SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) const {
-    // Stub: simply base64-encode the provided hash and return a fake signature id
-    SignatureResult res;
-    res.ok = true;
-    res.signature_id = "sig_" + random_hex_id(8);
-    res.algorithm = cfg_.signature_algorithm.empty() ? std::string("RSA-SHA256") : cfg_.signature_algorithm;
-    res.signature_b64 = base64_encode(hash_bytes);
-    res.cert_serial = "DEMO-CERT-SERIAL";  // ❌ FAKE
-    return res;
-}
+**Aktueller Stand (09.11.2025):**
+- Dual-Modus: Versucht echte RSA-Signatur (`RSA_sign`) wenn Key/Cert + passende Hashlänge vorhanden; sonst Base64-Stub.
+- Verifikation analog: `RSA_verify` oder Base64-Gleichheit.
+- Keine Chain-, KeyUsage-, ExtendedKeyUsage-, Revocation-, Ablauf-Prüfung.
+- Kein Unterschied im Ergebnisobjekt zwischen realer und Stub-Signatur (fehlendes `mode` Feld, fehlender Fehlergrund).
 
-bool VCCPKIClient::verifyHash(const std::vector<uint8_t>& hash_bytes, const SignatureResult& sig) const {
-    if (!sig.ok) return false;
-    // Stub verification: recompute base64 of hash and compare
-    std::string expected = base64_encode(hash_bytes);
-    return expected == sig.signature_b64;  // ❌ KEINE ECHTE VERIFIKATION
-}
-```
+**Risiken:**
+| Bereich | Problem | Auswirkung |
+|---------|---------|------------|
+| Chain Validation | Nicht vorhanden | Self-Signed Fake-Zertifikate akzeptiert |
+| Revocation | Nicht vorhanden | Widerrufene Zertifikate weiter gültig |
+| Usage Checks | Nicht vorhanden | Falsche Zertifikatstypen nutzbar |
+| Stub-Fallback | Still und ohne Warnung | Audit-Log Integrität nur scheinbar |
+| Error Reporting | `ok` fast immer true | Forensik erschwert |
+| Canonicalisierung | Fehlt | Alternative Serialisierung unterminiert Signatur |
 
-**Problem:**
-- Keine echte RSA-Signatur, nur Base64-Encoding
-- `DEMO-CERT-SERIAL` statt echtem Zertifikat
-- Verifikation prüft nur Base64-Gleichheit, nicht PKI-Signatur
+**Empfohlene Hardening-Schritte:**
+1. `SignatureResult` erweitern: `mode`, `error_message`, `ts_signed_ms`.
+2. CA-Store laden + `X509_verify_cert` + Ablauf/KU/EKU prüfen.
+3. Optional CRL/OCSP (config flags) → Fail closed bei Revocation.
+4. Canonical JSON (sortierte Schlüssel, UTF-8 normalisieren) vor Hash.
+5. Metriken & Telemetrie: `pki_signature_mode`, `pki_verify_failure_total{reason}`.
+6. Audit-Logger: `signature_verified` + Grund im Event.
+7. Dokumentation aktualisieren (`compliance.md`, `pki_signatures.md`).
 
-**Impact:**
-- Audit Logs sind **nicht rechtssicher** (eIDAS-Konformität fehlt)
-- Tamper-Detection funktioniert nur oberflächlich
-- Für DSGVO Art. 30 nicht compliant
+**Action Items (konkret):**
+| ID | Schritt | Aufwand |
+|----|--------|---------|
+| PKI-1 | Result-Struktur & Modus | 1/2 Tag |
+| PKI-2 | Chain Validation | 1 Tag |
+| PKI-3 | Revocation (CRL) | 1 Tag |
+| PKI-4 | Canonicalization | 1/2 Tag |
+| PKI-5 | Telemetrie/Metriken | 1/2 Tag |
+| PKI-6 | Audit-Integration | 1 Tag |
+| PKI-7 | Docs Hardening | 1/2 Tag |
 
-**Empfehlung:**
-```cpp
-// TODO: Integration mit echtem PKI-Provider
-// - OpenSSL RSA_sign() für echte Signaturen
-// - X.509-Zertifikats-Verifikation
-// - HSM-Integration für Schlüsselschutz (optional)
-```
-
-**Aktueller Status in Doku:**
-- `COMPLIANCE.md` Zeile 54: "Qualifizierte Signatur ✅" ist **irreführend**
-- `docs/security/audit_and_retention.md` erwähnt PKI, aber nicht die Stub-Limitierung
-
-**Action Items:**
-1. Update `COMPLIANCE.md`: eIDAS-Konformität auf "⚙️ Stub (nicht produktiv)" setzen
-2. Implementiere echte RSA-Signaturen (OpenSSL-basiert)
-3. Füge Warnung in Audit-API-Doku hinzu: "PKI-Stub, nur für Demo"
+**eIDAS-Status:** Nicht konform bis mindestens PKI-2 & PKI-3 erledigt.
 
 ---
 

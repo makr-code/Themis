@@ -177,13 +177,13 @@ case Route::AuditExportCsvGet:
 ```
 1. Anwendung → AuditLogger::logEvent(event)
 2. AuditLogger → Verschlüsselt Payload (FieldEncryption)
-3. AuditLogger → Signiert Hash mit PKI
+3. AuditLogger → Signiert Hash mit PKI (MVP: Dual-Modus RSA oder Base64-Stub)
 4. AuditLogger → Schreibt JSONL-Zeile in data/logs/audit.jsonl
    {
      "ts": 1730476800000,
      "category": "AUDIT",
      "payload": { "ciphertext_b64": "...", "iv_b64": "...", "tag_b64": "..." },
-     "signature": { "sig_b64": "...", "cert_serial": "..." }
+  "signature": { "sig_b64": "...", "cert_serial": "...", "mode": "real|stub" }
    }
 
 5. WPF-App → GET /api/audit?start=...&user=admin&page=1
@@ -220,6 +220,18 @@ GET /api/audit/export/csv?action=CREATE&page_size=10000
 ---
 
 ## Nächste Schritte
+
+### PKI Hardening (geplant)
+| Schritt | Ziel | Status |
+|---------|------|--------|
+| Signatur-Modus markieren | `mode` Feld (`real|stub`) in Audit-Zeile | Offen |
+| Zertifikatskette prüfen | CA/Intermediate Validierung | Offen |
+| Revocation (CRL/OCSP) | Widerrufene Zertifikate ablehnen | Offen |
+| Canonical Payload Hash | Stabiler JSON-Hash für Signatur | Offen |
+| Verification Flag | `signature_verified` + reason | Offen |
+| Metriken | `pki_signature_mode`, `pki_verify_fail_total` | Offen |
+
+> Hinweis: Bis Abschluss dieser Punkte sind Audit-Einträge nicht forensisch belastbar (Stub-Fallback möglich).
 
 ### Sofort testbar (Mock-Modus)
 ```powershell
