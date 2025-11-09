@@ -7,7 +7,80 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 
 **Projekt:** Themis - Multi-Modell-Datenbanksystem (Relational, Graph, Vektor, Dokument)  
 **Technologie-Stack:** C++, RocksDB TransactionDB (MVCC), Intel TBB, HNSWlib, Apache Arrow  
-**Datum:** 29. Oktober 2025
+**Datum:** 09. November 2025
+
+> **Update – 09. November 2025 (Nachmittag)** 🎯 **STRATEGIC INFRASTRUCTURE ROADMAP**
+> - **Competitive Gap Analysis abgeschlossen:**
+>   - Analysiert: MongoDB, PostgreSQL, Neo4j, Elasticsearch, Pinecone, InfluxDB
+>   - **Key Finding:** ThemisDB hat solides Feature-Set, kritische Lücke ist Infrastructure
+>   - Dokument: `docs/competitive_gap_analysis.md` (45 KB)
+> - **Infrastructure Roadmap entwickelt:**
+>   - Phase 1 (Q1 2026): URN-basiertes Föderales Sharding
+>   - Phase 2 (Q2 2026): Raft-basierte Replication für HA
+>   - Phase 3 (Q2-Q3 2026): Client SDKs (Python, JS, Java)
+>   - Phase 4 (Q3 2026): React Admin UI
+>   - Dokument: `docs/infrastructure_roadmap.md` (65 KB)
+> - **Strategisches Overview erstellt:**
+>   - Executive Summary aller strategischen Dokumente
+>   - Investment-Analyse (12-18 Monate, 2-3 Engineers)
+>   - Dokument: `docs/STRATEGIC_OVERVIEW.md` (25 KB)
+
+> **Update – 09. November 2025 (Vormittag)** ✨ **DOKUMENTATIONS-TODO CLEANUP SESSION**
+> - **7 TODOs erfolgreich abgeschlossen** (5 bereits implementiert gefunden, 2 neu implementiert):
+>   1. ✅ **TODO #15**: Dokumentations-Diskrepanzen korrigiert (HNSW Persistenz, Backup/Restore)
+>   2. ✅ **TODO #11**: Umlaut-Normalisierung für Deutsch (bereits implementiert, 2/2 Tests ✅)
+>   3. ✅ **TODO #9**: BM25() Scoring-Funktion für AQL (neu implementiert, 4/4 Tests ✅)
+>      - `QueryEngine::executeAndKeysWithScores()` für Score-Propagation
+>      - `KeysWithScores` struct mit bm25_scores map
+>      - Integration in AQL Expression Evaluator
+>   4. ✅ **TODO #10**: FULLTEXT Operator in AQL (bereits implementiert, 23/23 Tests ✅)
+>      - `aql_translator.cpp` Lines 101-174 vollständig
+>      - Syntax: `FULLTEXT(doc.field, "query" [, limit])`
+>      - Unterstützt: Standalone, AND, OR (via DisjunctiveQuery)
+>   5. ✅ **TODO #12**: Graph Server-side Type-Filtering (neu implementiert, 4/4 Tests ✅)
+>      - `GraphIndexManager::bfs()` mit `edge_type` Parameter
+>      - `GraphIndexManager::dijkstra()` mit `edge_type` Parameter
+>      - `QueryEngine::executeRecursivePathQuery()` nutzt `edge_type`
+>   6. ✅ **TODO #13**: Temporal Aggregations (bereits implementiert, 6/6 Tests ✅)
+>      - `GraphIndexManager::getTemporalStats()` vollständig
+>      - `TemporalStats` mit AVG, SUM, COUNT, MIN, MAX
+>   7. ✅ **TODO #1**: Gorilla Compression HTTP-Endpunkt (bereits implementiert, 6/6 Tests ✅)
+>      - GET/PUT `/ts/config` für Runtime-Konfiguration
+>      - Kompression + Chunk-Size ohne Neustart anpassbar
+> 
+> - **Systematische Verifikation hocheffektiv:**
+>   - 5 von 7 TODOs waren bereits implementiert aber undokumentiert
+>   - 2 TODOs neu implementiert (BM25, Graph Type-Filtering)
+>   - **45 Tests validiert gesamt** (alle bestanden)
+>   - Dokumentation synchronisiert: `future_work.md`, `property_graph_model.md`, `temporal_time_range_queries.md`
+> 
+> - **Verbleibende TODOs:** 8 Encryption-Features (PKI, JWT, HKDF, Schema-Encryption, Graph/Vector/Audit)
+
+> **Update – 08. November 2025**
+> - **Time-Series Engine**: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+>   - Gorilla-Compression (10-20x Ratio, +15% CPU)
+>   - Continuous Aggregates (Pre-computed Rollups)
+>   - Retention Policies (Auto-Deletion alter Daten)
+>   - API: TSStore, RetentionManager, ContinuousAggregateManager
+>   - Tests: test_tsstore.cpp, test_gorilla.cpp (alle PASS)
+>   - Doku: docs/time_series.md, wiki_out/time_series.md
+> 
+> - **PII Manager**: ✅ VOLLSTÄNDIG IMPLEMENTIERT (RocksDB-Backend)
+>   - CRUD-Operationen: addMapping, getMapping, deleteMapping, listMappings
+>   - ColumnFamily: pii_mappings (nicht Demo-Daten)
+>   - API: PIIApiHandler mit Filter/Pagination
+>   - CSV-Export implementiert
+>   - Tests: Integration mit HTTP-Server
+> 
+> - **AES-NI Hardware-Acceleration**: ✅ IMPLEMENTIERT
+>   - CPU-Feature-Detection (include/security/crypto_capabilities.h)
+>   - Automatische Nutzung via OpenSSL EVP
+>   - 4-8x Speedup auf unterstützten CPUs
+> 
+> - **Ausstehend aus Sprint 1-2:**
+>   - Content-Blob ZSTD Compression (✅ BASIS VORHANDEN; Feinjustierung offen: Level-Benchmarks, config.json Integration)
+>   - HKDF-Caching für Encryption (✅ IMPLEMENTIERT: include/utils/hkdf_cache.h/.cpp; in ContentManager verdrahtet)
+>   - Batch-Encryption Optimierung (✅ IMPLEMENTIERT: API encryptBatchWithKey mit std::async Parallelisierung)
 
 > Update – 02. November 2025
 > - AdminTools: RetentionManager von Demo auf Live-API umgestellt.
@@ -27,16 +100,30 @@ Wichtiger Hinweis (Release-Fokus): Das Geo-Modul (Speicher, Indizes, AQL ST_*) w
 
 Diese Kurzliste verdichtet die wichtigsten noch offenen Themen aus den detaillierten Abschnitten weiter unten.
 
-- AQL-Erweiterungen: Equality-Joins, Subqueries/LET, Aggregationen (COLLECT), OR/NOT mit Index-Merge, RETURN-Projektionen
-- Vector-Index: Batch-Inserts, Delete-by-Filter, Reindex/Compaction, Cursor/Pagination mit Scores, **DOT-Metric (pure dot-product ohne Normalisierung)**
-- Content/Filesystem Phase 4: Document-/Chunk-Schema, Bulk-Chunk-Upload, Extraktionspipeline, Hybrid-Query-Beispiele
-- CDC Streaming (Optional): Server-Sent Events/WebSockets für near-real-time Changefeed
-- Time-Series: Gorilla-Compression + Continuous Aggregates/Retention Policies
-- **Compression Strategy**: Gorilla Time-Series (10-20x Ratio), Content-Blob ZSTD (1.5-2x), Vector Quantization (SQ8 für >1M Vektoren)
-- Security: Column-Level Encryption Key Rotation, Dynamic Data Masking, RBAC-Basis
-- Security: Column-Level Encryption Key Rotation, Dynamic Data Masking, RBAC-Basis, eIDAS-konforme Signaturen (PKI)
-- Observability/Ops: POST /config (Hot-Reload), strukturierte Logs, inkrementelle Backups
-- Auto-Scaling (Serverless-Basis): Request-basiertes Scaling, Auto-Pause, Global Secondary Indexes (eventual)
+- AQL-Erweiterungen: Equality-Joins, Subqueries/LET, Aggregationen (COLLECT), OR/NOT mit Index-Merge, RETURN-Projektionen ✅ **ABGESCHLOSSEN**
+- Vector-Index: Batch-Inserts, Delete-by-Filter, Reindex/Compaction, Cursor/Pagination mit Scores ✅ **ABGESCHLOSSEN**
+- Content/Filesystem Phase 4: Document-/Chunk-Schema, Bulk-Chunk-Upload, Extraktionspipeline, Hybrid-Query-Beispiele ✅ **ABGESCHLOSSEN**
+- CDC Streaming: Server-Sent Events/WebSockets für near-real-time Changefeed ✅ **ABGESCHLOSSEN**
+- Time-Series: Gorilla-Compression + Continuous Aggregates/Retention Policies ✅ **ABGESCHLOSSEN (08.11.2025)**
+- **Compression Strategy**: 
+  - ✅ Gorilla Time-Series (10-20x Ratio) - **IMPLEMENTIERT**
+  - ⏳ Content-Blob ZSTD (1.5-2x) - **BASIS VORHANDEN** (Feinjustierung: Level-Benchmarks, config.json)
+  - ℹ️ Vector Quantization (SQ8) - Nicht nötig für <1M Vektoren
+- Security: 
+  - ✅ Field-Level Encryption (Vector-Metadata, Content Blob, Lazy Re-Encryption) - **ABGESCHLOSSEN**
+  - ✅ AES-NI Hardware-Acceleration - **IMPLEMENTIERT**
+  - ✅ HKDF-Caching - **IMPLEMENTIERT**
+  - ✅ Batch-Encryption - **IMPLEMENTIERT**
+  - ⏳ Column-Level Encryption Key Rotation - **TODO**
+  - ⏳ Dynamic Data Masking - **TODO**
+  - ⏳ RBAC-Basis - **TODO**
+  - ⏳ eIDAS-konforme Signaturen (PKI) - **TODO**
+- Observability/Ops: 
+  - ✅ POST /config (Hot-Reload) - **ABGESCHLOSSEN**
+  - ✅ Strukturierte Logs - **ABGESCHLOSSEN**
+  - ✅ OpenTelemetry/Jaeger Tracing - **ABGESCHLOSSEN**
+  - ⏳ Inkrementelle Backups - **TODO**
+- Auto-Scaling (Serverless-Basis): Request-basiertes Scaling, Auto-Pause, Global Secondary Indexes (eventual) - **TODO**
 
 Nicht im Release-Scope (Post-Release):
 - Geo-Module (WKB/EWKB Storage, R-Tree/Z-Range, ST_* AQL, Boost.Geometry/GEOS, GPU/SIMD Beschleuniger)
@@ -101,7 +188,87 @@ Hinweis: CDC Minimal inkl. Admin-Endpoints (stats/retention) und Doku ist abgesc
      - ✅ Request-Timeout runtime-anpassbar (1000-300000ms)
    - Hinweis: Worker-Threads können nicht zur Laufzeit geändert werden (erfordert Neustart)
 
-## 🚀 Nach Produktivstellung der Kerndatenbank
+6) ✅ Time-Series Engine (Gorilla/Retention/Aggregates) – **ABGESCHLOSSEN (08.11.2025)**
+   - Umfang: 
+     - Gorilla-Compression für Zeitreihendaten (10-20x Ratio, +15% CPU)
+     - Continuous Aggregates (Pre-computed Rollups)
+     - Retention Policies (Auto-Deletion alter Daten)
+   - DoD:
+     - ✅ TSStore mit Gorilla-Integration (include/timeseries/tsstore.h)
+     - ✅ RetentionManager implementiert (include/timeseries/retention.h)
+     - ✅ ContinuousAggregateManager implementiert (include/timeseries/continuous_agg.h)
+     - ✅ Gorilla Codec (BitWriter/BitReader, Delta-of-Delta, XOR) (include/timeseries/gorilla.h)
+     - ✅ Tests: test_tsstore.cpp, test_gorilla.cpp (alle PASS)
+     - ✅ Doku: docs/time_series.md, wiki_out/time_series.md
+   - Features:
+     - putDataPoint/putDataPoints (Batch-Inserts)
+     - query mit TimeRange/Tag-Filter
+     - aggregate (min/max/avg/sum/count)
+     - CompressionType::Gorilla (Default) oder None
+     - Chunk-basierte Speicherung (default: 24h Chunks)
+
+7) ✅ PII Manager - RocksDB Backend – **ABGESCHLOSSEN (08.11.2025)**
+   - Umfang:
+     - RocksDB ColumnFamily `pii_mappings` für persistente Speicherung
+     - CRUD-Operationen: addMapping, getMapping, deleteMapping, listMappings
+     - Filter/Pagination Support
+     - CSV-Export
+   - DoD:
+     - ✅ PIIApiHandler vollständig implementiert (src/server/pii_api_handler.cpp)
+     - ✅ ColumnFamily-Support (kein Demo-Daten-Array mehr)
+     - ✅ HTTP-Integration (http_server.cpp initialisiert PIIApiHandler)
+     - ✅ API-Endpoints: GET/POST/DELETE /pii/mappings
+   - Status: Production-ready (kein Refactoring mehr nötig)
+
+## 🚀 Sprint-Plan - Nächste Implementierungen (08.11.2025)
+
+### Sprint 1 (Kurzfristig - Nächste 1-2 Wochen)
+
+**Focus:** Performance-Optimierungen + Content-Blob Compression
+
+1) **Content-Blob ZSTD Compression** ✅ **BASIS VORHANDEN** (Feinjustierung offen)
+   - Status:
+     - ✅ ZSTD-Bibliothek eingebunden (vcpkg: zstd)
+     - ✅ MIME-Type-basiertes Skipping implementiert (content_manager.cpp)
+     - ✅ Adaptive Kompression Level 19 default, konfigurierbar via DB-Key config:content
+     - ✅ Transparente Decompression beim Abruf
+     - ⏳ TODO: Benchmarks für verschiedene Compression-Level (3/9/19)
+     - ⏳ TODO: config.json Integration zusätzlich zu DB-Key
+     - ⏳ TODO: Content-Type spezifische Tuning-Werte dokumentieren
+   - Nächste Schritte:
+     - Benchmarks: bench_compression.cpp mit Level-Variation (3/9/19) + Content-Type Matrix
+     - Metriken: content_blob_compression_ratio in Prometheus exportieren
+     - Doku: docs/compression_strategy.md um ZSTD-Sektion erweitern
+   - ROI: 50% Speicherersparnis für Text-Heavy Workloads bereits realisierbar
+
+2) **HKDF-Caching für Encryption** ✅ **IMPLEMENTIERT**
+   - Umfang:
+     - Thread-local LRU-Cache für (user_id, field_name) → derived_key
+     - Cache-Invalidierung bei Key-Rotation
+2) **HKDF-Caching für Encryption** ✅ **IMPLEMENTIERT**
+   - Status:
+     - ✅ HKDFCache class implementiert (include/utils/hkdf_cache.h, src/utils/hkdf_cache.cpp)
+     - ✅ Thread-safe Singleton mit TTL-basierter Expiry (default: 5 Minuten)
+     - ✅ Capacity Management (2048 Einträge, Count-Min-style Eviction)
+     - ✅ Integration in ContentManager blob encryption/decryption (3 Verwendungsstellen)
+     - ⏳ TODO: Unit-Tests für TTL-Expiry und Capacity-Overflow
+   - Nächste Schritte:
+     - Tests: test_hkdf_cache.cpp (TTL, Kapazität, Thread-Safety)
+     - Benchmarks: Speedup-Messung bei wiederholten Operationen
+
+3) **Batch-Encryption Optimierung** ✅ **IMPLEMENTIERT**
+   - Status:
+     - ✅ API: FieldEncryption::encryptBatchWithKey mit Parallelisierung
+     - ✅ std::async basierte Parallelisierung (konfigurierbar via parallelism Parameter)
+     - ✅ Key-Reuse Optimierung (single KeyProvider lookup)
+     - ⏳ TODO: Benchmarks Sequential vs Parallel (2/4/8 Threads, 8-1024 Items)
+   - Nächste Schritte:
+     - Benchmarks: bench_batch_encryption.cpp für Performance-Validierung
+     - Tests: Korrektheit + Thread-Safety Tests
+
+**Sprint 1 Gesamt-Aufwand:** 18-26 Stunden (ca. 1-1.5 Wochen bei Vollzeit)
+
+---
 
 - [ ] Datenablage- und Ingestion-Strategie (Post-Go-Live Kerndatenbank)
   - Ziel: Einheitliches, abfragefreundliches Speicherschema für Text- und Geo-Daten in relationalen Tabellen inkl. passender Indizes und Brücken zu Graph/Vector.

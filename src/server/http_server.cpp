@@ -28,6 +28,7 @@
 #include "utils/tracing.h"
 #include "utils/cursor.h"
 #include "utils/pii_detector.h"
+#include <iostream>
 #include "security/key_provider.h"
 #include "security/mock_key_provider.h"
 #include "security/pki_key_provider.h"
@@ -40,6 +41,10 @@
 #include "storage/key_schema.h"
 // HKDF Helper fuer Feldschluessel-Ableitung beim Entschluesseln
 #include "utils/hkdf_helper.h"
+// Compression metrics singleton
+#include "utils/compression_metrics.h"
+// Cache metrics
+#include "cache/cache_metrics.h"
 
 // Sprint A features - include BEFORE http_server.h to have complete types
 #include "llm/llm_interaction_store.h"
@@ -200,13 +205,16 @@ HttpServer::HttpServer(
     auth_ = std::make_unique<themis::AuthMiddleware>();
     auto get_env = [](const char* name) -> std::optional<std::string> {
         const char* v = std::getenv(name);
+        std::cout << "[DEBUG] get_env('" << name << "') = '" << (v ? v : "<nullptr>") << "'" << std::endl;
         if (v && *v) return std::string(v);
         return std::nullopt;
     };
     // Admin token
-    if (auto t = get_env("THEMIS_TOKEN_ADMIN")) {
+    auto admin_token_env = get_env("THEMIS_TOKEN_ADMIN");
+    std::cout << "[DEBUG] HttpServer init: THEMIS_TOKEN_ADMIN = " << admin_token_env.value_or("<not set>") << std::endl;
+    if (admin_token_env) {
         themis::AuthMiddleware::TokenConfig cfg;
-        cfg.token = *t;
+        cfg.token = *admin_token_env;
         cfg.user_id = "admin";
         cfg.scopes = {
             "admin","config:read","config:write","cdc:read","cdc:admin",
@@ -329,8 +337,13 @@ HttpServer::HttpServer(
     // Initialize Policy Engine (Governance)
     policy_engine_ = std::make_unique<themis::PolicyEngine>();
     try {
-        // Try YAML first, then JSON
+        // Try YAML first, then JSON. Search multiple common locations to support running from build directories.
         std::vector<std::filesystem::path> candidates = {
+            // Prefer repository root config (two levels up from build/Release)
+            std::filesystem::path("..") / ".." / "config" / "policies.yaml",
+            std::filesystem::path("..") / ".." / "config" / "policies.yml",
+            std::filesystem::path("..") / ".." / "config" / "policies.json",
+            // Fallback to local ./config next to the executable
             std::filesystem::path("config") / "policies.yaml",
             std::filesystem::path("config") / "policies.yml",
             std::filesystem::path("config") / "policies.json"
@@ -1942,7 +1955,13 @@ http::response<http::string_body> HttpServer::handleMetrics(
             out += "vccdb_sse_dropped_events_total " + std::to_string(sstats.total_dropped_events) + "\n";
         }
 
-        // Build plain text response with proper content-type
+        // Content blob compression metrics (ZSTD)
+        out += themis::utils::CompressionMetrics::instance().toPrometheus();
+
+    // Cache metrics (TinyLFU / others)
+    out += themis::cache::CacheMetrics::instance().toPrometheus();
+
+    // Build plain text response with proper content-type
         http::response<http::string_body> res{http::status::ok, req.version()};
         res.set(http::field::server, "THEMIS/0.1.0");
         res.set(http::field::content_type, "text/plain; version=0.0.4");
@@ -1988,6 +2007,8 @@ std::optional<http::response<http::string_body>> HttpServer::requireScope(
         return res;
     }
     auto ar = auth_->authorize(*token, scope);
+    THEMIS_INFO("requireScope: scope='{}' token='{}' -> authorized={}, reason='{}'",
+                std::string(scope), token ? *token : std::string("<none>"), ar.authorized, ar.reason);
     if (!ar.authorized) {
         http::response<http::string_body> res{http::status::forbidden, req.version()};
         res.set(http::field::content_type, "application/json");
@@ -2048,6 +2069,18 @@ std::optional<http::response<http::string_body>> HttpServer::requireAccess(
         }
         auto ar = auth_->authorize(*token, required_scope);
         if (!ar.authorized) {
+            // If token has 'admin' scope, allow even if specific scope missing (admin override)
+            auto admin_ar = auth_->authorize(*token, "admin");
+            if (admin_ar.authorized) {
+                ar = admin_ar; // elevate
+            }
+        }
+        if (!ar.authorized) {
+            THEMIS_WARN("requireAccess deny: user='{}' scope='{}' action='{}' resource='{}'", ar.user_id, required_scope, action, resource);
+        } else {
+            THEMIS_DEBUG("requireAccess allow: user='{}' scope='{}' action='{}' resource='{}'", ar.user_id, required_scope, action, resource);
+        }
+        if (!ar.authorized) {
             http::response<http::string_body> res{http::status::forbidden, req.version()};
             res.set(http::field::content_type, "application/json");
             res.keep_alive(req.keep_alive());
@@ -2091,6 +2124,11 @@ std::optional<http::response<http::string_body>> HttpServer::requireAccess(
         }
 
         auto decision = policy_engine_->authorize(user_id, std::string(action), resource, client_ip);
+        if (!decision.allowed) {
+            THEMIS_WARN("Policy deny: user='{}' action='{}' resource='{}' reason='{}'", user_id, action, resource, decision.reason);
+        } else {
+            THEMIS_DEBUG("Policy allow: user='{}' action='{}' resource='{}' policy='{}'", user_id, action, resource, decision.policy_id);
+        }
         if (!decision.allowed) {
             http::response<http::string_body> res{http::status::forbidden, req.version()};
             res.set(http::field::content_type, "application/json");
@@ -2291,74 +2329,13 @@ http::response<http::string_body> HttpServer::handlePiiDeleteByUuid(
         }
     }
 
-    // Authorization: require pii:write or admin (erase is a write operation)
+    // Authorization + Policy check (unified)
+    if (auto deny = requireAccess(req, "pii:write", "pii.write", path_only); deny.has_value()) return *deny;
     std::string user_id;
     if (auth_ && auth_->isEnabled()) {
-        auto it = req.find(http::field::authorization);
-        if (it == req.end()) {
-            http::response<http::string_body> res{http::status::unauthorized, req.version()};
-            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
-            res.set(http::field::content_type, "application/json");
-            res.keep_alive(req.keep_alive());
-            res.body() = R"({"error":"missing_authorization","message":"Missing Authorization header"})";
-            res.prepare_payload();
-            return res;
-        }
-        auto token = themis::AuthMiddleware::extractBearerToken(std::string_view(it->value().data(), it->value().size()));
-        if (!token) {
-            http::response<http::string_body> res{http::status::unauthorized, req.version()};
-            res.set(http::field::www_authenticate, "Bearer realm=\"themis\"");
-            res.set(http::field::content_type, "application/json");
-            res.keep_alive(req.keep_alive());
-            res.body() = R"({"error":"invalid_authorization","message":"Invalid Bearer token format"})";
-            res.prepare_payload();
-            return res;
-        }
-    auto ar = auth_->authorize(*token, "pii:write");
-        if (!ar.authorized) {
-            ar = auth_->authorize(*token, "admin");
-            if (!ar.authorized) {
-                http::response<http::string_body> res{http::status::forbidden, req.version()};
-                res.set(http::field::content_type, "application/json");
-                res.keep_alive(req.keep_alive());
-                std::string body = std::string("{\"error\":\"forbidden\",\"message\":\"") + ar.reason + "\"}";
-                res.body() = std::move(body);
-                res.prepare_payload();
-                return res;
-            }
-        }
-        user_id = ar.user_id;
-    }
-
-    // Policy check
-    if (policy_engine_) {
-        std::optional<std::string> client_ip;
-        for (const auto& h : req) {
-            auto name = h.name_string();
-            if (beast::iequals(name, "x-forwarded-for")) {
-                std::string v = std::string(h.value());
-                auto comma = v.find(',');
-                if (comma != std::string::npos) v = v.substr(0, comma);
-                auto s = v.find_first_not_of(" \t");
-                auto e = v.find_last_not_of(" \t");
-                if (s != std::string::npos) client_ip = v.substr(s, e - s + 1);
-                break;
-            } else if (beast::iequals(name, "x-real-ip")) {
-                client_ip = std::string(h.value());
-            }
-        }
-    // Policy action aligned to write semantics
-        auto decision = policy_engine_->authorize(user_id, "pii.write", path_only, client_ip);
-        if (!decision.allowed) {
-            http::response<http::string_body> res{http::status::forbidden, req.version()};
-            res.set(http::field::content_type, "application/json");
-            res.keep_alive(req.keep_alive());
-            nlohmann::json j = {{"error","policy_denied"},{"message",decision.reason}};
-            if (!decision.policy_id.empty()) j["policy_id"] = decision.policy_id;
-            res.body() = j.dump();
-            res.prepare_payload();
-            return res;
-        }
+        // Get user_id for audit in soft delete
+        auto ctx = extractAuthContext(req);
+        user_id = ctx.user_id;
     }
     // Prefer CRUD mapping deletion when PII Manager feature is enabled
     if (config_.feature_pii_manager && pii_api_) {
@@ -7420,7 +7397,8 @@ http::response<http::string_body> HttpServer::handleContentConfigGet(
             resp = {
                 {"compress_blobs", false},
                 {"compression_level", 19},
-                {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip", "application/gzip"})}
+                {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip", "application/gzip"})},
+                {"compression_levels_map", json::object()}
             };
         }
         
@@ -7452,7 +7430,8 @@ http::response<http::string_body> HttpServer::handleContentConfigPut(
             config = {
                 {"compress_blobs", false},
                 {"compression_level", 19},
-                {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip", "application/gzip"})}
+                {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip", "application/gzip"})},
+                {"compression_levels_map", json::object()}
             };
         }
         
@@ -7496,6 +7475,30 @@ http::response<http::string_body> HttpServer::handleContentConfigPut(
                 }
             }
             config["skip_compressed_mimes"] = body["skip_compressed_mimes"];
+        }
+
+        // Optional per-MIME compression levels map
+        if (body.contains("compression_levels_map")) {
+            if (!body["compression_levels_map"].is_object()) {
+                span.setStatus(false, "invalid_levels_map");
+                return makeErrorResponse(http::status::bad_request,
+                    "compression_levels_map must be an object of {mime_or_prefix: level}", req);
+            }
+            // Validate entries: key string, value int 1..22
+            for (auto it = body["compression_levels_map"].begin(); it != body["compression_levels_map"].end(); ++it) {
+                if (!it.value().is_number_integer()) {
+                    span.setStatus(false, "invalid_levels_value");
+                    return makeErrorResponse(http::status::bad_request,
+                        "compression_levels_map values must be integers", req);
+                }
+                int lvl = it.value();
+                if (lvl < 1 || lvl > 22) {
+                    span.setStatus(false, "levels_value_out_of_range");
+                    return makeErrorResponse(http::status::bad_request,
+                        "compression level values must be between 1 and 22", req);
+                }
+            }
+            config["compression_levels_map"] = body["compression_levels_map"];
         }
         
         // Store updated config

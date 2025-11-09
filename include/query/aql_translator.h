@@ -141,6 +141,11 @@ private:
     static bool containsOr(const std::shared_ptr<Expression>& expr);
     
     /**
+     * Check if expression contains FULLTEXT function call
+     */
+    static bool containsFulltext(const std::shared_ptr<Expression>& expr);
+    
+    /**
      * Convert expression to Disjunctive Normal Form (DNF)
      * Returns list of conjunctive clauses (disjuncts)
      * Example: (A AND B) OR (C AND D) -> [[A,B], [C,D]]

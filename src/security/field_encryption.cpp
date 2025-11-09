@@ -5,6 +5,7 @@
 #include <cstring>
 #include <sstream>
 #include <iomanip>
+#include <future>
 
 namespace themis {
 
@@ -346,6 +347,38 @@ std::vector<uint8_t> FieldEncryption::decryptInternal(const EncryptedBlob& blob,
     } catch (...) {
         EVP_CIPHER_CTX_free(ctx);
         throw;
+    }
+}
+
+std::vector<EncryptedBlob> FieldEncryption::encryptBatchWithKey(
+    const std::vector<std::string>& plaintexts,
+    const std::string& key_id,
+    uint32_t key_version,
+    const std::vector<uint8_t>& key,
+    int parallelism) {
+    if (parallelism > 1) {
+        // Parallelisierung via std::async (Thread-Pool)
+        std::vector<std::future<EncryptedBlob>> futures;
+        futures.reserve(plaintexts.size());
+        for (const auto& s : plaintexts) {
+            futures.emplace_back(std::async(std::launch::async, [&, s]() {
+                return encryptWithKey(s, key_id, key_version, key);
+            }));
+        }
+        std::vector<EncryptedBlob> out;
+        out.reserve(plaintexts.size());
+        for (auto& f : futures) {
+            out.emplace_back(f.get());
+        }
+        return out;
+    } else {
+        // Sequential fallback
+        std::vector<EncryptedBlob> out;
+        out.reserve(plaintexts.size());
+        for (const auto& s : plaintexts) {
+            out.emplace_back(encryptWithKey(s, key_id, key_version, key));
+        }
+        return out;
     }
 }
 

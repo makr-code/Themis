@@ -358,3 +358,116 @@ TEST_F(HttpContentApiTest, BlobLazyReencryption_UpgradesKeyVersionOnRead) {
     // TODO: Add test with mocked KeyProvider that returns higher version to verify re-encryption
 }
 
+TEST_F(HttpContentApiTest, BlobCompression_CompressesTextBlobs_SkipsImages) {
+    // Enable content blob compression via config
+    nlohmann::json compressCfg = {
+        {"compress_blobs", true},
+        {"compression_level", 19},
+        {"skip_compressed_mimes", json::array({"image/", "video/", "application/zip"})}
+    };
+    auto compressStr = compressCfg.dump();
+    storage_->put("config:content", std::vector<uint8_t>(compressStr.begin(), compressStr.end()));
+
+    // Test 1: Import large text blob (should be compressed)
+    std::string largeText(10000, 'A'); // 10KB of 'A' (highly compressible)
+    json req1 = {
+        {"content", json{{"id","compress-text"},{"mime_type","text/plain"}}},
+        {"blob", largeText},
+        {"chunks", json::array({ json{{"seq_num",0},{"chunk_type","text"},{"text","test"}} })}
+    };
+    auto resp1 = httpPost("/content/import", req1);
+    ASSERT_TRUE(resp1.contains("status")) << resp1.dump();
+    EXPECT_EQ(resp1["status"], "success");
+
+    // Verify metadata shows compressed=true
+    auto meta1 = httpGet("/content/compress-text");
+    ASSERT_TRUE(meta1.contains("compressed"));
+    EXPECT_TRUE(meta1["compressed"].get<bool>()) << "Text blob should be compressed";
+    EXPECT_EQ(meta1["compression_type"], "zstd");
+    ASSERT_TRUE(meta1.contains("size_bytes"));
+    EXPECT_EQ(meta1["size_bytes"].get<int64_t>(), 10000) << "size_bytes should reflect original size";
+
+    // Verify stored blob is actually compressed (smaller than original)
+    auto rawBlob1 = storage_->get("content_blob:compress-text");
+    ASSERT_TRUE(rawBlob1.has_value());
+    EXPECT_LT(rawBlob1->size(), 10000) << "Stored blob should be smaller than original 10KB";
+    // For 10KB of 'A', ZSTD should achieve >90% compression
+    EXPECT_LT(rawBlob1->size(), 1000) << "ZSTD should compress repeated text to <1KB";
+
+    // GET blob - should decompress transparently
+    auto blobResp1 = httpGet("/content/compress-text/blob");
+    ASSERT_TRUE(blobResp1.contains("blob"));
+    std::string decompressed = blobResp1["blob"].get<std::string>();
+    EXPECT_EQ(decompressed, largeText) << "Decompressed blob should match original";
+
+    // Test 2: Import image (should skip compression)
+    std::string fakeImage(5000, 'X'); // Simple ASCII data representing binary image
+    json req2 = {
+        {"content", json{{"id","compress-image"},{"mime_type","image/png"}}},
+        {"blob", fakeImage},
+        {"chunks", json::array({ json{{"seq_num",0},{"chunk_type","image"},{"text","img"}} })}
+    };
+    auto resp2 = httpPost("/content/import", req2);
+    ASSERT_TRUE(resp2.contains("status")) << resp2.dump();
+    EXPECT_EQ(resp2["status"], "success");
+
+    // Verify metadata shows compressed=false (skipped due to MIME type)
+    auto meta2 = httpGet("/content/compress-image");
+    ASSERT_TRUE(meta2.contains("compressed"));
+    EXPECT_FALSE(meta2["compressed"].get<bool>()) << "Image should skip compression";
+    
+    // Verify stored blob size matches original (no compression)
+    auto rawBlob2 = storage_->get("content_blob:compress-image");
+    ASSERT_TRUE(rawBlob2.has_value());
+    EXPECT_EQ(rawBlob2->size(), 5000) << "Image blob should be stored as-is (no compression)";
+
+    // GET blob - should return original data
+    auto blobResp2 = httpGet("/content/compress-image/blob");
+    ASSERT_TRUE(blobResp2.contains("blob"));
+    EXPECT_EQ(blobResp2["blob"].get<std::string>(), fakeImage) << "Image blob should match original";
+
+    // Test 3: Small blob (should skip compression due to size threshold)
+    std::string smallText = "Small"; // <4KB threshold
+    json req3 = {
+        {"content", json{{"id","compress-small"},{"mime_type","text/plain"}}},
+        {"blob", smallText},
+        {"chunks", json::array({ json{{"seq_num",0},{"chunk_type","text"},{"text","test"}} })}
+    };
+    auto resp3 = httpPost("/content/import", req3);
+    ASSERT_TRUE(resp3.contains("status")) << resp3.dump();
+    EXPECT_EQ(resp3["status"], "success");
+
+    // Verify metadata shows compressed=false (too small)
+    auto meta3 = httpGet("/content/compress-small");
+    ASSERT_TRUE(meta3.contains("compressed"));
+    EXPECT_FALSE(meta3["compressed"].get<bool>()) << "Small blob should skip compression";
+}
+
+TEST_F(HttpContentApiTest, BlobCompression_PerMimeLevelPolicy) {
+    // Arrange: set config with per-MIME level override
+    json cfg = {
+        {"compress_blobs", true},
+        {"compression_level", 19},
+        {"skip_compressed_mimes", json::array({"image/", "video/"})},
+        {"compression_levels_map", {{"text/plain", 9}}}
+    };
+    auto cfgs = cfg.dump();
+    storage_->put("config:content", std::vector<uint8_t>(cfgs.begin(), cfgs.end()));
+
+    // Act: import text/plain via HTTP (should compress)
+    std::string payload(8000, 'A');
+    json req = {
+        {"content", json{{"id","policy-text"},{"mime_type","text/plain"}}},
+        {"blob", payload}
+    };
+    auto resp = httpPost("/content/import", req);
+    ASSERT_TRUE(resp.contains("status")) << resp.dump();
+    EXPECT_EQ(resp["status"], "success");
+
+    // Assert metadata shows compressed=true
+    auto meta = httpGet("/content/policy-text");
+    ASSERT_TRUE(meta.contains("compressed"));
+    EXPECT_TRUE(meta["compressed"].get<bool>());
+    EXPECT_EQ(meta["compression_type"], "zstd");
+}
+

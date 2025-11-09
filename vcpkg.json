@@ -21,7 +21,8 @@
     { "name": "nlohmann-json" },
     { "name": "opentelemetry-cpp", "features": ["otlp-http"] },
     { "name": "curl" },
-    { "name": "yaml-cpp" }
+    { "name": "yaml-cpp" },
+    { "name": "zstd" }
   ],
   "features": {
     "gpu": {

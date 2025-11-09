@@ -60,13 +60,16 @@ public:
 
     http::status check(const std::string& path) { return get(path).result(); }
 
-    http::response<http::string_body> get(const std::string& target) {
+    http::response<http::string_body> get(const std::string& target, const std::string& token = "") {
         net::io_context ioc; tcp::resolver resolver(ioc); beast::tcp_stream stream(ioc);
         auto const results = resolver.resolve("localhost", std::to_string(server_port_));
         stream.connect(results);
         http::request<http::string_body> req{http::verb::get, target, 11};
         req.set(http::field::host, "localhost");
         req.set(http::field::user_agent, "vccdb_test");
+        if (!token.empty()) {
+            req.set(http::field::authorization, "Bearer " + token);
+        }
         http::write(stream, req);
         beast::flat_buffer buffer; http::response<http::string_body> res; http::read(stream, buffer, res);
         beast::error_code ec; stream.socket().shutdown(tcp::socket::shutdown_both, ec);
@@ -79,13 +82,19 @@ private:
 
 class MetricsApiTest : public ::testing::Test {
 protected:
-    void SetUp() override { server_ = std::make_unique<MetricsServerFixture>(); server_->startServer(); }
+    void SetUp() override { 
+        server_ = std::make_unique<MetricsServerFixture>(); 
+        server_->startServer(); 
+        // Use readonly token from global test environment (policy allows readonly for /metrics)
+        readonly_token_ = "readonly-token-pii-tests";
+    }
     void TearDown() override { server_->stopServer(); server_.reset(); }
     std::unique_ptr<MetricsServerFixture> server_;
+    std::string readonly_token_;
 };
 
 TEST_F(MetricsApiTest, MetricsEndpoint_ExposesBasicCounters) {
-    auto res = server_->get("/metrics");
+    auto res = server_->get("/metrics", readonly_token_);
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
     // basic counters and gauges
@@ -103,7 +112,7 @@ TEST_F(MetricsApiTest, LatencyHistogram_ExportsBucketsAndSumCount) {
         auto h = server_->get("/health");
         ASSERT_EQ(h.result(), http::status::ok);
     }
-    auto res = server_->get("/metrics");
+    auto res = server_->get("/metrics", readonly_token_);
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
     // buckets
@@ -117,7 +126,7 @@ TEST_F(MetricsApiTest, LatencyHistogram_ExportsBucketsAndSumCount) {
 }
 
 TEST_F(MetricsApiTest, RocksDBMetrics_ExposePendingCompaction) {
-    auto res = server_->get("/metrics");
+    auto res = server_->get("/metrics", readonly_token_);
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
     EXPECT_NE(body.find("rocksdb_pending_compaction_bytes"), std::string::npos);
@@ -129,7 +138,7 @@ TEST_F(MetricsApiTest, HistogramBuckets_AreCumulative) {
         auto h = server_->get("/health");
         ASSERT_EQ(h.result(), http::status::ok);
     }
-    auto res = server_->get("/metrics");
+    auto res = server_->get("/metrics", readonly_token_);
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
 

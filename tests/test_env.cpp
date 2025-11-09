@@ -19,6 +19,14 @@ class ThemisServerEnvironment : public ::testing::Environment {
 public:
     void SetUp() override {
         try {
+            // Set auth tokens via ENV before creating any servers
+#ifdef _WIN32
+            _putenv_s("THEMIS_TOKEN_ADMIN", "admin-token-pii-tests");
+            _putenv_s("THEMIS_TOKEN_READONLY", "readonly-token-pii-tests");
+#else
+            setenv("THEMIS_TOKEN_ADMIN", "admin-token-pii-tests", 1);
+            setenv("THEMIS_TOKEN_READONLY", "readonly-token-pii-tests", 1);
+#endif
             // Prepare clean test DB directory
             base_path_ = std::filesystem::path("./data/themis_gtest_env");
             if (std::filesystem::exists(base_path_)) {
@@ -49,11 +57,12 @@ public:
             scfg.host = "127.0.0.1";
             scfg.port = 8765;
             scfg.num_threads = 2;
-            // Enable features as safe defaults for integration tests
+            // Enable features needed by tests
             scfg.feature_semantic_cache = false;
             scfg.feature_llm_store = false;
             scfg.feature_cdc = false;
             scfg.feature_timeseries = false; // timeseries tests bring their own server
+            scfg.feature_pii_manager = true; // ensure PII feature enabled globally
 
             server_ = std::make_unique<themis::server::HttpServer>(
                 scfg, storage_, secondary_index_, graph_index_, vector_index_, tx_manager_

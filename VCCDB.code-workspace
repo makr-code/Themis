@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../user"
+		},
+		{
+			"path": "../URN"
 		}
 	],
 	"settings": {

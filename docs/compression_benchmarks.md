@@ -1,5 +1,57 @@
 # Kompressionsvalidierung und Benchmarks
 
+## Erweiterte Blob-Kompressionsmetriken
+
+Neue Metriken (Prometheus):
+
+```
+themis_compressed_blobs_total
+themis_uncompressed_blobs_total
+themis_compression_original_bytes_total
+themis_compression_compressed_bytes_total
+themis_compression_ratio_average
+themis_compression_level_original_bytes_total{level="<n>"}
+themis_compression_mime_groups_total{group="text|image|video|application|audio|other"}
+themis_compression_time_microseconds_bucket / _sum / _count
+themis_decompression_time_microseconds_bucket / _sum / _count
+```
+
+Diese erlauben:
+- Globale Ratio-Trends
+- Level-Verteilung (welche Levels verarbeiten wie viel Daten)
+- Latenz-Histogramme für (De)Kompression
+- MIME-Gruppen-Lastprofil
+
+## Per-MIME Compression Policy
+
+Konfiguration (`/content/config`):
+
+```json
+{
+  "compress_blobs": true,
+  "compression_level": 19,
+  "skip_compressed_mimes": ["image/", "video/", "application/zip"],
+  "compression_levels_map": {
+    "text/": 9,
+    "text/plain": 9,
+    "application/json": 3
+  }
+}
+```
+
+Auflösung:
+1. Exakter MIME-Treffer (`text/plain`).
+2. Prefix mit Slash (`text/`).
+3. Fallback auf globalen `compression_level`.
+
+Ungültige Level (<1 oder >22) werden ignoriert bzw. bei PUT validiert (400).
+
+## ZSTD Level Microbenchmarks
+
+Neue Benchmark-Datei: `benchmarks/bench_blob_zstd.cpp` testet Levels 3, 9, 19 auf 16KB und 128KB Text. Counter `ratio` = (original/compressed).
+
+Prometheus/Bench-Nutzung siehe unten; für echte Zahlen bitte Benchmark ausführen.
+
 **Datum:** 27. Oktober 2025  
 **System:** Windows 11, MSVC 19.44, 20 CPU cores @ 3.7 GHz
 

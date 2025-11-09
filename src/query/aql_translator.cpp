@@ -484,6 +484,26 @@ bool AQLTranslator::containsOr(const std::shared_ptr<Expression>& expr) {
     return false;
 }
 
+bool AQLTranslator::containsFulltext(const std::shared_ptr<Expression>& expr) {
+    if (!expr) return false;
+    
+    if (expr->getType() == ASTNodeType::FunctionCall) {
+        auto funcCall = std::static_pointer_cast<FunctionCallExpr>(expr);
+        std::string funcName = funcCall->name;
+        std::transform(funcName.begin(), funcName.end(), funcName.begin(), ::tolower);
+        if (funcName == "fulltext") {
+            return true;
+        }
+    }
+    
+    if (expr->getType() == ASTNodeType::BinaryOp) {
+        auto binOp = std::static_pointer_cast<BinaryOpExpr>(expr);
+        return containsFulltext(binOp->left) || containsFulltext(binOp->right);
+    }
+    
+    return false;
+}
+
 std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
     const std::shared_ptr<Expression>& expr,
     const std::string& table,
@@ -500,6 +520,7 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
         
         // OR: Split into multiple disjuncts
         if (binOp->op == BinaryOperator::Or) {
+            // FULLTEXT is now supported in OR expressions (each disjunct can have FULLTEXT)
             auto leftDNF = convertToDNF(binOp->left, table, error);
             if (!error.empty()) return {};
             

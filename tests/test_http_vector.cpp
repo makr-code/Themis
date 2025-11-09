@@ -112,6 +112,7 @@ protected:
         http::request<http::string_body> req{http::verb::post, target, 11};
         req.set(http::field::host, "127.0.0.1");
         req.set(http::field::content_type, "application/json");
+    req.set(http::field::authorization, "Bearer admin-token-pii-tests");
         req.body() = body.dump();
         req.prepare_payload();
 
@@ -244,7 +245,11 @@ TEST_F(HttpVectorApiTest, VectorBatchInsert_EncryptsMetadata_WhenSchemaEnabled) 
         })}
     };
     auto resp = httpPost("/vector/batch_insert", request);
-    ASSERT_TRUE(resp.contains("inserted"));
+    // Debug: Print response to see what we got
+    if (!resp.contains("inserted")) {
+        std::cout << "Response does not contain 'inserted'. Full response: " << resp.dump(2) << std::endl;
+    }
+    ASSERT_TRUE(resp.contains("inserted")) << "Response: " << resp.dump(2);
     EXPECT_EQ(resp["inserted"], 1);
 
     // Read back underlying entity from storage and verify encryption markers

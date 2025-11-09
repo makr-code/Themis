@@ -157,6 +157,7 @@ set(THEMIS_CORE_SOURCES
     src/security/key_cache.cpp
     src/security/field_encryption.cpp
     src/security/encrypted_field.cpp
+    src/security/vcc_pki_client.cpp
     
     src/transaction/transaction_manager.cpp
     src/transaction/saga.cpp
@@ -211,6 +212,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/stopwords.cpp
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
+    src/utils/hkdf_cache.cpp
     src/security/pki_key_provider.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
@@ -370,6 +372,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_stopwords.cpp
         tests/test_http_governance.cpp
         tests/test_http_audit.cpp
+        tests/test_vcc_pki_client.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp

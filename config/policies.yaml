@@ -1,5 +1,4 @@
 
-
 - id: allow-metrics-readonly
   name: readonly darf /metrics
   subjects: ["readonly"]
@@ -14,17 +13,16 @@
   resources: ["/policies/export/ranger"]
   effect: allow
 
-- id: allow-admin-pii
-  name: admin darf alle PII Aktionen
+- id: allow-admin-pii-read
+  name: admin darf PII read
   subjects: ["admin"]
-  actions: ["pii.write","pii.read","pii.reveal"]
-  resources: ["/pii","/pii/*"]
+  actions: ["pii.read"]
+  resources: ["/pii", "/pii/"]
   effect: allow
 
-- id: allow-admin-pii-delete
-  name: admin darf PII löschen
+- id: allow-admin-pii-write
+  name: admin darf PII write
   subjects: ["admin"]
   actions: ["pii.write"]
-  resources: ["/pii/*"]
+  resources: ["/pii", "/pii/"]
   effect: allow
-

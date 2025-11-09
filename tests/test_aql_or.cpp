@@ -391,8 +391,8 @@ TEST_F(AQLOrTest, PureAnd_ShouldUseConjunctiveQuery) {
     EXPECT_EQ(translateResult.query.table, "users");
 }
 
-TEST_F(AQLOrTest, FulltextInOr_ShouldFail) {
-    // FULLTEXT not yet supported in OR expressions
+TEST_F(AQLOrTest, FulltextInOr_ShouldSucceed) {
+    // FULLTEXT is now supported in OR expressions (DNF conversion)
     std::string aql = R"(
         FOR doc IN articles
         FILTER FULLTEXT(doc.content, "AI") OR doc.year >= 2023
@@ -410,6 +410,7 @@ TEST_F(AQLOrTest, FulltextInOr_ShouldFail) {
     ASSERT_TRUE(parseResult.success);
     
     auto translateResult = AQLTranslator::translate(parseResult.query);
-    EXPECT_FALSE(translateResult.success);
-    EXPECT_NE(translateResult.error_message.find("FULLTEXT"), std::string::npos);
+    EXPECT_TRUE(translateResult.success) << translateResult.error_message;
+    EXPECT_TRUE(translateResult.disjunctive.has_value());
+    EXPECT_EQ(translateResult.disjunctive->disjuncts.size(), 2u); // Two disjuncts: FULLTEXT and range
 }

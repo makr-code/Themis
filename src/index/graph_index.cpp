@@ -237,6 +237,8 @@ GraphIndexManager::bfs(std::string_view startPk, int maxDepth) const {
 	if (startPk.empty()) return {Status::Error("bfs: startPk darf nicht leer sein"), {}};
 	if (maxDepth < 0) return {Status::Error("bfs: maxDepth muss >= 0 sein"), {}};
 
+	THEMIS_INFO("BFS start='{}' maxDepth={} topologyLoaded={}", std::string(startPk), maxDepth, topologyLoaded_);
+
 	std::vector<std::string> order;
 	std::unordered_set<std::string> visited;
 	std::queue<std::pair<std::string,int>> q;
@@ -268,28 +270,41 @@ GraphIndexManager::bfs(std::string_view startPk, int maxDepth) const {
 		return {Status::OK(), std::move(order)};
 	}
 
-	// Fallback to RocksDB scan-based BFS (all graphs)
+	// Fallback to RocksDB scan-based BFS (legacy key format)
 	while (!q.empty()) {
 		auto [node, depth] = q.front();
 		q.pop();
-
 		order.push_back(node);
 		if (depth == maxDepth) continue;
 
-		const std::string prefix = std::string("graph:out:");
-		db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val){
-			// Parse key to check if it belongs to this node
-			std::string graphId, fromPk, edgeId;
-			if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
-			if (fromPk != node) return true;
-			
-			std::string neigh(val);
+		// Use existing outNeighbors() which is known to work in legacy schema
+		auto [stN, neighs] = outNeighbors(node);
+		if (!stN.ok) {
+			THEMIS_DEBUG("BFS outNeighbors error for node='{}': {}", node, stN.message);
+			continue;
+		}
+		// Defensive fallback: if prefix-based outNeighbors unexpectedly returns empty, perform a full scan
+		if (neighs.empty()) {
+			const std::string globalPrefix = "graph:out:"; // scan all outdex keys
+			std::vector<std::string> alt;
+			db_.scanPrefix(globalPrefix, [&, node](std::string_view key, std::string_view val){
+				std::string gid, fromPk, edgeId;
+				if (!parseOutKey_(key, gid, fromPk, edgeId)) return true;
+				if (fromPk != node) return true;
+				alt.emplace_back(std::string(val));
+				return true;
+			});
+			if (!alt.empty()) {
+				THEMIS_WARN("BFS prefix fallback used for node='{}' collected {} neighbors", node, alt.size());
+				neighs.swap(alt);
+			}
+		}
+		for (const auto& neigh : neighs) {
 			if (!visited.count(neigh)) {
 				visited.insert(neigh);
 				q.emplace(neigh, depth + 1);
 			}
-			return true;
-		});
+		}
 	}
 	return {Status::OK(), std::move(order)};
 }
@@ -464,51 +479,89 @@ size_t GraphIndexManager::getTopologyEdgeCount() const {
 // ────────────────────────────────────────────────────────────────────────────
 
 double GraphIndexManager::getEdgeWeight_(std::string_view graphId, std::string_view edgeId) const {
-	const std::string edgeKey = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
-	auto blob = db_.get(edgeKey);
+	// Support both schemas:
+	// 1) Extended: edge:<graphId>:<edgeId>
+	// 2) Legacy:   edge:<edgeId>
+	std::string key_ext = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
+	std::string key_legacy = std::string("edge:") + std::string(edgeId);
+
+	auto blob = db_.get(!graphId.empty() ? key_ext : key_legacy);
+	if (!blob && !graphId.empty()) {
+		blob = db_.get(key_legacy);
+	}
 	if (!blob) return 1.0; // Default weight
-	
+
 	BaseEntity edge = BaseEntity::deserialize(std::string(edgeId), *blob);
 	auto weightOpt = edge.getFieldAsDouble("_weight");
 	return weightOpt.value_or(1.0);
 }
 
 std::string GraphIndexManager::getEdgeType_(std::string_view graphId, std::string_view edgeId) const {
-	const std::string edgeKey = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
-	auto blob = db_.get(edgeKey);
+	// Support both schemas:
+	// 1) Extended: edge:<graphId>:<edgeId>
+	// 2) Legacy:   edge:<edgeId>
+	std::string key_ext = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
+	std::string key_legacy = std::string("edge:") + std::string(edgeId);
+
+	auto blob = db_.get(!graphId.empty() ? key_ext : key_legacy);
+	if (!blob && !graphId.empty()) {
+		blob = db_.get(key_legacy);
+	}
 	if (!blob) return ""; // No type
-	
+
 	BaseEntity edge = BaseEntity::deserialize(std::string(edgeId), *blob);
 	auto typeOpt = edge.getFieldAsString("_type");
 	return typeOpt.value_or("");
 }
 
 bool GraphIndexManager::parseOutKey_(std::string_view key, std::string& graphId, std::string& fromPk, std::string& edgeId) {
-	// Expect: graph:out:<graph_id>:<fromPk>:<edgeId>
+	// Support both formats:
+	// 1) Legacy:   graph:out:<fromPk>:<edgeId>
+	// 2) Extended: graph:out:<graph_id>:<fromPk>:<edgeId>
 	if (key.rfind("graph:out:", 0) != 0) return false;
 	std::string s(key.substr(10)); // after prefix
+
 	size_t first = s.find(':');
 	if (first == std::string::npos) return false;
 	size_t last = s.rfind(':');
-	if (last == std::string::npos || last == first) return false;
+	if (last == std::string::npos) return false;
+	if (first == last) {
+		// Legacy: <fromPk>:<edgeId>
+		graphId.clear();
+		fromPk = s.substr(0, first);
+		edgeId = s.substr(first + 1);
+		return !fromPk.empty() && !edgeId.empty();
+	}
+	// Extended: <graph_id>:<fromPk>:<edgeId>
 	graphId = s.substr(0, first);
 	fromPk = s.substr(first + 1, last - first - 1);
 	edgeId = s.substr(last + 1);
-	return true;
+	return !fromPk.empty() && !edgeId.empty();
 }
 
 bool GraphIndexManager::parseInKey_(std::string_view key, std::string& graphId, std::string& toPk, std::string& edgeId) {
-	// Expect: graph:in:<graph_id>:<toPk>:<edgeId>
+	// Support both formats:
+	// 1) Legacy:   graph:in:<toPk>:<edgeId>
+	// 2) Extended: graph:in:<graph_id>:<toPk>:<edgeId>
 	if (key.rfind("graph:in:", 0) != 0) return false;
 	std::string s(key.substr(9)); // after prefix
+
 	size_t first = s.find(':');
 	if (first == std::string::npos) return false;
 	size_t last = s.rfind(':');
-	if (last == std::string::npos || last == first) return false;
+	if (last == std::string::npos) return false;
+	if (first == last) {
+		// Legacy: <toPk>:<edgeId>
+		graphId.clear();
+		toPk = s.substr(0, first);
+		edgeId = s.substr(first + 1);
+		return !toPk.empty() && !edgeId.empty();
+	}
+	// Extended: <graph_id>:<toPk>:<edgeId>
 	graphId = s.substr(0, first);
 	toPk = s.substr(first + 1, last - first - 1);
 	edgeId = s.substr(last + 1);
-	return true;
+	return !toPk.empty() && !edgeId.empty();
 }
 
 std::pair<GraphIndexManager::Status, GraphIndexManager::PathResult>

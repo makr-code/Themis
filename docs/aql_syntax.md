@@ -1,24 +1,24 @@
 ﻿# AQL - THEMIS Query Language
 
-**Version:** 1.0  
-**Datum:** 30. Oktober 2025  
+**Version:** 1.4  
+**Datum:** 09. November 2025  
 **Inspiriert von:** ArangoDB AQL, mit Fokus auf Multi-Modell-Queries
 
 ---
 
-## �berblick
+## Überblick
 
-**AQL (Advanced Query Language)** ist eine deklarative SQL-�hnliche Sprache f�r THEMIS, optimiert f�r hybride Queries �ber relationale, Graph-, Vektor- und Dokument-Daten.
+**AQL (Advanced Query Language)** ist eine deklarative SQL-ähnliche Sprache für THEMIS, optimiert für hybride Queries über relationale, Graph-, Vektor- und Dokument-Daten.
 
 **Design-Prinzipien:**
-- ? **Einfach:** SQL-�hnliche Syntax f�r schnelle Adoption
-- ? **M�chtig:** Multi-Modell-Support (Relational, Graph, Vector)
-- ? **Optimierbar:** Automatische Index-Auswahl via Optimizer
-- ? **Erweiterbar:** Schrittweise Erweiterung (Aggregationen, Joins, Subqueries)
+- ✓ **Einfach:** SQL-ähnliche Syntax für schnelle Adoption
+- ✓ **Mächtig:** Multi-Modell-Support (Relational, Graph, Vector)
+- ✓ **Optimierbar:** Automatische Index-Auswahl via Optimizer
+- ✓ **Erweiterbar:** Schrittweise Erweiterung (Aggregationen, Joins, Subqueries)
 
 ---
 
-## Syntax-�bersicht
+## Syntax-Übersicht
 
 ### Grundstruktur
 
@@ -32,22 +32,22 @@ FOR variable IN collection
 ```
 
 **Execution-Reihenfolge:**
-1. `FOR` - Iteration �ber Collection/Index
-2. `FILTER` - Pr�dikat-Evaluation (mit Index-Nutzung)
-3. `SORT` - Sortierung (mit Index-Nutzung wenn m�glich)
+1. `FOR` - Iteration über Collection/Index
+2. `FILTER` - Prädikat-Evaluation (mit Index-Nutzung)
+3. `SORT` - Sortierung (mit Index-Nutzung wenn möglich)
 4. `LIMIT` - Pagination/Offset
 5. `RETURN` - Projektion (Felder/Objekte/Arrays)
 
 ---
 
-## MVP-Einschr�nkungen und Hinweise
+## MVP-Einschränkungen und Hinweise
 
 Damit Erwartungen klar sind, hier die wichtigsten Begrenzungen des aktuellen MVP:
 
-- OR-Operator: Vollst�ndig unterst�tzt �ber DNF-Konvertierung. FULLTEXT kann in OR-Ausdr�cken verwendet werden.
-- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt. Ein spezieller Join-Pfad erlaubt jedoch Gleichheits-Joins �ber genau zwei FOR-Klauseln (siehe Abschnitt �Einfache Joins (MVP)�).
-- LET in FILTER: Falls einfache LET-Bindungen in FILTER vorkommen, werden diese vor der �bersetzung extrahiert (�pre-extracted�). Bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`.
-- Subqueries, OR, komplexe Ausdr�cke/Funktionen sind (noch) eingeschr�nkt und werden iterativ erweitert.
+- OR-Operator: Vollständig unterstützt über DNF-Konvertierung. FULLTEXT kann in OR-Ausdrücken verwendet werden (Disjunktionen werden vereinigt; fuer konsistente Relevanzsortierung ggf. `SORT BM25(doc) DESC` setzen).
+- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt. Ein spezieller Join-Pfad erlaubt jedoch Gleichheits-Joins über genau zwei FOR-Klauseln (siehe Abschnitt "Einfache Joins (MVP)").
+- LET in FILTER: Falls einfache LET-Bindungen in FILTER vorkommen, werden diese vor der Übersetzung extrahiert ("pre-extracted"). Bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`.
+- Subqueries, OR, komplexe Ausdrücke/Funktionen sind (noch) eingeschränkt und werden iterativ erweitert.
 
 ## Kern-Klauseln
 
@@ -181,16 +181,16 @@ FILTER FULLTEXT(doc.title, "neural") AND doc.category == "Research" AND doc.view
 FILTER doc.lang == "en" AND FULLTEXT(doc.abstract, "machine learning")  // Order flexible
 ```
 
-**FULLTEXT-Funktionsdetails:**
+**FULLTEXT-Funktionsdetails (aktualisiert v1.4):**
 - **Argumente:** `FULLTEXT(field, query [, limit])`
   - `field` - Spaltenname mit Fulltext-Index
   - `query` - Suchquery (Tokens mit AND-Logik, oder `"phrase"` f�r exakte Phrasen)
   - `limit` - Optional: Max. Ergebnisse (default 1000)
 - **Ranking:** BM25-Scoring (k1=1.2, b=0.75)
 - **Features:** Stemming (EN/DE), Stopwords, Normalization (Umlaute)
-- **Hybrid Queries (v1.3):** 
-  - ? `FULLTEXT(...) AND <predicates>` - Intersection-based (BM25 n structural filters)
-  - ? `FULLTEXT(...) OR <expr>` - Noch nicht unterst�tzt (geplant v1.4)
+- **Hybrid Queries (v1.4):** 
+  - ? `FULLTEXT(...) AND <predicates>` - Intersection-based (BM25 + strukturelle Filter)
+  - ? `FULLTEXT(...) OR <expr>` - Volltext-Kandidaten vereinigt mit strukturellen Treffern; falls gemischte Quellen, fuer globale Relevanzsortierung `SORT BM25(doc) DESC` explizit angeben.
 - **Execution Strategy:** Fulltext-Scan zuerst (BM25-ranked), dann Intersection mit strukturellen Filtern
 - **Siehe:** `docs/search/fulltext_api.md` f�r Index-Erstellung und Konfiguration
 
@@ -1095,7 +1095,7 @@ Datenvolumen reduzieren bevor gruppiert wird.
 
 ---
 
-## Implementation-Status (03.11.2025)
+## Implementation-Status (09.11.2025)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -1110,12 +1110,12 @@ Datenvolumen reduzieren bevor gruppiert wird.
 | **RETURN** | ? Production | Field/Object/Array |
 | **LET** | ? MVP | Basis-Expressions, Arithmetik |
 | **COLLECT** | ? MVP | Hash-Grouping, COUNT/SUM/AVG/MIN/MAX |
-| **FULLTEXT + OR** | ?? Planned | Per-Disjunct FULLTEXT execution |
-| **FULLTEXT_SCORE()** | ?? Planned | Score in RETURN-Expression |
+| **FULLTEXT + OR** | ? Production | Per-Disjunct FULLTEXT execution + Ranking-Merge |
+| **FULLTEXT_SCORE()** | ? Production | Score in RETURN-Expression |
 | **Subqueries** | ?? Planned | Phase 1.4 |
 
 ---
 
-**Dokumentations-Version:** 1.3 (03. November 2025)  
-**Letzte Aktualisierung:** FULLTEXT + AND Hybrid Queries implementiert (13 Tests PASSED)
+**Dokumentations-Version:** 1.4 (09. November 2025)  
+**Letzte Aktualisierung:** FULLTEXT OR-Unterstützung & Ranking-Merge, AQL OR vollständig produktiv, PII-Policy/Authorization Hinweise
 
