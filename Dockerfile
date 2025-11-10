@@ -37,20 +37,14 @@ ENV PATH="${VCPKG_ROOT}:${PATH}"
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
 
-# Make sure vcpkg is updated, clear stale state and pre-install boost-headers to fail early with logs
+# Make sure vcpkg is updated and clear stale state
 RUN set -eux; \
     cd ${VCPKG_ROOT}; \
     git fetch --all --tags || true; \
     git reset --hard origin/master || true; \
     ./vcpkg update || true; \
     # remove stale or partial build state that often causes parallel configure failures
-    rm -rf buildtrees packages downloads || true; \
-    # Attempt to install boost-headers for the default triplet to show concrete failure now
-    ./vcpkg install boost-headers:${VCPKG_TRIPLET} || ( \
-        echo "===== vcpkg boost-headers install failed ====="; \
-        echo "Listing buildtrees for boost-headers:"; ls -la buildtrees/boost-headers || true; \
-        echo "Printing boost-headers logs:"; tail -n +1 buildtrees/boost-headers/*.log || true; \
-        false)
+    rm -rf buildtrees packages downloads || true
 
 # Allow overriding target triplet at build time too (kept for later stages)
 ENV VCPKG_TRIPLET=${VCPKG_TRIPLET}

@@ -176,6 +176,11 @@ TEST_F(SchemaEncryptionTest, GetSchema_AfterPut_ReturnsSavedSchema) {
 }
 
 TEST_F(SchemaEncryptionTest, QueryAql_WithEncryptedFields_AutoDecrypts) {
+    // Create secondary index on name field
+    json index_body = {{"table", "users"}, {"field", "name"}};
+    auto index_res = http_request(http::verb::post, "127.0.0.1", 18200, "/index/secondary", index_body, admin_headers_);
+    ASSERT_TRUE(index_res.result() == http::status::ok || index_res.result() == http::status::created);
+    
     json schema = {{"collections", {{"users", {{"encryption", {{"enabled", true}, {"context_type", "user"}, {"fields", json::array({"email", "ssn"})}}}}}}}};
     auto schema_res = http_request(http::verb::put, "127.0.0.1", 18200, "/config/encryption-schema", schema, admin_headers_);
     ASSERT_EQ(schema_res.result(), http::status::ok);
@@ -190,18 +195,29 @@ TEST_F(SchemaEncryptionTest, QueryAql_WithEncryptedFields_AutoDecrypts) {
     auto put2_res = http_request(http::verb::put, "127.0.0.1", 18200, "/entities/users:user2", put2, admin_headers_);
     ASSERT_TRUE(put2_res.result() == http::status::ok || put2_res.result() == http::status::created);
     
-    json query_body = {{"query", "FOR u IN users RETURN u"}};
+    // Query with filter to use index
+    json query_body = {{"query", "FOR u IN users FILTER u.name == 'Alice' RETURN u"}};
     auto query_res = http_request(http::verb::post, "127.0.0.1", 18200, "/query/aql", query_body, admin_headers_);
     ASSERT_EQ(query_res.result(), http::status::ok) << query_res.body();
     
     auto response = json::parse(query_res.body());
     ASSERT_TRUE(response.contains("entities"));
-    EXPECT_GE(response["entities"].size(), 2);
+    EXPECT_GE(response["entities"].size(), 1);
     
+    // Verify Alice's data is decrypted
+    bool found_alice = false;
     for (const auto& entity : response["entities"]) {
-        EXPECT_TRUE(entity.contains("email"));
-        EXPECT_TRUE(entity.contains("ssn"));
-        EXPECT_FALSE(entity.contains("email_encrypted"));
-        EXPECT_FALSE(entity.contains("ssn_encrypted"));
+        if (entity.contains("name") && entity["name"] == "Alice") {
+            found_alice = true;
+            EXPECT_TRUE(entity.contains("email"));
+            EXPECT_EQ(entity["email"], "alice@example.com");
+            EXPECT_TRUE(entity.contains("ssn"));
+            EXPECT_EQ(entity["ssn"], "123-45-6789");
+            EXPECT_FALSE(entity.contains("email_encrypted"));
+            EXPECT_FALSE(entity.contains("ssn_encrypted"));
+            EXPECT_FALSE(entity.contains("email_enc"));
+            EXPECT_FALSE(entity.contains("ssn_enc"));
+        }
     }
+    EXPECT_TRUE(found_alice) << "Alice not found in query results";
 }
