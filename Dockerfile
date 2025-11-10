@@ -32,7 +32,14 @@ RUN set -eux; \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh; \
     sh cmake-${CMAKE_VERSION}-linux-x86_64.sh --prefix=/usr/local --skip-license; \
     rm cmake-${CMAKE_VERSION}-linux-x86_64.sh; \
-    cmake --version
+    # Fallback: some installer layouts place binaries under /usr/local/cmake-*/bin
+    if ! command -v cmake >/dev/null 2>&1; then \
+        CMAKE_DIR=$(find /usr/local -maxdepth 2 -type d -name "cmake-*-linux-*" | head -n1 || true); \
+        if [ -n "${CMAKE_DIR:-}" ] && [ -d "$CMAKE_DIR/bin" ]; then \
+            cp -a "$CMAKE_DIR/bin/"* /usr/local/bin/; \
+        fi; \
+    fi; \
+    which cmake; cmake --version
 
 # Install vcpkg
 WORKDIR /opt
