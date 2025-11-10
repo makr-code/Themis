@@ -410,7 +410,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_group_dek.cpp
         tests/test_user_key_derivation.cpp
         tests/test_graph_edge_encryption.cpp
-    tests/test_graph_bfs_fix.cpp
+        tests/test_graph_bfs_fix.cpp
+        tests/test_schema_encryption.cpp
     )
     
     target_link_libraries(themis_tests
