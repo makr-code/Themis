@@ -38,8 +38,9 @@ static std::string base64_encode_local(const std::vector<uint8_t>& data) {
 
 AuditLogger::AuditLogger(std::shared_ptr<themis::FieldEncryption> enc,
                          std::shared_ptr<VCCPKIClient> pki,
-                         AuditLoggerConfig cfg)
-    : enc_(std::move(enc)), pki_(std::move(pki)), cfg_(std::move(cfg)) {}
+                         AuditLoggerConfig cfg,
+                         std::shared_ptr<LEKManager> lek_manager)
+    : enc_(std::move(enc)), pki_(std::move(pki)), lek_manager_(std::move(lek_manager)), cfg_(std::move(cfg)) {}
 
 std::vector<uint8_t> AuditLogger::sha256(const std::vector<uint8_t>& data) {
     std::vector<uint8_t> out(SHA256_DIGEST_LENGTH);
@@ -66,9 +67,19 @@ void AuditLogger::logEvent(const nlohmann::json& event) {
                         std::chrono::system_clock::now().time_since_epoch()).count();
     record["category"] = "AUDIT";
 
+    // Determine key_id for encryption (LEK or fallback)
+    std::string actual_key_id = cfg_.key_id;
+    std::string log_date;
+    if (cfg_.use_lek && lek_manager_) {
+        actual_key_id = lek_manager_->getCurrentLEK();
+        log_date = LEKManager::getCurrentDateString();
+        record["log_date"] = log_date;
+        record["lek_id"] = actual_key_id;
+    }
+
     if (cfg_.encrypt_then_sign && enc_) {
-        // Encrypt plaintext JSON with configured key
-        auto blob = enc_->encrypt(plain, cfg_.key_id);
+        // Encrypt plaintext JSON with actual key
+        auto blob = enc_->encrypt(plain, actual_key_id);
 
         // Build bytes for hashing: iv || ciphertext || tag
         std::vector<uint8_t> to_hash;

@@ -516,14 +516,97 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                 }
             }
         }
-        // Content-Meta aktualisieren/speichern
+        // Optionale Verschlüsselung von Metadaten-Feldern (vector metadata encryption)
+        try {
+            bool meta_encrypt_enabled = false;
+            std::vector<std::string> meta_fields;
+            if (auto mev = storage_->get("config:vector_metadata_encryption")) {
+                std::string ms(mev->begin(), mev->end());
+                auto mcfg = json::parse(ms);
+                meta_encrypt_enabled = mcfg.value("enabled", false);
+                if (meta_encrypt_enabled && mcfg.contains("fields") && mcfg["fields"].is_array()) {
+                    for (const auto& f : mcfg["fields"]) if (f.is_string()) meta_fields.push_back(f.get<std::string>());
+                }
+            }
+            if (meta_encrypt_enabled && field_encryption_) {
+                // Derive base DEK once and then per-field HKDF
+                auto kp = field_encryption_->getKeyProvider();
+                // Salt = user_context (oder "anonymous")
+                std::string ctx = user_context.empty() ? std::string("anonymous") : user_context;
+                std::vector<uint8_t> salt(ctx.begin(), ctx.end());
+                for (const auto& f : meta_fields) {
+                    // Mapping: Feldname auf ContentMeta Struktur
+                    // Unterstützte Felder: extracted_metadata, user_metadata, tags
+                    nlohmann::json* target = nullptr;
+                    if (f == "extracted_metadata") target = &meta.extracted_metadata;
+                    else if (f == "user_metadata") target = &meta.user_metadata;
+                    else if (f == "tags") {
+                        // tags als Array -> JSON konvertieren
+                        nlohmann::json arr = meta.tags;
+                        target = new nlohmann::json(arr); // temporär, am Ende cleanup
+                    }
+                    if (!target) continue;
+                    try {
+                        if (target->is_null() || (target->is_object() && target->empty()) || (target->is_array() && target->empty())) {
+                            if (f == "tags" && target) { delete target; }
+                            continue; // nichts zu verschlüsseln
+                        }
+                        std::string plain = target->dump();
+                        // HKDF ableiten: info = "vector_meta:" + feld
+                        auto dek = kp->getKey("dek");
+                        auto meta_info = kp->getKeyMetadata("dek", 0);
+                        std::string info = std::string("vector_meta:") + f;
+                        auto derived = themis::utils::HKDFHelper::derive(dek, salt, info, dek.size());
+                        auto blobEnc = field_encryption_->encryptWithKey(plain, std::string("dek"), meta_info.version, derived);
+                        std::string enc_b64 = blobEnc.toBase64();
+                        // Metadaten ersetzen: <f>_encrypted + <f>_enc Flag, Original entfernen/neutralisieren
+                        if (f == "extracted_metadata") {
+                            meta.extracted_metadata = json::object(); // leeren
+                        } else if (f == "user_metadata") {
+                            meta.user_metadata = json::object();
+                        } else if (f == "tags") {
+                            meta.tags.clear();
+                        }
+                        // Wir lagern verschlüsselte Meta-Felder im allgemeinen Meta-JSON als Platzhalter unter reserved key
+                        // Da ContentMeta::toJson() Felder fix zusammenstellt, hängen wir Zusatzfelder erst nachher an (siehe unten mjsonPatch)
+                        // Temporär speichern in map structure
+                        if (f == "tags" && target) { delete target; }
+                        // Hänge verschlüsselte Strings in eine Zusatzliste (wird später gemerged)
+                        if (!meta.extracted_metadata.contains("__enc_meta")) {
+                            try { meta.extracted_metadata["__enc_meta"] = json::object(); } catch (...) {}
+                        }
+                        try {
+                            meta.extracted_metadata["__enc_meta"][f + "_encrypted"] = enc_b64;
+                            meta.extracted_metadata["__enc_meta"][f + "_enc"] = true;
+                        } catch (...) {}
+                    } catch (const std::exception& ex) {
+                        THEMIS_WARN("vector metadata encryption field {} failed: {}", f, ex.what());
+                        if (f == "tags" && target) { delete target; }
+                    }
+                }
+            }
+        } catch (const std::exception& ex) {
+            THEMIS_WARN("vector metadata encryption processing error: {}", ex.what());
+        }
+
+        // Content-Meta aktualisieren/speichern (verschlüsselte Felder markiert)
         meta.chunk_count = static_cast<int>(chunk_ids.size());
         meta.chunked = meta.chunk_count > 0;
         if (meta.created_at == 0) meta.created_at = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
         meta.modified_at = meta.created_at;
         if (meta.embedding_dim == 0) meta.embedding_dim = embedding_dim;
         std::string mkey = std::string("content:") + meta.id;
-        std::string mjson = meta.toJson().dump();
+        auto mbase = meta.toJson();
+        // Falls __enc_meta genutzt wurde, merge diese Zusatzstruktur ins Root unter reserviertem Namespace "_encrypted_meta"
+        if (meta.extracted_metadata.contains("__enc_meta")) {
+            try {
+                auto enc_section = meta.extracted_metadata["__enc_meta"]; // kopieren
+                // Entferne Hilfsstruktur aus extracted_metadata
+                meta.extracted_metadata.erase("__enc_meta");
+                mbase["_encrypted_meta"] = enc_section;
+            } catch (...) {}
+        }
+        std::string mjson = mbase.dump();
         if (!storage_->put(mkey, std::vector<uint8_t>(mjson.begin(), mjson.end()))) {
             return Status::Error("failed to store content meta");
         }
@@ -566,6 +649,56 @@ std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& con
     try {
         std::string s(v->begin(), v->end());
         json j = json::parse(s);
+        return ContentMeta::fromJson(j);
+    } catch (...) { return std::nullopt; }
+}
+
+std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& content_id, const std::string& user_context) {
+    std::string id = normalizeId(content_id, "content:");
+    std::string key = std::string("content:") + id;
+    auto v = storage_->get(key);
+    if (!v) return std::nullopt;
+    try {
+        std::string s(v->begin(), v->end());
+        json j = json::parse(s);
+        // Entschlüsselung verschlüsselter Metadaten falls vorhanden
+        if (j.contains("_encrypted_meta") && field_encryption_) {
+            bool meta_encrypt_enabled = false;
+            std::vector<std::string> meta_fields;
+            try {
+                if (auto mev = storage_->get("config:vector_metadata_encryption")) {
+                    std::string cfgs(mev->begin(), mev->end());
+                    auto mcfg = json::parse(cfgs);
+                    meta_encrypt_enabled = mcfg.value("enabled", false);
+                    if (meta_encrypt_enabled && mcfg.contains("fields") && mcfg["fields"].is_array()) {
+                        for (const auto& f : mcfg["fields"]) if (f.is_string()) meta_fields.push_back(f.get<std::string>());
+                    }
+                }
+            } catch (...) { meta_encrypt_enabled = false; }
+            if (meta_encrypt_enabled) {
+                auto enc_section = j["_encrypted_meta"];
+                std::string ctx = user_context.empty() ? std::string("anonymous") : user_context;
+                std::vector<uint8_t> salt(ctx.begin(), ctx.end());
+                auto kp = field_encryption_->getKeyProvider();
+                auto dek = kp->getKey("dek");
+                for (const auto& f : meta_fields) {
+                    std::string enc_key = f + std::string("_encrypted");
+                    if (!enc_section.contains(enc_key)) continue;
+                    try {
+                        std::string b64 = enc_section[enc_key].get<std::string>();
+                        auto blob = EncryptedBlob::fromBase64(b64);
+                        std::string info = std::string("vector_meta:") + f;
+                        auto derived = themis::utils::HKDFHelper::derive(dek, salt, info, dek.size());
+                        std::string plain = field_encryption_->decryptWithKey(blob, derived);
+                        auto pj = json::parse(plain);
+                        j[f] = pj; // wiederherstellen
+                    } catch (const std::exception& exf) {
+                        THEMIS_WARN("vector metadata decrypt field {} failed: {}", f, exf.what());
+                    }
+                }
+                j.erase("_encrypted_meta");
+            }
+        }
         return ContentMeta::fromJson(j);
     } catch (...) { return std::nullopt; }
 }

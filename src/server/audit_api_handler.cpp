@@ -36,8 +36,9 @@ static bool containsCaseInsensitive(const std::string& haystack, const std::stri
 
 AuditApiHandler::AuditApiHandler(std::shared_ptr<themis::FieldEncryption> enc,
                                  std::shared_ptr<themis::utils::VCCPKIClient> pki,
-                                 const std::string& log_path)
-    : enc_(std::move(enc)), pki_(std::move(pki)), log_path_(log_path) {}
+                                 const std::string& log_path,
+                                 std::shared_ptr<themis::utils::LEKManager> lek_manager)
+    : enc_(std::move(enc)), pki_(std::move(pki)), log_path_(log_path), lek_manager_(std::move(lek_manager)) {}
 
 nlohmann::json AuditLogEntry::toJson() const {
     nlohmann::json j;
@@ -108,7 +109,49 @@ AuditLogEntry AuditApiHandler::parseLogLine(const nlohmann::json& j, int64_t lin
     // Try to decrypt payload if encrypted
     std::string event_data;
     if (j.contains("payload") && j["payload"].contains("ciphertext_b64")) {
-        event_data = decryptPayload(j["payload"]);
+        // Check if this is a LEK-encrypted entry
+        if (j.contains("lek_id") && lek_manager_) {
+            // Extract log_date from lek_id (format: "lek_YYYY-MM-DD")
+            std::string lek_id = j["lek_id"].get<std::string>();
+            std::string log_date;
+            if (lek_id.rfind("lek_", 0) == 0) {
+                log_date = lek_id.substr(4);
+            }
+            
+            if (!log_date.empty()) {
+                // Get LEK key_id for specific date
+                std::string lek_key_id = lek_manager_->getLEKForDate(log_date);
+                if (!lek_key_id.empty()) {
+                    // Decrypt using FieldEncryption with LEK key_id
+                    try {
+                        auto& payload_obj = j["payload"];
+                        auto ciphertext_b64 = payload_obj["ciphertext_b64"].get<std::string>();
+                        auto iv_b64 = payload_obj.value("iv_b64", std::string());
+                        auto tag_b64 = payload_obj.value("tag_b64", std::string());
+                        
+                        nlohmann::json blob_json = {
+                            {"key_id", lek_key_id},
+                            {"key_version", 1},
+                            {"iv", iv_b64},
+                            {"ciphertext", ciphertext_b64},
+                            {"tag", tag_b64}
+                        };
+                        
+                        auto blob = themis::EncryptedBlob::fromJson(blob_json);
+                        event_data = enc_->decrypt(blob);
+                    } catch (const std::exception& e) {
+                        event_data = "[LEK decryption failed for " + log_date + ": " + e.what() + "]";
+                    }
+                } else {
+                    event_data = "[LEK not found for date: " + log_date + "]";
+                }
+            } else {
+                event_data = "[Invalid LEK ID format: " + lek_id + "]";
+            }
+        } else {
+            // Use standard encryption (PKI-based key)
+            event_data = decryptPayload(j["payload"]);
+        }
     } else if (j.contains("payload") && j["payload"].is_string()) {
         event_data = j["payload"].get<std::string>();
     }

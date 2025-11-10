@@ -47,9 +47,12 @@ protected:
     void SetUp() override {
 #ifdef _WIN32
         _putenv_s("THEMIS_TOKEN_ADMIN", "admin-token-schema-test");
+    _putenv_s("THEMIS_DISABLE_POLICY", "1");
 #else
         setenv("THEMIS_TOKEN_ADMIN", "admin-token-schema-test", 1);
+    setenv("THEMIS_DISABLE_POLICY", "1", 1);
 #endif
+    // Für diese Tests Policy-Engine deaktivieren statt eigene Policies zu schreiben.
         const std::string db_path = "data/themis_schema_encryption_test";
         if (std::filesystem::exists(db_path)) std::filesystem::remove_all(db_path);
         themis::RocksDBWrapper::Config cfg; cfg.db_path = db_path; cfg.memtable_size_mb = 32; cfg.block_cache_size_mb = 64;

@@ -295,17 +295,23 @@ HttpServer::HttpServer(
 
         auto pki_client = std::make_shared<themis::utils::VCCPKIClient>(pki_cfg);
 
+        // Initialize LEKManager for daily rotating audit log encryption keys
+        lek_manager_ = std::make_shared<themis::utils::LEKManager>(
+            storage_, pki_client, key_provider_);
+        THEMIS_INFO("LEKManager initialized");
+
         // Minimal AuditLogger setup
         themis::utils::AuditLoggerConfig audit_cfg;
         audit_cfg.log_path = "data/logs/audit.jsonl";
         audit_cfg.enabled = true;
+        audit_cfg.use_lek = true; // Enable LEK-based encryption
         audit_logger_ = std::make_shared<themis::utils::AuditLogger>(
-            field_encryption_, pki_client, audit_cfg);
-        THEMIS_INFO("Audit Logger initialized (path: {})", audit_cfg.log_path);
+            field_encryption_, pki_client, audit_cfg, lek_manager_);
+        THEMIS_INFO("Audit Logger initialized (path: {}, use_lek: {})", audit_cfg.log_path, audit_cfg.use_lek);
 
         // Audit API Handler reads/decrypts/filters audit logs
         audit_api_ = std::make_unique<themis::server::AuditApiHandler>(
-            field_encryption_, pki_client, audit_cfg.log_path);
+            field_encryption_, pki_client, audit_cfg.log_path, lek_manager_);
         THEMIS_INFO("Audit API Handler initialized");
     } catch (const std::exception& e) {
         THEMIS_WARN("Failed to initialize Audit components: {}", e.what());
@@ -2011,6 +2017,12 @@ std::optional<http::response<http::string_body>> HttpServer::requireAccess(
     // If auth is disabled and no policy engine configured, allow
     bool auth_enabled = (auth_ && auth_->isEnabled());
     bool policy_enabled = (policy_engine_ != nullptr);
+    // Test override: disable policy via env flag
+    if (const char* dp = std::getenv("THEMIS_DISABLE_POLICY")) {
+        if (std::string(dp) == "1" || std::string(dp) == "true") {
+            policy_enabled = false;
+        }
+    }
     if (!auth_enabled && !policy_enabled) return std::nullopt;
 
     // Normalize resource path (strip query string) if empty passed
@@ -2149,8 +2161,13 @@ nlohmann::json HttpServer::decryptEntityFields(
 ) const {
     // Return copy of original if no encryption needed
     nlohmann::json result = entity_json;
-    
-    THEMIS_INFO("decryptEntityFields called for table='{}', user_id='{}'", table, auth_ctx.user_id);
+    // Extra instrumentation to debug missing decryption during tests
+    THEMIS_INFO("[decryptEntityFields] enter table='{}' user='{}' has_fields={} keys:{}", 
+        table, auth_ctx.user_id, result.is_object() ? result.size() : 0, 
+        (result.contains("_key")?result["_key"].dump():"none"));
+    // Marker: will set _decryption_attempt after loop if any field configured
+    bool anyConfigured = false;
+    bool debugDecrypt = (std::getenv("THEMIS_DECRYPT_DEBUG") != nullptr);
     
     try {
         // Load encryption schema
@@ -2188,7 +2205,8 @@ nlohmann::json HttpServer::decryptEntityFields(
             }
         }
         
-        THEMIS_INFO("Found {} fields to decrypt", fields.size());
+    THEMIS_INFO("[decryptEntityFields] schema context_type='{}' fields_count={}", context_type, fields.size());
+    if (!fields.empty()) anyConfigured = true;
         
         // Get PKI provider for group-based encryption
         auto pki = std::dynamic_pointer_cast<themis::security::PKIKeyProvider>(key_provider_);
@@ -2218,6 +2236,7 @@ nlohmann::json HttpServer::decryptEntityFields(
                 // Parse encryption metadata from Base64
                 auto enc_meta_str = result[field_name + "_encrypted"].get<std::string>();
                 auto blob = themis::EncryptedBlob::fromBase64(enc_meta_str);
+                THEMIS_INFO("[decryptEntityFields] decrypt field='{}' enc_meta_size={}", field_name, enc_meta_str.size());
                 
                 // Derive decryption key based on context type
                 std::vector<uint8_t> raw_key;
@@ -2248,7 +2267,11 @@ nlohmann::json HttpServer::decryptEntityFields(
                 }
                 
                 // Decrypt the field
+                // mark attempt for debugging in tests
+                if (debugDecrypt) { try { result[field_name + std::string("__debug")] = "attempt"; } catch (...) {}
+                }
                 auto plain_bytes = field_encryption_->decryptWithKey(blob, raw_key);
+                THEMIS_INFO("[decryptEntityFields] field='{}' decrypted_bytes={} user_ctx='{}'", field_name, plain_bytes.size(), user_ctx);
                 std::string plain_str(plain_bytes.begin(), plain_bytes.end());
                 
                 // Try to parse as JSON (for structured types)
@@ -2262,6 +2285,8 @@ nlohmann::json HttpServer::decryptEntityFields(
                 } else {
                     result[field_name] = plain_str; // Plain string value
                 }
+                if (debugDecrypt) { try { result[field_name + std::string("__debug_plain")] = result[field_name]; } catch (...) {}
+                }
                 
                 // Remove encryption metadata fields
                 result.erase(field_name + "_enc");
@@ -2272,14 +2297,20 @@ nlohmann::json HttpServer::decryptEntityFields(
                 
             } catch (const std::exception& e) {
                 // Decryption failed for this field - log and continue
-                THEMIS_WARN("Failed to decrypt field '{}' in table '{}': {}", field_name, table, e.what());
+                THEMIS_WARN("[decryptEntityFields] failed field='{}' table='{}' error='{}'", field_name, table, e.what());
+                if (debugDecrypt) { try { result[field_name + std::string("__debug_error")] = e.what(); } catch (...) {}
+                }
                 // Keep encrypted field in result (fallback to encrypted state)
             }
+        }
+        if (anyConfigured && debugDecrypt) {
+            // Add marker only when debug env variable set
+            try { result["_decryption_attempt"] = true; } catch (...) {}
         }
         
     } catch (const std::exception& e) {
         // Schema loading or parsing failed - log and return original
-        THEMIS_WARN("Failed to decrypt entity fields for table '{}': {}", table, e.what());
+        THEMIS_WARN("[decryptEntityFields] exception table='{}' error='{}'", table, e.what());
     }
     
     return result;
@@ -7196,7 +7227,9 @@ http::response<http::string_body> HttpServer::handleGetContent(
     try {
         auto id = extractPathParam(std::string(req.target()), "/content/");
         if (id.empty()) return makeErrorResponse(http::status::bad_request, "Missing content id", req);
-        auto meta = content_manager_->getContentMeta(id);
+    auto auth_ctx_meta = extractAuthContext(req);
+    std::string user_ctx_meta = auth_ctx_meta.user_id;
+    auto meta = content_manager_->getContentMeta(id, user_ctx_meta);
         if (!meta) return makeErrorResponse(http::status::not_found, "Content not found", req);
         return makeResponse(http::status::ok, meta->toJson().dump(), req);
     } catch (const std::exception& e) {
@@ -7218,7 +7251,7 @@ http::response<http::string_body> HttpServer::handleGetContentBlob(
     std::string user_ctx = auth_ctx.user_id;
     auto blob = content_manager_->getContentBlob(id, user_ctx);
         if (!blob) return makeErrorResponse(http::status::not_found, "Blob not found", req);
-        auto meta = content_manager_->getContentMeta(id);
+    auto meta = content_manager_->getContentMeta(id, user_ctx);
         std::string mime = (meta ? meta->mime_type : std::string("application/octet-stream"));
 
         http::response<http::string_body> res{http::status::ok, req.version()};

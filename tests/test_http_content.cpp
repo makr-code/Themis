@@ -443,3 +443,60 @@ TEST_F(HttpContentApiTest, BlobCompression_CompressesTextBlobs_SkipsImages) {
     EXPECT_FALSE(meta3["compressed"].get<bool>()) << "Small blob should skip compression";
 }
 
+TEST_F(HttpContentApiTest, VectorMetadataEncryption_Roundtrip) {
+    // Konfiguration aktivieren: verschlüssele user_metadata und tags
+    json cfg = {
+        {"enabled", true},
+        {"fields", json::array({"user_metadata","tags"})}
+    };
+    auto cfgStr = cfg.dump();
+    storage_->put("config:vector_metadata_encryption", std::vector<uint8_t>(cfgStr.begin(), cfgStr.end()));
+
+    // Import mit user_metadata + tags
+    json req = {
+        {"content", json{
+            {"id","vec-meta-1"},
+            {"mime_type","text/plain"},
+            {"user_metadata", json{{"dataset","alpha"},{"sensitivity","high"}}},
+            {"tags", json::array({"secret","nlp"})}
+        }},
+        {"chunks", json::array({ json{{"seq_num",0},{"chunk_type","text"},{"text","Hello"}} })}
+    };
+    auto resp = httpPost("/content/import", req);
+    ASSERT_TRUE(resp.contains("status")) << resp.dump();
+    EXPECT_EQ(resp["status"], "success");
+
+    // Roh gespeichertes Meta aus RocksDB laden und prüfen, dass _encrypted_meta vorhanden ist
+    auto rawMeta = storage_->get("content:vec-meta-1");
+    ASSERT_TRUE(rawMeta.has_value());
+    std::string metaStr(rawMeta->begin(), rawMeta->end());
+    auto metaJsonStored = json::parse(metaStr);
+    ASSERT_TRUE(metaJsonStored.contains("_encrypted_meta")) << metaJsonStored.dump();
+    auto encSection = metaJsonStored["_encrypted_meta"];    
+    ASSERT_TRUE(encSection.contains("user_metadata_encrypted"));
+    ASSERT_TRUE(encSection.contains("tags_encrypted"));
+    // Originalfelder sollten geleert sein
+    ASSERT_TRUE(metaJsonStored.contains("user_metadata"));
+    EXPECT_TRUE(metaJsonStored["user_metadata"].is_object());
+    EXPECT_TRUE(metaJsonStored["user_metadata"].empty());
+    ASSERT_TRUE(metaJsonStored.contains("tags"));
+    EXPECT_TRUE(metaJsonStored["tags"].is_array());
+    EXPECT_EQ(metaJsonStored["tags"].size(), 0);
+
+    // GET /content/vec-meta-1 sollte entschlüsselte Felder zurückgeben
+    auto metaRoundtrip = httpGet("/content/vec-meta-1");
+    ASSERT_TRUE(metaRoundtrip.contains("user_metadata"));
+    auto um = metaRoundtrip["user_metadata"];
+    ASSERT_TRUE(um.is_object());
+    EXPECT_EQ(um.value("dataset", ""), "alpha");
+    EXPECT_EQ(um.value("sensitivity", ""), "high");
+    ASSERT_TRUE(metaRoundtrip.contains("tags"));
+    auto tagsArr = metaRoundtrip["tags"];
+    ASSERT_TRUE(tagsArr.is_array());
+    EXPECT_NE(std::find(tagsArr.begin(), tagsArr.end(), json("secret")), tagsArr.end());
+    EXPECT_NE(std::find(tagsArr.begin(), tagsArr.end(), json("nlp")), tagsArr.end());
+
+    // _encrypted_meta sollte im Response entfernt sein
+    EXPECT_FALSE(metaRoundtrip.contains("_encrypted_meta"));
+}
+

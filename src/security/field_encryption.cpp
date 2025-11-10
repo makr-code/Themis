@@ -113,25 +113,38 @@ std::string EncryptedBlob::toBase64() const {
 
 EncryptedBlob EncryptedBlob::fromBase64(const std::string& b64) {
     EncryptedBlob blob;
-    
-    // Split by ':'
+
+    // Split by ':' (key_id may itself contain ':', e.g. "user_field:email")
     std::vector<std::string> parts;
     std::stringstream ss(b64);
     std::string part;
     while (std::getline(ss, part, ':')) {
         parts.push_back(part);
     }
-    
-    if (parts.size() != 5) {
-        throw std::runtime_error("Invalid EncryptedBlob format: expected 5 parts, got " + std::to_string(parts.size()));
+
+    // Expect at least: key_id, version, iv_b64, cipher_b64, tag_b64
+    if (parts.size() < 5) {
+        throw std::runtime_error("Invalid EncryptedBlob format: expected >=5 parts, got " + std::to_string(parts.size()));
     }
-    
-    blob.key_id = parts[0];
-    blob.key_version = std::stoul(parts[1]);
-    blob.iv = base64_decode(parts[2]);
-    blob.ciphertext = base64_decode(parts[3]);
-    blob.tag = base64_decode(parts[4]);
-    
+
+    // The last three parts are IV, ciphertext, tag (base64)
+    const size_t n = parts.size();
+    const size_t idx_version = n - 4; // version placed just before the last three segments
+
+    // Reconstruct key_id by joining all preceding parts with ':'
+    std::ostringstream kid;
+    for (size_t i = 0; i < idx_version; ++i) {
+        if (i) kid << ':';
+        kid << parts[i];
+    }
+    blob.key_id = kid.str();
+
+    // Parse version and decode base64 segments
+    blob.key_version = std::stoul(parts[idx_version]);
+    blob.iv = base64_decode(parts[idx_version + 1]);
+    blob.ciphertext = base64_decode(parts[idx_version + 2]);
+    blob.tag = base64_decode(parts[idx_version + 3]);
+
     return blob;
 }
 

@@ -35,6 +35,7 @@
 #include "server/policy_engine.h"
 #include "server/ranger_adapter.h"
 #include "utils/pii_pseudonymizer.h"
+#include "utils/lek_manager.h"
 #include "security/encryption.h"
 
 namespace themis {
@@ -387,6 +388,8 @@ private:
     
     // Audit Logger
     std::shared_ptr<themis::utils::AuditLogger> audit_logger_;
+    // LEK Manager for daily rotating audit log encryption keys
+    std::shared_ptr<themis::utils::LEKManager> lek_manager_;
     // Field encryption for PII mappings
     std::shared_ptr<themis::FieldEncryption> field_encryption_;
     // Key provider für hierarchische Schluesselverwaltung (DEK, Group-DEKs, Field-Keys)

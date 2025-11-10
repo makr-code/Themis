@@ -9,6 +9,7 @@
 
 #include "security/encryption.h"
 #include "utils/pki_client.h"
+#include "utils/lek_manager.h"
 
 namespace themis {
 namespace utils {
@@ -17,7 +18,8 @@ struct AuditLoggerConfig {
     bool enabled = true;
     bool encrypt_then_sign = true;
     std::string log_path = "data/logs/audit.jsonl"; // JSON Lines sink
-    std::string key_id = "saga_log";               // logical key id for log encryption
+    std::string key_id = "saga_log";               // fallback key id (unused if LEK enabled)
+    bool use_lek = false;                          // Use LEKManager for daily rotation
 };
 
 // Minimal Audit Logger supporting Encrypt-then-Sign batches (single-entry for now)
@@ -25,7 +27,8 @@ class AuditLogger {
 public:
     AuditLogger(std::shared_ptr<themis::FieldEncryption> enc,
                 std::shared_ptr<VCCPKIClient> pki,
-                AuditLoggerConfig cfg);
+                AuditLoggerConfig cfg,
+                std::shared_ptr<LEKManager> lek_manager = nullptr);
 
     // Log a generic data access/audit event; if encrypt_then_sign is enabled,
     // encrypts the canonical JSON with FieldEncryption, computes SHA-256 over
@@ -36,6 +39,7 @@ public:
 private:
     std::shared_ptr<themis::FieldEncryption> enc_;
     std::shared_ptr<VCCPKIClient> pki_;
+    std::shared_ptr<LEKManager> lek_manager_;
     AuditLoggerConfig cfg_;
 
     std::mutex file_mu_;

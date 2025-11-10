@@ -159,6 +159,15 @@ public:
     std::optional<ContentMeta> getContentMeta(const std::string& content_id);
 
     /**
+     * @brief Get content metadata (decrypts vector metadata fields when configured)
+     *
+     * @param content_id Content UUID
+     * @param user_context User context (e.g. user_id) used as HKDF salt during encryption
+     * @return Decrypted ContentMeta if found
+     */
+    std::optional<ContentMeta> getContentMeta(const std::string& content_id, const std::string& user_context);
+
+    /**
      * @brief Get content blob (original binary)
      * 
      * @param content_id Content UUID
