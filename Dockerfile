@@ -62,7 +62,8 @@ COPY . .
 # post-build validation errors are surfaced clearly before configuring our CMake project
 RUN set -eux; \
     cd /src; \
-    vcpkg install --triplet=${VCPKG_TRIPLET} --clean-after-build || ( \
+    # Vollständige Logs behalten (kein --clean-after-build) und Debug aktivieren
+    vcpkg install --triplet=${VCPKG_TRIPLET} --debug || ( \
         echo "===== vcpkg install failed; dumping vcpkg logs ====="; \
         ls -la /opt/vcpkg/buildtrees || true; \
         # Show the last logs of each port (configure/build/install)
