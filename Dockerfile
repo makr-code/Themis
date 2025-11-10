@@ -68,11 +68,13 @@ RUN set -eux; \
     # Vollständige Logs behalten (kein --clean-after-build) und Debug aktivieren
     vcpkg install --triplet=${VCPKG_TRIPLET} --debug 2>&1 | tee /tmp/vcpkg-install.log || ( \
         echo "===== vcpkg install failed; dumping vcpkg logs (filtered) ====="; \
-        grep -i -E 'error|warning|failed|missing|policy' /tmp/vcpkg-install.log | tail -n 200 || true; \
+        grep -i -E 'error|warning|failed|missing|policy' /tmp/vcpkg-install.log | tail -n 500 || true; \
+        echo "===== (fallback) last 2000 lines of full vcpkg install log ====="; \
+        tail -n 2000 /tmp/vcpkg-install.log || true; \
         echo "===== buildtrees detail logs ====="; \
         ls -la /opt/vcpkg/buildtrees || true; \
-        find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
-            -exec sh -c 'for f in "$@"; do echo "=== $f ==="; tail -n 150 "$f"; done' sh {} + 2>/dev/null || true; \
+        find /opt/vcpkg/buildtrees -maxdepth 5 -type f -name '*.log' \
+            -exec bash -lc 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' bash {} + 2>/dev/null || true; \
         false )
 
 RUN set -eux; \
