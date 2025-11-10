@@ -2141,6 +2141,142 @@ HttpServer::AuthContext HttpServer::extractAuthContext(const http::request<http:
     
     return ctx;
 }
+
+nlohmann::json HttpServer::decryptEntityFields(
+    const std::string& table,
+    const nlohmann::json& entity_json,
+    const AuthContext& auth_ctx
+) const {
+    // Return copy of original if no encryption needed
+    nlohmann::json result = entity_json;
+    
+    try {
+        // Load encryption schema
+        auto schema_bytes = storage_->get("config:encryption_schema");
+        if (!schema_bytes) {
+            return result; // No schema -> no decryption
+        }
+        
+        std::string schema_json(schema_bytes->begin(), schema_bytes->end());
+        auto schema = nlohmann::json::parse(schema_json);
+        
+        // Check if table has encryption configured
+        if (!schema.contains("collections") || !schema["collections"].contains(table)) {
+            return result; // Table not in schema
+        }
+        
+        auto coll = schema["collections"][table];
+        if (!coll.contains("encryption") || !coll["encryption"].value("enabled", false)) {
+            return result; // Encryption not enabled for this table
+        }
+        
+        // Extract encryption configuration
+        std::string context_type = coll["encryption"].value("context_type", "user");
+        std::vector<std::string> fields;
+        if (coll["encryption"].contains("fields")) {
+            for (auto& f : coll["encryption"]["fields"]) {
+                if (f.is_string()) {
+                    fields.push_back(f.get<std::string>());
+                }
+            }
+        }
+        
+        // Get PKI provider for group-based encryption
+        auto pki = std::dynamic_pointer_cast<themis::security::PKIKeyProvider>(key_provider_);
+        
+        // User context for key derivation
+        std::string user_ctx = auth_ctx.user_id.empty() ? "anonymous" : auth_ctx.user_id;
+        
+        // Decrypt each configured field
+        for (const auto& field_name : fields) {
+            // Check if field is encrypted (has _enc flag and _encrypted metadata)
+            if (!result.contains(field_name + "_enc") || !result.contains(field_name + "_encrypted")) {
+                continue; // Field not encrypted in this entity
+            }
+            
+            bool encFlag = false;
+            try {
+                encFlag = result[field_name + "_enc"].get<bool>();
+            } catch (...) {
+                encFlag = false;
+            }
+            
+            if (!encFlag) {
+                continue; // Field not marked as encrypted
+            }
+            
+            try {
+                // Parse encryption metadata
+                auto enc_meta_str = result[field_name + "_encrypted"].get<std::string>();
+                auto enc_meta = nlohmann::json::parse(enc_meta_str);
+                auto blob = themis::EncryptedBlob::fromJson(enc_meta);
+                
+                // Derive decryption key based on context type
+                std::vector<uint8_t> raw_key;
+                
+                if (context_type == "group" && pki && result.contains(field_name + "_group")) {
+                    // Group-based encryption
+                    std::string group_name;
+                    try {
+                        group_name = result[field_name + "_group"].get<std::string>();
+                    } catch (...) {
+                        group_name.clear();
+                    }
+                    
+                    if (!group_name.empty()) {
+                        auto gdek = pki->getGroupDEK(group_name);
+                        std::vector<uint8_t> salt; // empty salt for groups
+                        std::string info = "field:" + field_name;
+                        raw_key = themis::utils::HKDFHelper::derive(gdek, salt, info, 32);
+                    }
+                }
+                
+                if (raw_key.empty()) {
+                    // User-based or anonymous encryption
+                    auto dek = key_provider_->getKey("dek");
+                    std::vector<uint8_t> salt(user_ctx.begin(), user_ctx.end());
+                    std::string info = "field:" + field_name;
+                    raw_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
+                }
+                
+                // Decrypt the field
+                auto plain_bytes = field_encryption_->decryptWithKey(blob, raw_key);
+                std::string plain_str(plain_bytes.begin(), plain_bytes.end());
+                
+                // Try to parse as JSON (for structured types)
+                if (!plain_str.empty() && (plain_str[0] == '[' || plain_str[0] == '{')) {
+                    try {
+                        auto parsed = nlohmann::json::parse(plain_str);
+                        result[field_name] = parsed; // Restore as JSON structure
+                    } catch (...) {
+                        result[field_name] = plain_str; // Keep as string if JSON parse fails
+                    }
+                } else {
+                    result[field_name] = plain_str; // Plain string value
+                }
+                
+                // Remove encryption metadata fields
+                result.erase(field_name + "_enc");
+                result.erase(field_name + "_encrypted");
+                if (result.contains(field_name + "_group")) {
+                    result.erase(field_name + "_group");
+                }
+                
+            } catch (const std::exception& e) {
+                // Decryption failed for this field - log and continue
+                THEMIS_WARN("Failed to decrypt field '{}' in table '{}': {}", field_name, table, e.what());
+                // Keep encrypted field in result (fallback to encrypted state)
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        // Schema loading or parsing failed - log and return original
+        THEMIS_WARN("Failed to decrypt entity fields for table '{}': {}", table, e.what());
+    }
+    
+    return result;
+}
+
 http::response<http::string_body> HttpServer::handlePiiRevealByUuid(
     const http::request<http::string_body>& req
 ) {
@@ -6215,6 +6351,35 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                     entities.push_back(std::move(out));
                 } else {
                     entities.push_back(e.toJson());
+                }
+            }
+        }
+        
+        // Auto-decrypt encrypted fields based on schema (GDPR Art. 20 compliance)
+        // Extract authentication context for key derivation
+        auto auth_ctx = extractAuthContext(req);
+        
+        // Decrypt entities if they contain encrypted fields
+        for (auto& entity : entities) {
+            if (!entity.is_object()) continue; // Skip non-object results
+            
+            // Try to extract table name from _key field (format: "table:pk")
+            std::string table_name;
+            if (entity.contains("_key") && entity["_key"].is_string()) {
+                std::string key = entity["_key"].get<std::string>();
+                auto pos = key.find(':');
+                if (pos != std::string::npos && pos > 0) {
+                    table_name = key.substr(0, pos);
+                }
+            }
+            
+            // If we have a table name, attempt decryption
+            if (!table_name.empty()) {
+                try {
+                    entity = decryptEntityFields(table_name, entity, auth_ctx);
+                } catch (const std::exception& e) {
+                    // Log decryption failure but continue with encrypted data
+                    THEMIS_WARN("Failed to decrypt entity in query result for table '{}': {}", table_name, e.what());
                 }
             }
         }

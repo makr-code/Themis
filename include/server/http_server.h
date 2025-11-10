@@ -326,6 +326,14 @@ private:
     };
     AuthContext extractAuthContext(const http::request<http::string_body>& req) const;
 
+    // Decrypt encrypted fields in entity JSON based on encryption schema
+    // Returns modified json object with decrypted fields (or original if no schema/encryption)
+    nlohmann::json decryptEntityFields(
+        const std::string& table,
+        const nlohmann::json& entity_json,
+        const AuthContext& auth_ctx
+    ) const;
+
     std::string extractPathParam(const std::string& path, const std::string& prefix);
 
     // Lazy initialization for PIIPseudonymizer
