@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tar \
     wget \
     pkg-config \
+    file \
+    patchelf \
     ca-certificates \
     zlib1g-dev \
     libssl-dev \
