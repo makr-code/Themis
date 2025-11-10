@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     file \
     patchelf \
+    binutils \
+    chrpath \
     ca-certificates \
     zlib1g-dev \
     libssl-dev \
@@ -63,12 +65,13 @@ COPY . .
 RUN set -eux; \
     cd /src; \
     # Vollständige Logs behalten (kein --clean-after-build) und Debug aktivieren
-    vcpkg install --triplet=${VCPKG_TRIPLET} --debug || ( \
-        echo "===== vcpkg install failed; dumping vcpkg logs ====="; \
+    vcpkg install --triplet=${VCPKG_TRIPLET} --debug 2>&1 | tee /tmp/vcpkg-install.log || ( \
+        echo "===== vcpkg install failed; dumping vcpkg logs (filtered) ====="; \
+        grep -i -E 'error|warning|failed|missing|policy' /tmp/vcpkg-install.log | tail -n 200 || true; \
+        echo "===== buildtrees detail logs ====="; \
         ls -la /opt/vcpkg/buildtrees || true; \
-        # Show the last logs of each port (configure/build/install)
         find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
-            -exec sh -c 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' sh {} + 2>/dev/null || true; \
+            -exec sh -c 'for f in "$@"; do echo "=== $f ==="; tail -n 150 "$f"; done' sh {} + 2>/dev/null || true; \
         false )
 
 RUN set -eux; \
