@@ -1,8 +1,8 @@
 # ThemisDB Infrastructure Roadmap 2025-2026
 
-**Version:** 1.0  
-**Erstellt:** 09. November 2025  
-**Scope:** Horizontal Sharding → Replication → Client SDKs → Admin UI
+**Version:** 1.1  
+**Erstellt:** 10. November 2025  
+**Scope:** Horizontal Sharding → Replication → Client SDKs (Python, JavaScript, Rust) → Admin UI
 
 ---
 
@@ -925,170 +925,84 @@ client.close()
 
 ### 3.2 JavaScript SDK
 
-**File:** `clients/javascript/src/index.ts`
+**Implementierungsstand (Nov 2025):** `clients/javascript/src/index.ts`
+
+- Stack: TypeScript 5.5.x, `cross-fetch`, ESLint (`.eslintrc.json`), Build via `npm run build` (tsc).
+- Topologie: Lazy Fetch über `/_admin/cluster/topology` mit Fallback auf Bootstrap-Liste; Fehler signalisieren `TopologyError`.
+- HTTP: Nutzt globale `fetch`. Für Node <18 muss der Aufrufer Polyfill setzen (`globalThis.fetch = ...`). Retries mit exponentiellem Backoff (50 ms Basis, Cap 1 s).
+- CRUD & Batch: `get`, `put`, `delete`, `batchGet` spiegeln Python-Verhalten (Encodierung via `blob`).
+- Query: Erkennung von Single-Shard-Queries (`urn:themis:`) → deterministisches Routing, sonst Scatter-Gather. Rückgabe als `QueryResult` (`items`, `hasMore`, `nextCursor`, `raw`).
+- Vector Search: Aggregiert Treffer mehrerer Shards, sortiert nach Score/Distanz, begrenzt via `topK`.
+- Quickstart: `docs/clients/javascript_sdk_quickstart.md` beschreibt Installation, Examples, Tooling.
 
 ```typescript
-export interface ThemisConfig {
-  endpoints: string[];
-  namespace?: string;
-  timeout?: number;
-  maxRetries?: number;
-}
-
-export interface QueryResult<T = any> {
-  results: T[];
-  cursor?: string;
-  explain?: any;
-}
-
-export class ThemisClient {
-  private endpoints: string[];
-  private namespace: string;
-  private timeout: number;
-  private maxRetries: number;
-  
-  constructor(config: ThemisConfig) {
-    this.endpoints = config.endpoints;
-    this.namespace = config.namespace || 'default';
-    this.timeout = config.timeout || 30000;
-    this.maxRetries = config.maxRetries || 3;
-  }
-  
-  async get<T = any>(model: string, collection: string, uuid: string): Promise<T | null> {
-    const urn = `urn:themis:${model}:${this.namespace}:${collection}:${uuid}`;
-    const endpoint = this.resolveEndpoint(urn);
-    
-    const response = await fetch(`${endpoint}/entity/${urn}`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(this.timeout)
-    });
-    
-    if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
-    return response.json();
-  }
-  
-  async put(model: string, collection: string, uuid: string, data: any): Promise<boolean> {
-    const urn = `urn:themis:${model}:${this.namespace}:${collection}:${uuid}`;
-    const endpoint = this.resolveEndpoint(urn);
-    
-    const response = await fetch(`${endpoint}/entity/${urn}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-      signal: AbortSignal.timeout(this.timeout)
-    });
-    
-    return response.ok;
-  }
-  
-  async query<T = any>(aql: string, params?: any): Promise<QueryResult<T>> {
-    if (this.isSingleShardQuery(aql)) {
-      const endpoint = this.endpoints[0]; // Simplified
-      return this.executeQuery(endpoint, aql, params);
-    } else {
-      return this.scatterGatherQuery(aql, params);
-    }
-  }
-  
-  async graphTraverse(
-    startNode: string,
-    maxDepth: number = 3,
-    edgeType?: string
-  ): Promise<string[]> {
-    const endpoint = this.resolveEndpoint(startNode);
-    
-    const response = await fetch(`${endpoint}/graph/traverse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start: startNode, max_depth: maxDepth, edge_type: edgeType })
-    });
-    
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
-    const result = await response.json();
-    return result.nodes;
-  }
-  
-  async vectorSearch(
-    embedding: number[],
-    topK: number = 10,
-    filter?: any
-  ): Promise<any[]> {
-    const allResults: any[] = [];
-    
-    // Scatter-gather across all shards
-    const promises = this.endpoints.map(endpoint =>
-      fetch(`${endpoint}/vector/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embedding, k: topK, filter })
-      }).then(r => r.json())
-    );
-    
-    const results = await Promise.all(promises);
-    results.forEach(r => allResults.push(...r.results));
-    
-    // Merge and re-rank
-    allResults.sort((a, b) => b.score - a.score);
-    return allResults.slice(0, topK);
-  }
-  
-  private resolveEndpoint(urn: string): string {
-    // Simple hash-based routing
-    const hash = urn.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return this.endpoints[hash % this.endpoints.length];
-  }
-  
-  private async executeQuery(endpoint: string, aql: string, params?: any): Promise<QueryResult> {
-    const response = await fetch(`${endpoint}/query/aql`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: aql, params })
-    });
-    
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }
-  
-  private async scatterGatherQuery(aql: string, params?: any): Promise<QueryResult> {
-    const promises = this.endpoints.map(endpoint =>
-      this.executeQuery(endpoint, aql, params)
-    );
-    
-    const results = await Promise.all(promises);
-    
-    // Merge results
-    const allResults = results.flatMap(r => r.results);
-    return { results: allResults };
-  }
-  
-  private isSingleShardQuery(aql: string): boolean {
-    return aql.toLowerCase().includes('urn:themis:');
-  }
-}
-
-// Example Usage
-import { v4 as uuidv4 } from 'uuid';
+import { ThemisClient } from "@themisdb/sdk";
 
 const client = new ThemisClient({
-  endpoints: ['http://shard1:8080', 'http://shard2:8080'],
-  namespace: 'customer_a'
+  endpoints: ["http://127.0.0.1:8765"],
+  namespace: "default",
+  metadataEndpoint: "/_admin/cluster/topology",
 });
 
-// GET by UUID
-const userUuid = '550e8400-e29b-41d4-a716-446655440000';
-const user = await client.get('relational', 'users', userUuid);
+const health = await client.health();
+const user = await client.get("relational", "users", "550e8400-e29b-41d4-a716-446655440000");
 
-// PUT with new UUID
-const newUuid = uuidv4(); // Generates UUID v4
-await client.put('relational', 'users', newUuid, { name: 'Bob', age: 25 });
+const page = await client.query("FOR u IN users RETURN u", { useCursor: true, batchSize: 100 });
+if (page.hasMore && page.nextCursor) {
+  await client.query("FOR u IN users RETURN u", { useCursor: true, cursor: page.nextCursor });
+}
 
-// Query returns entities with _key field containing UUID
-const results = await client.query('FOR u IN users FILTER u.age > 25 RETURN u');
-// Result: [{ _key: "550e8400-...", name: "Alice", age: 30 }]
+const vector = await client.vectorSearch([0.1, -0.4, 0.9], { topK: 5 });
+console.log(vector.results.length);
 ```
+
+**Tests:** Vitest-Suite (`clients/javascript/tests/`) in Planung. Derzeit: `npm run build`/`lint` validieren Code. Integrationstests gegen Docker-Stack angesetzt.
+
+**Nächste Schritte:** Vitest mit Mock-Fetch, npm-Publish-Workflow, Beispiele für Browser/Node, Auth-Unterstützung.
+
+### 3.3 Rust SDK
+
+**Implementierungsstand (Nov 2025):** `clients/rust/src/lib.rs`
+
+- Stack: `reqwest` + `tokio`, `serde`, `thiserror`. Cargo-Paket `themisdb_sdk` (Alpha) inkl. `Cargo.toml`.
+- Konfiguration: `ThemisClientConfig` mit Defaults (`namespace="default"`, `timeout_ms=30_000`, `max_retries=3`). Optionaler `metadata_endpoint` erlaubt relative Pfade oder absolute URLs.
+- Topologie: Lazy Cache (`Arc<RwLock<Option<Vec<String>>>>`), Fallback auf Bootstrap bei Fehler → `ThemisError::Topology`.
+- APIs: `health`, `get`, `put`, `delete`, `batch_get`, `query`, `vector_search`. Query-Ergebnisse normalisiert, Vector-Suche sortiert nach Score oder invertierter Distanz.
+- Fehler: Differenzierung via `ThemisError::{InvalidConfig, Topology, Http, Transport, Serde}`.
+- Quickstart: `docs/clients/rust_sdk_quickstart.md` deckt Pfadabhängigkeiten & Beispiele ab.
+
+```rust
+use themisdb_sdk::{QueryOptions, ThemisClient, ThemisClientConfig};
+
+#[tokio::main]
+async fn main() -> Result<(), themisdb_sdk::ThemisError> {
+    let client = ThemisClient::new(ThemisClientConfig {
+        endpoints: vec!["http://127.0.0.1:8765".into()],
+        metadata_endpoint: Some("/_admin/cluster/topology".into()),
+        ..Default::default()
+    })?;
+
+    let health = client.health().await?;
+    println!("{:?}", health);
+
+    let page = client
+        .query::<serde_json::Value>(
+            "FOR u IN users RETURN u",
+            QueryOptions { use_cursor: true, batch_size: Some(100), ..Default::default() },
+        )
+        .await?;
+    println!("items={}", page.items.len());
+
+    Ok(())
+}
+```
+
+**Tests:** Aktuell leichte Unit-Tests (`stable_hash`, `normalize`). Weitere Tests (Mocking via `httpmock`/`wiremock`) geplant. Hinweis: Docker-Container enthält kein `cargo`; Builds lokal ausführen.
+
+**Nächste Schritte:**
+- Erweiterte Tests (Integration, Fehlerpfade).
+- Cursor-Streams (`impl Stream`), Batch-Write APIs.
+- Release-Pipeline für crates.io, Dokumentation im Haupt-README.
 
 ---
 

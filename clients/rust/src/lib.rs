@@ -1,15 +1,13 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use once_cell::sync::Lazy;
 use reqwest::{Client, Method, Response};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use url::Url;
 
-static JSON_CONTENT_TYPE: Lazy<&'static str> = Lazy::new(|| "application/json");
+const JSON_CONTENT_TYPE: &str = "application/json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemisClientConfig {
@@ -21,6 +19,18 @@ pub struct ThemisClientConfig {
     pub metadata_endpoint: Option<String>,
     #[serde(default = "default_max_retries")]
     pub max_retries: usize,
+}
+
+impl Default for ThemisClientConfig {
+    fn default() -> Self {
+        Self {
+            endpoints: Vec::new(),
+            namespace: default_namespace(),
+            timeout_ms: default_timeout_ms(),
+            metadata_endpoint: None,
+            max_retries: default_max_retries(),
+        }
+    }
 }
 
 fn default_namespace() -> String {
@@ -52,27 +62,16 @@ impl<T> Default for BatchGetResult<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QueryOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub params: Option<HashMap<String, Value>>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub params: Option<Map<String, Value>>,
+    #[serde(default)]
     pub use_cursor: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_size: Option<u32>,
-}
-
-impl Default for QueryOptions {
-    fn default() -> Self {
-        Self {
-            params: None,
-            use_cursor: false,
-            cursor: None,
-            batch_size: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +103,8 @@ pub enum ThemisError {
     Http { status: u16, body: String },
     #[error(transparent)]
     Transport(#[from] reqwest::Error),
+    #[error("serialization error: {0}")]
+    Serde(String),
 }
 
 pub type Result<T> = std::result::Result<T, ThemisError>;
@@ -118,7 +119,9 @@ pub struct ThemisClient {
 impl ThemisClient {
     pub fn new(config: ThemisClientConfig) -> Result<Self> {
         if config.endpoints.is_empty() {
-            return Err(ThemisError::InvalidConfig("endpoints must not be empty".into()));
+            return Err(ThemisError::InvalidConfig(
+                "endpoints must not be empty".into(),
+            ));
         }
         let client = Client::builder()
             .timeout(Duration::from_millis(config.timeout_ms))
@@ -131,10 +134,19 @@ impl ThemisClient {
     }
 
     pub async fn health(&self) -> Result<Value> {
-        let endpoint = self.config.endpoints.first().unwrap().clone();
+        let endpoint = self
+            .config
+            .endpoints
+            .first()
+            .cloned()
+            .ok_or_else(|| ThemisError::InvalidConfig("endpoints must not be empty".into()))?;
         let url = format!("{endpoint}/health");
         let response = self.request(Method::GET, url, None).await?;
-        Ok(response.json().await?)
+        ensure_success(response)
+            .await?
+            .json::<Value>()
+            .await
+            .map_err(|err| ThemisError::Serde(err.to_string()))
     }
 
     pub async fn get<T>(&self, model: &str, collection: &str, uuid: &str) -> Result<Option<T>>
@@ -148,7 +160,12 @@ impl ThemisClient {
         if response.status() == 404 {
             return Ok(None);
         }
-        ensure_success(response).await.map(|resp| resp.json().await.map(decode_entity))?
+        let payload = ensure_success(response)
+            .await?
+            .json::<Value>()
+            .await
+            .map_err(|err| ThemisError::Serde(err.to_string()))?;
+        decode_entity::<T>(payload).map(Some)
     }
 
     pub async fn put<T>(&self, model: &str, collection: &str, uuid: &str, data: &T) -> Result<()>
@@ -183,7 +200,12 @@ impl ThemisClient {
         ensure_success(response).await.map(|_| true)
     }
 
-    pub async fn batch_get<T>(&self, model: &str, collection: &str, uuids: &[String]) -> Result<BatchGetResult<T>>
+    pub async fn batch_get<T>(
+        &self,
+        model: &str,
+        collection: &str,
+        uuids: &[String],
+    ) -> Result<BatchGetResult<T>>
     where
         T: DeserializeOwned,
     {
@@ -195,9 +217,7 @@ impl ThemisClient {
                 }
                 Ok(None) => result.missing.push(uuid.clone()),
                 Err(err) => {
-                    result
-                        .errors
-                        .insert(uuid.clone(), format!("{err}"));
+                    result.errors.insert(uuid.clone(), format!("{err}"));
                 }
             }
         }
@@ -208,10 +228,10 @@ impl ThemisClient {
     where
         T: DeserializeOwned,
     {
-        let mut payload = serde_json::Map::new();
+        let mut payload = Map::new();
         payload.insert("query".into(), Value::String(aql.to_string()));
         if let Some(params) = options.params {
-            payload.insert("params".into(), Value::Object(params.into_iter().collect()));
+            payload.insert("params".into(), Value::Object(params));
         }
         if options.use_cursor {
             payload.insert("use_cursor".into(), Value::Bool(true));
@@ -242,7 +262,11 @@ impl ThemisClient {
                     }),
                 )
                 .await?;
-            let payload = ensure_success(response).await?.json::<Value>().await?;
+            let payload = ensure_success(response)
+                .await?
+                .json::<Value>()
+                .await
+                .map_err(|err| ThemisError::Serde(err.to_string()))?;
             partials.push(parse_query_result::<T>(payload)?);
         }
 
@@ -254,15 +278,17 @@ impl ThemisClient {
         }
         let mut items = Vec::new();
         let mut has_more = false;
-        for part in &partials {
+        let mut raw_partials = Vec::new();
+        for mut part in partials {
             has_more |= part.has_more;
-            items.extend(part.items.clone());
+            items.append(&mut part.items);
+            raw_partials.push(part.raw);
         }
         Ok(QueryResult {
             items,
             has_more,
             next_cursor: None,
-            raw: Value::Array(partials.into_iter().map(|p| p.raw).collect()),
+            raw: Value::Array(raw_partials),
         })
     }
 
@@ -272,7 +298,7 @@ impl ThemisClient {
         filter: Option<Value>,
         top_k: Option<u32>,
     ) -> Result<Value> {
-        let mut payload = serde_json::Map::new();
+        let mut payload = Map::new();
         payload.insert(
             "vector".into(),
             Value::Array(embedding.iter().map(|v| Value::from(*v)).collect()),
@@ -299,11 +325,26 @@ impl ThemisClient {
                     }),
                 )
                 .await?;
-            let value = ensure_success(response).await?.json::<Value>().await?;
+            let value = ensure_success(response)
+                .await?
+                .json::<Value>()
+                .await
+                .map_err(|err| ThemisError::Serde(err.to_string()))?;
             if let Some(items) = value.get("results").and_then(|v| v.as_array()) {
                 results.extend(items.clone());
             }
             raw.push(value);
+        }
+        results.sort_by(|a, b| {
+            score_value(b)
+                .partial_cmp(&score_value(a))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        if let Some(k) = top_k {
+            let limit = k as usize;
+            if results.len() > limit {
+                results.truncate(limit);
+            }
         }
         Ok(json!({ "results": results, "partials": raw }))
     }
@@ -321,7 +362,8 @@ impl ThemisClient {
         if endpoints.is_empty() {
             return Err(ThemisError::Topology("no endpoints available".into()));
         }
-        let index = stable_hash(&build_urn(model, &self.config.namespace, collection, uuid)) % endpoints.len();
+        let index = stable_hash(&build_urn(model, &self.config.namespace, collection, uuid))
+            % endpoints.len();
         Ok(endpoints[index].clone())
     }
 
@@ -348,22 +390,26 @@ impl ThemisClient {
         match self.fetch_topology().await {
             Ok(shards) if !shards.is_empty() => {
                 *topo = Some(shards);
+                Ok(())
             }
-            Ok(_) => {
-                return Err(ThemisError::Topology("topology response missing shards".into()));
-            }
+            Ok(_) => Err(ThemisError::Topology(
+                "topology response missing shards".into(),
+            )),
             Err(err) => {
                 *topo = Some(self.config.endpoints.clone());
-                return Err(err);
+                Err(err)
             }
         }
-        Ok(())
     }
 
     async fn fetch_topology(&self) -> Result<Vec<String>> {
         let url = self.metadata_url()?;
         let response = self.request(Method::GET, url, None).await?;
-        let payload = ensure_success(response).await?.json::<Value>().await?;
+        let payload = ensure_success(response)
+            .await?
+            .json::<Value>()
+            .await
+            .map_err(|err| ThemisError::Serde(err.to_string()))?;
         Ok(extract_endpoints(&payload))
     }
 
@@ -379,7 +425,12 @@ impl ThemisClient {
         Ok(format!("{base}/_admin/cluster/topology"))
     }
 
-    async fn request(&self, method: Method, url: String, body: Option<RequestBody>) -> Result<Response> {
+    async fn request(
+        &self,
+        method: Method,
+        url: String,
+        body: Option<RequestBody>,
+    ) -> Result<Response> {
         let mut attempt = 0usize;
         let max_attempts = self.config.max_retries.max(1);
         loop {
@@ -469,29 +520,30 @@ fn build_entity_key(model: &str, namespace: &str, collection: &str, uuid: &str) 
 }
 
 fn encode_entity<T: Serialize>(value: &T) -> Result<String> {
-    if let Some(raw) = value_as_string(value) {
-        Ok(raw)
-    } else {
-        serde_json::to_string(value).map_err(|err| ThemisError::InvalidConfig(err.to_string()))
+    match serde_json::to_value(value) {
+        Ok(Value::String(inner)) => Ok(inner),
+        Ok(other) => {
+            serde_json::to_string(&other).map_err(|err| ThemisError::Serde(err.to_string()))
+        }
+        Err(err) => Err(ThemisError::Serde(err.to_string())),
     }
 }
 
-fn value_as_string<T: Serialize>(value: &T) -> Option<String> {
-    if let Ok(Value::String(inner)) = serde_json::to_value(value) {
-        Some(inner)
-    } else {
-        None
-    }
-}
-
-fn decode_entity<T: DeserializeOwned>(payload: Value) -> T {
+fn decode_entity<T: DeserializeOwned>(payload: Value) -> Result<T> {
     if let Some(entity) = payload.get("entity") {
-        serde_json::from_value(entity.clone()).unwrap_or_else(|_| panic!("failed to decode entity"))
+        serde_json::from_value(entity.clone()).map_err(|err| ThemisError::Serde(err.to_string()))
     } else if let Some(blob) = payload.get("blob").and_then(|v| v.as_str()) {
-        serde_json::from_str(blob).unwrap_or_else(|_| panic!("failed to decode blob"))
+        serde_json::from_str(blob).map_err(|err| ThemisError::Serde(err.to_string()))
     } else {
-        serde_json::from_value(payload).unwrap_or_else(|_| panic!("failed to decode payload"))
+        serde_json::from_value(payload).map_err(|err| ThemisError::Serde(err.to_string()))
     }
+}
+
+fn decode_entities<T: DeserializeOwned>(values: &[Value]) -> Result<Vec<T>> {
+    values
+        .iter()
+        .map(|value| decode_entity::<T>(value.clone()))
+        .collect()
 }
 
 fn parse_query_result<T: DeserializeOwned>(payload: Value) -> Result<QueryResult<T>> {
@@ -509,7 +561,10 @@ fn parse_query_result<T: DeserializeOwned>(payload: Value) -> Result<QueryResult
         .and_then(|v| v.as_array())
         .map(|values| decode_entities::<T>(values))
         .transpose()?;
-    let has_more = payload.get("has_more").and_then(|v| v.as_bool()).unwrap_or(false);
+    let has_more = payload
+        .get("has_more")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let next_cursor = payload
         .get("next_cursor")
         .and_then(|v| v.as_str())
@@ -520,19 +575,6 @@ fn parse_query_result<T: DeserializeOwned>(payload: Value) -> Result<QueryResult
         next_cursor,
         raw: payload,
     })
-}
-
-fn decode_entities<T: DeserializeOwned>(values: &[Value]) -> Result<Vec<T>> {
-    values
-        .iter()
-        .map(|value| {
-            if let Some(raw) = value.as_str() {
-                serde_json::from_str(raw).map_err(|err| ThemisError::InvalidConfig(err.to_string()))
-            } else {
-                serde_json::from_value(value.clone()).map_err(|err| ThemisError::InvalidConfig(err.to_string()))
-            }
-        })
-        .collect()
 }
 
 fn is_single_shard_query(aql: &str) -> bool {
@@ -549,17 +591,29 @@ fn stable_hash(input: &str) -> usize {
 }
 
 fn should_retry(err: &reqwest::Error) -> bool {
-    err.is_timeout() || err.is_connect() || err.is_request()
+    err.is_timeout() || err.is_connect()
 }
 
 fn backoff(attempt: usize) -> Duration {
-    let millis = 50 * 2u64.saturating_pow(attempt as u32);
-    Duration::from_millis(millis.min(1_000));
+    let exponent = attempt.min(5) as u32;
+    let millis = 50u64 * (1u64 << exponent);
+    Duration::from_millis(millis.min(1_000))
+}
+
+fn score_value(value: &Value) -> f64 {
+    if let Some(score) = value.get("score").and_then(|v| v.as_f64()) {
+        return score;
+    }
+    if let Some(distance) = value.get("distance").and_then(|v| v.as_f64()) {
+        return -distance;
+    }
+    0.0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::{Deserialize, Serialize};
 
     #[tokio::test]
     async fn stable_hash_is_deterministic() {
@@ -571,5 +625,80 @@ mod tests {
     #[test]
     fn normalize_trims_slash() {
         assert_eq!(normalize("http://example.com/"), "http://example.com");
+    }
+
+    #[test]
+    fn build_urn_formats_values() {
+        let urn = build_urn("relational", "default", "users", "550e8400");
+        assert_eq!(urn, "urn:themis:relational:default:users:550e8400");
+    }
+
+    #[test]
+    fn build_entity_key_matches_format() {
+        let key = build_entity_key("graph", "tenant", "nodes", "1234");
+        assert_eq!(key, "graph.tenant.nodes:1234");
+    }
+
+    #[test]
+    fn score_value_prefers_higher_score() {
+        let higher = json!({ "score": 0.8 });
+        let lower = json!({ "score": 0.1 });
+        assert!(score_value(&higher) > score_value(&lower));
+    }
+
+    #[test]
+    fn score_value_uses_distance_when_score_missing() {
+        let nearer = json!({ "distance": 0.2 });
+        let farther = json!({ "distance": 0.9 });
+        assert!(score_value(&nearer) > score_value(&farther));
+    }
+
+    #[test]
+    fn backoff_caps_at_one_second() {
+        assert_eq!(backoff(1), Duration::from_millis(100));
+        assert_eq!(backoff(5), Duration::from_millis(1_000));
+        assert_eq!(backoff(10), Duration::from_millis(1_000));
+    }
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct TestEntity {
+        name: String,
+    }
+
+    #[test]
+    fn encode_entity_handles_string_passthrough() {
+        let value = String::from("raw-json-string");
+        let encoded = encode_entity(&value).expect("encode succeeds");
+        assert_eq!(encoded, "raw-json-string");
+    }
+
+    #[test]
+    fn encode_entity_serializes_struct() {
+        let entity = TestEntity {
+            name: "Alice".into(),
+        };
+        let encoded = encode_entity(&entity).expect("encode succeeds");
+        assert_eq!(encoded, r#"{"name":"Alice"}"#);
+    }
+
+    #[test]
+    fn decode_entity_reads_entity_field() {
+        let payload = json!({ "entity": { "name": "Alice" } });
+        let entity: TestEntity = decode_entity(payload).expect("decode succeeds");
+        assert_eq!(entity, TestEntity { name: "Alice".into() });
+    }
+
+    #[test]
+    fn decode_entity_reads_blob_field() {
+        let payload = json!({ "blob": "{\"name\":\"Bob\"}" });
+        let entity: TestEntity = decode_entity(payload).expect("decode succeeds");
+        assert_eq!(entity, TestEntity { name: "Bob".into() });
+    }
+
+    #[test]
+    fn decode_entity_falls_back_to_root() {
+        let payload = json!({ "name": "Clara" });
+        let entity: TestEntity = decode_entity(payload).expect("decode succeeds");
+        assert_eq!(entity, TestEntity { name: "Clara".into() });
     }
 }
