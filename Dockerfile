@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install vcpkg
 WORKDIR /opt
+# Allow overriding target triplet (x64-linux default for QNAP x86_64)
+ARG VCPKG_TRIPLET=x64-linux
+ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET}
 RUN git clone https://github.com/microsoft/vcpkg.git vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 ENV VCPKG_ROOT=/opt/vcpkg
@@ -34,21 +37,42 @@ ENV PATH="${VCPKG_ROOT}:${PATH}"
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
 
-# Allow overriding target triplet (x64-linux default for QNAP x86_64)
-ARG VCPKG_TRIPLET=x64-linux
-ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET}
+# Make sure vcpkg is updated, clear stale state and pre-install boost-headers to fail early with logs
+RUN set -eux; \
+    cd ${VCPKG_ROOT}; \
+    git fetch --all --tags || true; \
+    git reset --hard origin/master || true; \
+    ./vcpkg update || true; \
+    # remove stale or partial build state that often causes parallel configure failures
+    rm -rf buildtrees packages downloads || true; \
+    # Attempt to install boost-headers for the default triplet to show concrete failure now
+    ./vcpkg install boost-headers:${VCPKG_TRIPLET} -v || ( \
+        echo "===== vcpkg boost-headers install failed ====="; \
+        echo "Listing buildtrees for boost-headers:"; ls -la buildtrees/boost-headers || true; \
+        echo "Printing boost-headers logs:"; tail -n +1 buildtrees/boost-headers/*.log || true; \
+        false)
+
+# Allow overriding target triplet at build time too (kept for later stages)
+ENV VCPKG_TRIPLET=${VCPKG_TRIPLET}
 
 # Build
 WORKDIR /src
 COPY . .
-RUN cmake -S . -B build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
-    -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} \
-    -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
-    -DCMAKE_C_COMPILER=/usr/bin/gcc \
-    -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && cmake --build build -j
+RUN set -eux; \
+    cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
+      -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} \
+      -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
+      -DCMAKE_C_COMPILER=/usr/bin/gcc \
+      -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+    && cmake --build build -j \
+    || ( \
+        echo "===== CMake configure/build failed; dumping vcpkg logs ====="; \
+        ls -la /opt/vcpkg/buildtrees || true; \
+        tail -n +1 /opt/vcpkg/buildtrees/boost-headers/*.log || true; \
+        tail -n +1 /opt/vcpkg/buildtrees/*/config-*-linux-*-CMakeCache.txt.log || true; \
+        false )
 
 # Runtime image
 FROM ubuntu:22.04 AS runtime
