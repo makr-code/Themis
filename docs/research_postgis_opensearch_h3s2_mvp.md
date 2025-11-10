@@ -1,11 +1,4 @@
----
-title: ARCHIVED – Geo Research Report (MVP)
-status: archived
-archived_at: 2025-11-09
-replacement: (noch keine aktive Geo-Implementierung)
----
-
-# Research-Report (Archiv): PostGIS vs. OpenSearch vs. H3/S2 – Leitentscheidungen (MVP)
+# Research-Report: PostGIS vs. OpenSearch vs. H3/S2 – Leitentscheidungen für ThemisDB (MVP)
 
 Ziel: 1–2 Seiten Überblick für Index- und Storage-Entscheidungen in ThemisDB (Geo-MVP). Fokus: Portabilität (Windows/Linux), permissive Lizenzen, schnelle Kandidatenfilter + exakte Geo-Prüfung, einfache Integration in bestehende Engine/HTTP.
 

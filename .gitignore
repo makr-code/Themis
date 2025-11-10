@@ -6,12 +6,6 @@ build/
 out/
 bin/
 lib/
-target/
-clients/rust/target/
-clients/javascript/dist/
-
-// Package managers
-clients/javascript/node_modules/
 
 // Dependencies
 vcpkg_installed/
@@ -63,8 +57,6 @@ logs/
 *.swp
 *.swo
 *~
-tmp/
-temp/
 
 // OS specific
 .DS_Store

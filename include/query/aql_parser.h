@@ -24,7 +24,7 @@ enum class ASTNodeType {
     FilterNode,         // FILTER condition
     SortNode,           // SORT expr [ASC|DESC]
     LimitNode,          // LIMIT offset, count
-    ReturnNode,         // RETURN expression (optionally DISTINCT)
+    ReturnNode,         // RETURN expression
     LetNode,            // LET variable = expression
     CollectNode,        // COLLECT ... AGGREGATE ... (Phase 2)
     
@@ -259,7 +259,6 @@ struct LimitNode {
 
 struct ReturnNode {
     std::shared_ptr<Expression> expression;
-    bool distinct = false; // NEW: whether RETURN DISTINCT was specified
     
     explicit ReturnNode(std::shared_ptr<Expression> expr)
         : expression(std::move(expr)) {}
@@ -267,8 +266,7 @@ struct ReturnNode {
     nlohmann::json toJSON() const {
         return {
             {"type", "return"},
-            {"expression", expression->toJSON()},
-            {"distinct", distinct}
+            {"expression", expression->toJSON()}
         };
     }
 };
@@ -304,7 +302,6 @@ struct CollectNode {
         std::shared_ptr<Expression> argument;              // may be null (COUNT())
     };
     std::vector<Aggregation> aggregations;                 // optional
-    std::shared_ptr<Expression> having;                    // optional HAVING clause
 
     nlohmann::json toJSON() const {
         nlohmann::json j;
@@ -319,9 +316,6 @@ struct CollectNode {
             a.push_back({{"var", ag.varName}, {"func", ag.funcName}, {"arg", ag.argument ? ag.argument->toJSON() : nlohmann::json()}});
         }
         j["aggregations"] = a;
-        if (having) {
-            j["having"] = having->toJSON();
-        }
         return j;
     }
 };

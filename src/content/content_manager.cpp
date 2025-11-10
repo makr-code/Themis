@@ -5,8 +5,6 @@
 #include "storage/key_schema.h"
 #include "utils/zstd_codec.h"
 #include "utils/hkdf_helper.h"
-#include "utils/hkdf_cache.h"
-#include "utils/compression_metrics.h"
 
 #include <algorithm>
 #include <chrono>
@@ -391,29 +389,6 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                         skip_mimes.clear();
                         for (const auto& mv : cj["skip_compressed_mimes"]) if (mv.is_string()) skip_mimes.push_back(mv.get<std::string>());
                     }
-                    // Optional per-MIME policy: compression_levels_map {"text/plain":9, "text/":9}
-                    if (cj.contains("compression_levels_map") && cj["compression_levels_map"].is_object()) {
-                        auto pickLevel = [&](const std::string& mime) -> std::optional<int>{
-                            // exact match
-                            if (cj["compression_levels_map"].contains(mime)) {
-                                const auto& v = cj["compression_levels_map"][mime];
-                                if (v.is_number_integer()) return v.get<int>();
-                            }
-                            // prefix groups like "text/"
-                            size_t slash = mime.find('/');
-                            if (slash != std::string::npos) {
-                                std::string prefix = mime.substr(0, slash+1);
-                                if (cj["compression_levels_map"].contains(prefix)) {
-                                    const auto& v = cj["compression_levels_map"][prefix];
-                                    if (v.is_number_integer()) return v.get<int>();
-                                }
-                            }
-                            return std::nullopt;
-                        };
-                        if (auto lvl = pickLevel(meta.mime_type)) {
-                            if (*lvl >= 1 && *lvl <= 22) zstd_level = *lvl;
-                        }
-                    }
                 }
             } catch (...) {}
 
@@ -436,7 +411,6 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
             float compression_ratio = 1.0f;
             
             if (should_compress(meta.mime_type, bb.size())) {
-                auto t_start = steady_clock::now();
 #ifdef THEMIS_HAS_ZSTD
                 auto comp = utils::zstd_compress(reinterpret_cast<const uint8_t*>(bb.data()), bb.size(), zstd_level);
                 // Only use compressed version if it actually reduces size (avoid decompression overhead for incompressible data)
@@ -446,8 +420,6 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                     compression_ratio = static_cast<float>(original_size) / static_cast<float>(compressed_size);
                     meta.compressed = true;
                     meta.compression_type = "zstd";
-                    // Metrics erfassen
-                    themis::utils::CompressionMetrics::instance().recordCompression(original_size, compressed_size, meta.mime_type, zstd_level);
                     THEMIS_INFO("Content blob {} compressed: {}B -> {}B (ratio: {:.2f}x)", 
                                meta.id, original_size, compressed_size, compression_ratio);
                 } else {
@@ -455,27 +427,21 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                     to_store.assign(bb.begin(), bb.end());
                     meta.compressed = false;
                     meta.compression_type.clear();
-                    themis::utils::CompressionMetrics::instance().recordSkipped(original_size, meta.mime_type);
                     if (!comp.empty()) {
                         THEMIS_INFO("Content blob {} skipped compression (would increase size: {}B -> {}B)", 
                                    meta.id, original_size, comp.size());
                     }
                 }
-                auto t_end = steady_clock::now();
-                auto micros = duration_cast<microseconds>(t_end - t_start).count();
-                themis::utils::CompressionMetrics::instance().recordCompressionTime(static_cast<uint64_t>(micros));
 #else
                 // ZSTD not available at build time → store raw
                 to_store.assign(bb.begin(), bb.end());
                 meta.compressed = false;
                 meta.compression_type.clear();
-                themis::utils::CompressionMetrics::instance().recordSkipped(original_size, meta.mime_type);
 #endif
             } else {
                 to_store.assign(bb.begin(), bb.end());
                 meta.compressed = false;
                 meta.compression_type.clear();
-                themis::utils::CompressionMetrics::instance().recordSkipped(original_size, meta.mime_type);
             }
 
             // Optional encryption of blob based on config:content_encryption_schema and user_context
@@ -500,7 +466,7 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                     auto meta_info = kp->getKeyMetadata(encryption_key_id, 0);
                     // HKDF ableiten (info = "content_blob")
                     std::vector<uint8_t> salt(ctx.begin(), ctx.end());
-                    auto derived_key = themis::utils::HKDFCache::instance().deriveCached(key_bytes, salt, "content_blob", key_bytes.size());
+                    auto derived_key = themis::utils::HKDFHelper::derive(key_bytes, salt, "content_blob", key_bytes.size());
                     auto blobEnc = field_encryption_->encryptWithKey(std::string(to_store.begin(), to_store.end()), encryption_key_id, meta_info.version, derived_key);
                     json bjson = blobEnc.toJson();
                     std::string benc = bjson.dump();
@@ -623,7 +589,7 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
             auto kp = field_encryption_->getKeyProvider();
             auto key_bytes = kp->getKey(blob.key_id, blob.key_version);
             std::vector<uint8_t> salt(ctx.begin(), ctx.end());
-            auto derived_key = themis::utils::HKDFCache::instance().deriveCached(key_bytes, salt, "content_blob", key_bytes.size());
+            auto derived_key = themis::utils::HKDFHelper::derive(key_bytes, salt, "content_blob", key_bytes.size());
             std::string plain = field_encryption_->decryptWithKey(blob, derived_key);
             
             // Lazy Re-Encryption: Check if blob uses outdated key version
@@ -645,7 +611,7 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
                 try {
                     // Re-encrypt with latest key version
                     auto latest_key = kp->getKey(blob.key_id); // no version arg -> latest
-                    auto latest_derived = themis::utils::HKDFCache::instance().deriveCached(latest_key, salt, "content_blob", latest_key.size());
+                    auto latest_derived = themis::utils::HKDFHelper::derive(latest_key, salt, "content_blob", latest_key.size());
                     auto new_blob = field_encryption_->encryptWithKey(plain, blob.key_id, latest_version, latest_derived);
                     json new_bj = new_blob.toJson();
                     std::string new_raw = new_bj.dump();
@@ -665,12 +631,8 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
             if (m->compressed && m->compression_type == "zstd") {
 #ifdef THEMIS_HAS_ZSTD
                 // Stored was compressed before encryption; decrypt returns compressed bytes now
-                auto t_start = steady_clock::now();
                 std::vector<uint8_t> tmp(plain.begin(), plain.end());
                 auto decomp = utils::zstd_decompress(tmp);
-                auto t_end = steady_clock::now();
-                auto micros = duration_cast<microseconds>(t_end - t_start).count();
-                themis::utils::CompressionMetrics::instance().recordDecompressionTime(static_cast<uint64_t>(micros));
                 if (!decomp.empty()) return std::string(decomp.begin(), decomp.end());
 #endif
             }
@@ -681,11 +643,7 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
     }
     if (m && m->compressed && m->compression_type == "zstd") {
 #ifdef THEMIS_HAS_ZSTD
-        auto t_start = steady_clock::now();
         auto decomp = utils::zstd_decompress(*v);
-        auto t_end = steady_clock::now();
-        auto micros = duration_cast<microseconds>(t_end - t_start).count();
-        themis::utils::CompressionMetrics::instance().recordDecompressionTime(static_cast<uint64_t>(micros));
         if (!decomp.empty()) return std::string(decomp.begin(), decomp.end());
         // Fallback on failure: return raw
         return std::string(v->begin(), v->end());

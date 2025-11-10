@@ -276,8 +276,7 @@ TEST(AQLTranslatorTest, NestedFieldAccess) {
 // Error Handling Tests
 // ============================================================================
 
-TEST(AQLTranslatorTest, OrOperatorNowSupported) {
-    // OR is now supported via DisjunctiveQuery and DNF conversion
+TEST(AQLTranslatorTest, OrOperatorNotSupported) {
     AQLParser parser;
     auto parseResult = parser.parse(
         "FOR user IN users "
@@ -287,9 +286,8 @@ TEST(AQLTranslatorTest, OrOperatorNowSupported) {
     ASSERT_TRUE(parseResult.success);
     
     auto translateResult = AQLTranslator::translate(parseResult.query);
-    EXPECT_TRUE(translateResult.success) << translateResult.error_message;
-    EXPECT_TRUE(translateResult.disjunctive.has_value());
-    EXPECT_EQ(translateResult.disjunctive->disjuncts.size(), 2u);
+    EXPECT_FALSE(translateResult.success);
+    EXPECT_NE(translateResult.error_message.find("OR"), std::string::npos);
 }
 
 TEST(AQLTranslatorTest, NullASTError) {

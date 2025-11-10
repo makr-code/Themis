@@ -17,22 +17,7 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
-
-# Prefer config-mode (vcpkg/system packages that export a CURLConfig.cmake), but fall back to module mode
-find_package(CURL CONFIG QUIET)
-if(NOT CURL_FOUND)
-    # Module mode provides CURL_FOUND, CURL_LIBRARIES, CURL_INCLUDE_DIRS
-    find_package(CURL REQUIRED)
-endif()
-
-# Provide a consistent target name expected elsewhere in the project
-if(CURL_FOUND AND NOT TARGET CURL::libcurl AND DEFINED CURL_LIBRARIES)
-    add_library(CURL::libcurl UNKNOWN IMPORTED)
-    set_target_properties(CURL::libcurl PROPERTIES
-        IMPORTED_LOCATION "${CURL_LIBRARIES}"
-        INTERFACE_INCLUDE_DIRECTORIES "${CURL_INCLUDE_DIRS}"
-    )
-endif()
+find_package(CURL CONFIG REQUIRED)
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
@@ -172,7 +157,6 @@ set(THEMIS_CORE_SOURCES
     src/security/key_cache.cpp
     src/security/field_encryption.cpp
     src/security/encrypted_field.cpp
-    src/security/vcc_pki_client.cpp
     
     src/transaction/transaction_manager.cpp
     src/transaction/saga.cpp
@@ -227,7 +211,6 @@ set(THEMIS_CORE_SOURCES
     src/utils/stopwords.cpp
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
-    src/utils/hkdf_cache.cpp
     src/security/pki_key_provider.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
@@ -239,44 +222,21 @@ set(THEMIS_CORE_SOURCES
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})
 
-# Collect link targets and only link those that exist to avoid ALIAS/missing-target errors
-set(_themis_core_link_targets "")
-foreach(dep IN ITEMS
-    RocksDB::rocksdb
-    simdjson::simdjson
-    TBB::tbb
-    Arrow::arrow_shared
-    fmt::fmt
-    spdlog::spdlog
-    Boost::system
-    nlohmann_json::nlohmann_json
-    CURL::libcurl
-    yaml-cpp::yaml-cpp
+target_link_libraries(themis_core
+    PUBLIC
+        RocksDB::rocksdb
+        simdjson::simdjson
+        TBB::tbb
+        Arrow::arrow_shared
+        fmt::fmt
+        spdlog::spdlog
+        Boost::system
+        nlohmann_json::nlohmann_json
+        CURL::libcurl
+        yaml-cpp::yaml-cpp
     OpenSSL::SSL
     OpenSSL::Crypto
 )
-    if(TARGET ${dep})
-        list(APPEND _themis_core_link_targets ${dep})
-    else()
-        # Try common alternate names for vcpkg / system packages
-        if("${dep}" STREQUAL "Arrow::arrow_shared" AND TARGET Arrow::arrow)
-            list(APPEND _themis_core_link_targets Arrow::arrow)
-        elseif("${dep}" STREQUAL "RocksDB::rocksdb" AND TARGET RocksDB)
-            list(APPEND _themis_core_link_targets RocksDB)
-        elseif("${dep}" STREQUAL "CURL::libcurl" AND TARGET CURL::curl)
-            list(APPEND _themis_core_link_targets CURL::curl)
-        endif()
-        if(NOT TARGET ${dep})
-            message(WARNING "Optional/expected CMake target '${dep}' not found; skipping linking to it.")
-        endif()
-    endif()
-endforeach()
-
-if(_themis_core_link_targets)
-    target_link_libraries(themis_core PUBLIC ${_themis_core_link_targets})
-else()
-    message(FATAL_ERROR "No linkable targets found for themis_core - please check dependencies and vcpkg integration.")
-endif()
 
 # Link ZSTD if available and define compile flag
 if(DEFINED THEMIS_ZSTD_TARGET)
@@ -323,7 +283,7 @@ if(THEMIS_ENABLE_TRACING)
                             "Ensure opentelemetry-cpp was found successfully with otlp-http feature.")
     endif()
     
-target_link_libraries(themis_core PUBLIC
+    target_link_libraries(themis_core PUBLIC
         opentelemetry-cpp::trace
         opentelemetry-cpp::otlp_http_exporter
     )
@@ -410,7 +370,6 @@ if(THEMIS_BUILD_TESTS)
         tests/test_stopwords.cpp
         tests/test_http_governance.cpp
         tests/test_http_audit.cpp
-        tests/test_vcc_pki_client.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
@@ -446,12 +405,15 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
         tests/test_http_pii_lazy_init.cpp
-    tests/test_http_pii_manager_new.cpp
+        tests/test_http_pii_manager_new.cpp
         tests/test_jwt_validator.cpp
         tests/test_group_dek.cpp
+        tests/test_user_key_derivation.cpp
+        tests/test_graph_edge_encryption.cpp
+    tests/test_graph_bfs_fix.cpp
     )
     
-target_link_libraries(themis_tests
+    target_link_libraries(themis_tests
         PRIVATE
             themis_core
             GTest::gtest
@@ -529,7 +491,7 @@ if(THEMIS_BUILD_BENCHMARKS)
             benchmark::benchmark
             benchmark::benchmark_main
     )
-    
+
     # Encryption performance benchmark (standalone)
     add_executable(bench_encryption
         benchmarks/bench_encryption.cpp

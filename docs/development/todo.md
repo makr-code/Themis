@@ -7,58 +7,7 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 
 **Projekt:** Themis - Multi-Modell-Datenbanksystem (Relational, Graph, Vektor, Dokument)  
 **Technologie-Stack:** C++, RocksDB TransactionDB (MVCC), Intel TBB, HNSWlib, Apache Arrow  
-**Datum:** 09. November 2025
-
-> **Update – 09. November 2025 (Nachmittag)** 🎯 **STRATEGIC INFRASTRUCTURE ROADMAP**
-> - **Competitive Gap Analysis abgeschlossen:**
->   - Analysiert: MongoDB, PostgreSQL, Neo4j, Elasticsearch, Pinecone, InfluxDB
->   - **Key Finding:** ThemisDB hat solides Feature-Set, kritische Lücke ist Infrastructure
->   - Dokument: `docs/competitive_gap_analysis.md` (45 KB)
-> - **Infrastructure Roadmap entwickelt:**
->   - Phase 1 (Q1 2026): URN-basiertes Föderales Sharding
->   - Phase 2 (Q2 2026): Raft-basierte Replication für HA
->   - Phase 3 (Q2-Q3 2026): Client SDKs (Python, JS, Java)
->   - Phase 4 (Q3 2026): React Admin UI
->   - Dokument: `docs/infrastructure_roadmap.md` (65 KB)
-> - **Strategisches Overview erstellt:**
->   - Executive Summary aller strategischen Dokumente
->   - Investment-Analyse (12-18 Monate, 2-3 Engineers)
->   - Dokument: `docs/STRATEGIC_OVERVIEW.md` (25 KB)
-
-> **Update – 09. November 2025 (Vormittag)** ✨ **DOKUMENTATIONS-TODO CLEANUP SESSION**
-> - **7 TODOs erfolgreich abgeschlossen** (5 bereits implementiert gefunden, 2 neu implementiert):
->   1. ✅ **TODO #15**: Dokumentations-Diskrepanzen korrigiert (HNSW Persistenz, Backup/Restore)
->   2. ✅ **TODO #11**: Umlaut-Normalisierung für Deutsch (bereits implementiert, 2/2 Tests ✅)
->   3. ✅ **TODO #9**: BM25() Scoring-Funktion für AQL (neu implementiert, 4/4 Tests ✅)
->      - `QueryEngine::executeAndKeysWithScores()` für Score-Propagation
->      - `KeysWithScores` struct mit bm25_scores map
->      - Integration in AQL Expression Evaluator
->   4. ✅ **TODO #10**: FULLTEXT Operator in AQL (bereits implementiert, 23/23 Tests ✅)
->      - `aql_translator.cpp` Lines 101-174 vollständig
->      - Syntax: `FULLTEXT(doc.field, "query" [, limit])`
->      - Unterstützt: Standalone, AND, OR (via DisjunctiveQuery)
->   5. ✅ **TODO #12**: Graph Server-side Type-Filtering (neu implementiert, 4/4 Tests ✅)
->      - `GraphIndexManager::bfs()` mit `edge_type` Parameter
->      - `GraphIndexManager::dijkstra()` mit `edge_type` Parameter
->      - `QueryEngine::executeRecursivePathQuery()` nutzt `edge_type`
->   6. ✅ **TODO #13**: Temporal Aggregations (bereits implementiert, 6/6 Tests ✅)
->      - `GraphIndexManager::getTemporalStats()` vollständig
->      - `TemporalStats` mit AVG, SUM, COUNT, MIN, MAX
->   7. ✅ **TODO #1**: Gorilla Compression HTTP-Endpunkt (bereits implementiert, 6/6 Tests ✅)
->      - GET/PUT `/ts/config` für Runtime-Konfiguration
->      - Kompression + Chunk-Size ohne Neustart anpassbar
-> 
-> - **Systematische Verifikation hocheffektiv:**
->   - 5 von 7 TODOs waren bereits implementiert aber undokumentiert
->   - 2 TODOs neu implementiert (BM25, Graph Type-Filtering)
->   - **45 Tests validiert gesamt** (alle bestanden)
->   - Dokumentation synchronisiert: `future_work.md`, `property_graph_model.md`, `temporal_time_range_queries.md`
-> 
-> - **Verbleibende TODOs (aktualisiert):**
->   - ⏳ Column-Level Key Rotation, Dynamic Data Masking, RBAC-Basis
->   - ⏳ Inkrementelle Backups, Auto-Scaling-Strategie
->   - ℹ️ Security-Stack implementiert & getestet: VCCPKIClient (6/6), PKIKeyProvider (10/10), JWTValidator (6/6)
->   - ℹ️ Vector-Metadaten-Verschlüsselung aktiv; Policy-Konfiguration für Schreibrechte erforderlich
+**Datum:** 08. November 2025
 
 > **Update – 08. November 2025**
 > - **Time-Series Engine**: ✅ VOLLSTÄNDIG IMPLEMENTIERT
@@ -82,9 +31,9 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 >   - 4-8x Speedup auf unterstützten CPUs
 > 
 > - **Ausstehend aus Sprint 1-2:**
->   - Content-Blob ZSTD Compression (✅ BASIS VORHANDEN; Feinjustierung offen: Level-Benchmarks, config.json Integration)
->   - HKDF-Caching für Encryption (✅ IMPLEMENTIERT: include/utils/hkdf_cache.h/.cpp; in ContentManager verdrahtet)
->   - Batch-Encryption Optimierung (✅ IMPLEMENTIERT: API encryptBatchWithKey mit std::async Parallelisierung)
+>   - Content-Blob ZSTD Compression (TODO)
+>   - HKDF-Caching für Encryption (TODO)
+>   - Batch-Encryption Optimierung (TODO)
 
 > Update – 02. November 2025
 > - AdminTools: RetentionManager von Demo auf Live-API umgestellt.
@@ -111,13 +60,13 @@ Diese Kurzliste verdichtet die wichtigsten noch offenen Themen aus den detaillie
 - Time-Series: Gorilla-Compression + Continuous Aggregates/Retention Policies ✅ **ABGESCHLOSSEN (08.11.2025)**
 - **Compression Strategy**: 
   - ✅ Gorilla Time-Series (10-20x Ratio) - **IMPLEMENTIERT**
-  - ⏳ Content-Blob ZSTD (1.5-2x) - **BASIS VORHANDEN** (Feinjustierung: Level-Benchmarks, config.json)
+  - ⏳ Content-Blob ZSTD (1.5-2x) - **TODO**
   - ℹ️ Vector Quantization (SQ8) - Nicht nötig für <1M Vektoren
 - Security: 
   - ✅ Field-Level Encryption (Vector-Metadata, Content Blob, Lazy Re-Encryption) - **ABGESCHLOSSEN**
   - ✅ AES-NI Hardware-Acceleration - **IMPLEMENTIERT**
-  - ✅ HKDF-Caching - **IMPLEMENTIERT**
-  - ✅ Batch-Encryption - **IMPLEMENTIERT**
+  - ⏳ HKDF-Caching - **TODO**
+  - ⏳ Batch-Encryption - **TODO**
   - ⏳ Column-Level Encryption Key Rotation - **TODO**
   - ⏳ Dynamic Data Masking - **TODO**
   - ⏳ RBAC-Basis - **TODO**
@@ -230,45 +179,42 @@ Hinweis: CDC Minimal inkl. Admin-Endpoints (stats/retention) und Doku ist abgesc
 
 **Focus:** Performance-Optimierungen + Content-Blob Compression
 
-1) **Content-Blob ZSTD Compression** ✅ **BASIS VORHANDEN** (Feinjustierung offen)
-   - Status:
-     - ✅ ZSTD-Bibliothek eingebunden (vcpkg: zstd)
-     - ✅ MIME-Type-basiertes Skipping implementiert (content_manager.cpp)
-     - ✅ Adaptive Kompression Level 19 default, konfigurierbar via DB-Key config:content
-     - ✅ Transparente Decompression beim Abruf
-     - ⏳ TODO: Benchmarks für verschiedene Compression-Level (3/9/19)
-     - ⏳ TODO: config.json Integration zusätzlich zu DB-Key
-     - ⏳ TODO: Content-Type spezifische Tuning-Werte dokumentieren
-   - Nächste Schritte:
-     - Benchmarks: bench_compression.cpp mit Level-Variation (3/9/19) + Content-Type Matrix
-     - Metriken: content_blob_compression_ratio in Prometheus exportieren
-     - Doku: docs/compression_strategy.md um ZSTD-Sektion erweitern
-   - ROI: 50% Speicherersparnis für Text-Heavy Workloads bereits realisierbar
+1) **Content-Blob ZSTD Compression** ⚡ HÖCHSTE PRIORITÄT
+   - Umfang:
+     - ZSTD Level 19 Kompression für Text-Blobs (PDF/DOCX/TXT)
+     - MIME-Type-basiertes Skipping (keine Kompression für JPEG/MP4/PNG/already compressed)
+     - Integration in ContentManager::importContent/getContentBlob
+     - Transparente Decompression beim Abruf
+   - DoD:
+     - ZSTD-Bibliothek einbinden (vcpkg: zstd)
+     - ContentManager erweitern: compress_blob Flag in Config
+     - HTTP-Tests: Upload unkomprimiert → Storage komprimiert → Download unkomprimiert
+     - Metriken: content_blob_compression_ratio, content_blob_compressed_bytes
+     - Doku: docs/compression_strategy.md Update
+   - ROI: 50% Speicherersparnis für Text-Heavy Workloads
+   - Geschätzter Aufwand: 8-12 Stunden
 
-2) **HKDF-Caching für Encryption** ✅ **IMPLEMENTIERT**
+2) **HKDF-Caching für Encryption** 🔐 HOHE PRIORITÄT
    - Umfang:
      - Thread-local LRU-Cache für (user_id, field_name) → derived_key
      - Cache-Invalidierung bei Key-Rotation
-2) **HKDF-Caching für Encryption** ✅ **IMPLEMENTIERT**
-   - Status:
-     - ✅ HKDFCache class implementiert (include/utils/hkdf_cache.h, src/utils/hkdf_cache.cpp)
-     - ✅ Thread-safe Singleton mit TTL-basierter Expiry (default: 5 Minuten)
-     - ✅ Capacity Management (2048 Einträge, Count-Min-style Eviction)
-     - ✅ Integration in ContentManager blob encryption/decryption (3 Verwendungsstellen)
-     - ⏳ TODO: Unit-Tests für TTL-Expiry und Capacity-Overflow
-   - Nächste Schritte:
-     - Tests: test_hkdf_cache.cpp (TTL, Kapazität, Thread-Safety)
-     - Benchmarks: Speedup-Messung bei wiederholten Operationen
+     - Konfigurierbare Cache-Size (default: 1000 Einträge)
+   - DoD:
+     - HKDFCache class (include/utils/hkdf_cache.h)
+     - Integration in FieldEncryption::encryptField/decryptField
+     - Thread-Safety Tests
+     - Benchmark: 3-5x Speedup bei wiederholten Operationen
+   - Geschätzter Aufwand: 4-6 Stunden
 
-3) **Batch-Encryption Optimierung** ✅ **IMPLEMENTIERT**
-   - Status:
-     - ✅ API: FieldEncryption::encryptBatchWithKey mit Parallelisierung
-     - ✅ std::async basierte Parallelisierung (konfigurierbar via parallelism Parameter)
-     - ✅ Key-Reuse Optimierung (single KeyProvider lookup)
-     - ⏳ TODO: Benchmarks Sequential vs Parallel (2/4/8 Threads, 8-1024 Items)
-   - Nächste Schritte:
-     - Benchmarks: bench_batch_encryption.cpp für Performance-Validierung
-     - Tests: Korrektheit + Thread-Safety Tests
+3) **Batch-Encryption Optimierung** 🔐 MITTLERE PRIORITÄT
+   - Umfang:
+     - Single HKDF call für Entity-Context
+     - Parallel Field Encryption (TBB task_group)
+     - Optimierung für Entities mit >3 verschlüsselten Feldern
+   - DoD:
+     - FieldEncryption::encryptEntityBatch Methode
+     - Benchmark: 20-30% Speedup für Multi-Field Entities
+   - Geschätzter Aufwand: 6-8 Stunden
 
 **Sprint 1 Gesamt-Aufwand:** 18-26 Stunden (ca. 1-1.5 Wochen bei Vollzeit)
 

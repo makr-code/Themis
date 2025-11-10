@@ -1,41 +1,6 @@
-# Encryption Infrastructure - Implementierungsstatus
+# Encryption Infrastructure - Nächste Schritte
 
-**Status**: ✅ **VOLLSTÄNDIG IMPLEMENTIERT** (09. November 2025)
-
----
-
-## Executive Summary
-
-**Alle geplanten Encryption-Features sind vollständig implementiert und getestet.**
-
-Die ursprüngliche TODO-Liste aus der Dokumentation war veraltet - bei systematischer Verifikation wurde festgestellt, dass 13 von 15 Features bereits komplett implementiert waren. Die verbleibenden 2 Features wurden während der Cleanup-Session implementiert.
-
-### Implementation Coverage: 100%
-
-✅ **PKI-Integration** (Phase 5.1)
-- PKIKeyProvider mit 3-tier Key-Hierarchie (KEK→DEK→Field Keys)
-- VCCPKIClient für Zertifikat-Operationen
-- Group-DEK Management für Multi-Party Access
-- Tests: 9/9 PKI, 3/3 Client
-
-✅ **User-Context Encryption** (Phase 5.2)
-- JWTValidator für Keycloak-Token
-- HKDF-basierte User-Key-Derivation
-- Per-User und Per-Group Verschlüsselung
-- Tests: 6/6 JWT Validator
-
-✅ **Data-Type Encryption** (Phase 5.3)
-- Graph Edge Properties (weight, metadata)
-- Vector Metadata (source_text, metadata)
-- Content Blobs (per-user HKDF)
-- Schema-basierte Auto-Encryption
-- Tests: 10/10 E2E Encryption
-
-✅ **Advanced Features**
-- Lazy Re-Encryption (automatic key upgrade)
-- Audit-Logging Encrypt-then-Sign
-- Performance Benchmarks (6 scenarios)
-- Complex Type Support (vectors, nested JSON)
+**Status**: ✅ **Implementierung abgeschlossen** (8. November 2025 - Aktualisiert)
 
 ---
 
@@ -43,32 +8,21 @@ Die ursprüngliche TODO-Liste aus der Dokumentation war veraltet - bei systemati
 
 ### Abgeschlossene Features
 
-1. ✅ **KEK Persistence** - Persistent IKM Storage in RocksDB (PKIKeyProvider)
+1. ✅ **KEK Persistence** - Persistent IKM Storage in RocksDB
 2. ✅ **Schema-based Encryption** - Write & Read Path mit JWT-Context
-3. ✅ **JWT Claims Extraction** - user_id (sub) + groups aus Token (JWTValidator)
+3. ✅ **JWT Claims Extraction** - user_id (sub) + groups aus Token
 4. ✅ **Complex Type Support** - vector<float>, vector<uint8_t>, nested JSON
-5. ✅ **Group-DEK Management** - Multi-Party Encryption mit Rotation (9/9 Tests)
+5. ✅ **Group-DEK Management** - Multi-Party Encryption mit Rotation
 6. ✅ **QueryEngine Integration** - HTTP-Layer Decryption (Post-Processing)
-7. ✅ **Graph-Encryption** - Schema-driven edge property encryption
+7. ✅ **Graph-Encryption Design** - Schema-driven via edges collection
 8. ✅ **Key Rotation Strategy** - Lazy Re-Encryption (Write-Back on Read)
 9. ✅ **Performance Benchmarks** - 6 Benchmarks in `bench_encryption.cpp`
 10. ✅ **E2E Integration Tests** - 10 Test-Szenarien in `test_encryption_e2e.cpp`
 11. ✅ **Content Blob Encryption** - Per-user HKDF-based blob encryption with "anonymous" fallback
 12. ✅ **Vector Metadata Encryption** - Schema-driven metadata encryption in batch_insert (excl. embeddings)
 13. ✅ **Lazy Re-Encryption (Content)** - Automatic key version upgrade on blob read
-14. ✅ **PKI-basierte Signaturen** - VCCPKIClient Sign/Verify (3/3 Tests)
-15. ✅ **Audit-Logging Encrypt-then-Sign** - Pattern dokumentiert in encryption_strategy.md
 
-### Implementierte Komponenten
-
-#### PKI-Integration (`include/security/pki_key_provider.h`, `src/security/pki_key_provider.cpp`)
-- **3-Tier Key-Hierarchie**:
-  ```
-  KEK (aus PKI Cert) → DEK (AES-256, KEK-wrapped) → Field Keys (HKDF-derived)
-  ```
-- **Group-DEK Support**: Multi-User Access Control
-- **Rotation**: DEK-Rotation ohne Data Re-Encryption
-- **Tests**: `test_group_dek.cpp` (9/9 bestanden)
+### Neue Features Details
 
 #### Content Blob Encryption (`content_manager.cpp`)
 - **Konfiguration**: `config:content_encryption_schema` → `{enabled: true, key_id: "content_blob"}`

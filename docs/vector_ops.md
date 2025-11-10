@@ -93,10 +93,6 @@ POST /vector/batch_insert
 - **Auto-Init**: Wenn `dimension` = 0, wird der Index automatisch mit der Dimension des ersten Vektors initialisiert
 - **Fehlerbehandlung**: Einzelne fehlerhafte Items werden übersprungen; `errors`-Feld zählt Ausnahmen
 - **Transaktionssicherheit**: Jedes Item wird atomar geschrieben (RocksDB WriteBatch)
-- **Berechtigungen (wichtig)**: Der Endpoint ist durch die Policy-Engine geschützt. Für erfolgreiche Inserts sind erforderlich:
-  - HTTP-Header `Authorization: Bearer <token>`
-  - Eine passende Policy-Regel, die den Schreibzugriff auf den Vector-Namespace erlaubt
-  - Hinweis: Ohne passenden Token/Policy antwortet der Server mit `{"error":"policy_denied","message":"no_matching_policy"}`
 
 ## Delete by Filter
 

@@ -230,19 +230,6 @@ public:
      */
     std::string decryptWithKey(const EncryptedBlob& blob,
                                 const std::vector<uint8_t>& key);
-
-    /**
-     * @brief Batch-Encryption mit bereitgestelltem Schlüssel
-     * 
-     * Holt keinen Key aus dem Provider, sondern nutzt den übergebenen Key (z.B. aus getKey()).
-     * Optional kann parallelisiert werden (parallelism>1), Standard ist sequentiell.
-     */
-    std::vector<EncryptedBlob> encryptBatchWithKey(
-        const std::vector<std::string>& plaintexts,
-        const std::string& key_id,
-        uint32_t key_version,
-        const std::vector<uint8_t>& key,
-        int parallelism = 0);
     
     /**
      * @brief Decrypt an encrypted blob to string (alias for decryptToString)

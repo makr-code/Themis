@@ -63,15 +63,6 @@ jobs:
             echo -e "$TAGS"
             echo 'EOF'
           } >> "$GITHUB_ENV"
-      - name: Prepare vcpkg and System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build build-essential cmake gcc g++
-          git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg || true
-          /opt/vcpkg/bootstrap-vcpkg.sh
-          /opt/vcpkg/vcpkg update
-          /opt/vcpkg/vcpkg remove --outdated
-          rm -rf /opt/vcpkg/buildtrees/boost-headers /opt/vcpkg/packages/boost-headers_*  
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

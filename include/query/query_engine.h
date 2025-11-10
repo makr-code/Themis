@@ -164,18 +164,6 @@ public:
         const std::shared_ptr<query::ReturnNode>& return_node
     ) const;
 
-    struct GroupAggregateResult {
-        nlohmann::json payload;
-        EvaluationContext context;
-    };
-
-    std::pair<Status, std::vector<GroupAggregateResult>> executeGroupByOnEntities(
-        const query::ForNode& for_node,
-        const std::shared_ptr<query::CollectNode>& collect,
-        const std::vector<query::LetNode>& let_nodes,
-        const std::vector<BaseEntity>& entities
-    ) const;
-
 private:
     RocksDBWrapper& db_;
     SecondaryIndexManager& secIdx_;

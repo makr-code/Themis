@@ -1,9 +1,9 @@
 name: Sync Docs to GitHub Wiki
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # Manually triggered only
+  # push:
+  #   branches: [ main ]
 
 jobs:
   publish-wiki:

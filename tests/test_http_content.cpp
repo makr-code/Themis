@@ -443,31 +443,3 @@ TEST_F(HttpContentApiTest, BlobCompression_CompressesTextBlobs_SkipsImages) {
     EXPECT_FALSE(meta3["compressed"].get<bool>()) << "Small blob should skip compression";
 }
 
-TEST_F(HttpContentApiTest, BlobCompression_PerMimeLevelPolicy) {
-    // Arrange: set config with per-MIME level override
-    json cfg = {
-        {"compress_blobs", true},
-        {"compression_level", 19},
-        {"skip_compressed_mimes", json::array({"image/", "video/"})},
-        {"compression_levels_map", {{"text/plain", 9}}}
-    };
-    auto cfgs = cfg.dump();
-    storage_->put("config:content", std::vector<uint8_t>(cfgs.begin(), cfgs.end()));
-
-    // Act: import text/plain via HTTP (should compress)
-    std::string payload(8000, 'A');
-    json req = {
-        {"content", json{{"id","policy-text"},{"mime_type","text/plain"}}},
-        {"blob", payload}
-    };
-    auto resp = httpPost("/content/import", req);
-    ASSERT_TRUE(resp.contains("status")) << resp.dump();
-    EXPECT_EQ(resp["status"], "success");
-
-    // Assert metadata shows compressed=true
-    auto meta = httpGet("/content/policy-text");
-    ASSERT_TRUE(meta.contains("compressed"));
-    EXPECT_TRUE(meta["compressed"].get<bool>());
-    EXPECT_EQ(meta["compression_type"], "zstd");
-}
-

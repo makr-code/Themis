@@ -19,7 +19,6 @@
 #include <set>
 #include <map>
 #include <queue>
-#include <limits>
 
 namespace themis {
 
@@ -1394,12 +1393,6 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 						
 						// Evaluate RETURN expression
 						if (return_node) {
-							// Early-out if LIMIT reached (hash-join)
-							if (limit && limit->count >= 0) {
-								if (static_cast<int64_t>(results.size()) >= limit->offset + limit->count) {
-									return true; // Stop probing further build matches
-								}
-							}
 							auto result = evaluateExpression(return_node->expression, ctx);
 							results.push_back(std::move(result));
 						}
@@ -1441,12 +1434,6 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 				
 				// Evaluate RETURN expression
 				if (return_node) {
-					// Early-out if LIMIT reached (nested-loop)
-					if (limit && limit->count >= 0) {
-						if (static_cast<int64_t>(results.size()) >= limit->offset + limit->count) {
-							return; // Stop deeper accumulation
-						}
-					}
 					auto result = evaluateExpression(return_node->expression, ctx);
 					results.push_back(std::move(result));
 				}
@@ -1490,10 +1477,6 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 					newCtx.bind(for_node.variable, doc);
 					
 					// Recurse to next FOR level
-					// Abort deeper recursion if LIMIT already satisfied
-					if (limit && limit->count >= 0 && static_cast<int64_t>(results.size()) >= limit->offset + limit->count) {
-						return true; // stop scanning this prefix
-					}
 					nestedLoop(depth + 1, newCtx);
 				} catch (...) {
 					// Skip malformed entities
@@ -1553,23 +1536,24 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 	}
 	
 	// Hash-based grouping
-	std::vector<BaseEntity> filteredEntities;
-	filteredEntities.reserve(256);
-
+	std::unordered_map<std::string, std::vector<nlohmann::json>> groups;
+	
+	// Scan collection
 	const std::string prefix = for_node.collection + ":";
-
+	
 	db_.scanPrefix(prefix, [&](std::string_view key, std::string_view value) -> bool {
 		std::string pk = KeySchema::extractPrimaryKey(key);
 		std::vector<uint8_t> blob(value.begin(), value.end());
-
+		
 		try {
 			BaseEntity entity = BaseEntity::deserialize(pk, blob);
 			nlohmann::json doc = nlohmann::json::parse(entity.toJson());
 			doc["_key"] = pk;
-
+			
 			EvaluationContext ctx;
 			ctx.bind(for_node.variable, doc);
-
+			
+			// Apply FILTER conditions
 			bool passFilters = true;
 			for (const auto& filter : filters) {
 				if (!evaluateCondition(filter->condition, ctx)) {
@@ -1577,205 +1561,101 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 					break;
 				}
 			}
-			if (passFilters) {
-				filteredEntities.push_back(std::move(entity));
-			}
+			if (!passFilters) return true; // Continue to next document
+			
+			// Evaluate group key
+			auto groupKey = evaluateExpression(collect->groups[0].second, ctx);
+			std::string key_str = groupKey.dump();
+			
+			groups[key_str].push_back(doc);
 		} catch (...) {
 			// Skip malformed entities
 		}
-		return true;
+		return true; // Continue iteration
 	});
-
-	auto [aggStatus, groups] = executeGroupByOnEntities(for_node, collect, /*let_nodes*/{}, filteredEntities);
-	if (!aggStatus.ok) {
-		return {aggStatus, {}};
-	}
-
+	
+	// Compute aggregations
 	std::vector<nlohmann::json> results;
-	results.reserve(groups.size());
-
-	for (auto& group : groups) {
+	
+	for (const auto& [key_str, docs] : groups) {
+		EvaluationContext ctx;
+		
+		// Bind group key variable
+		if (!collect->groups.empty()) {
+			auto groupKey = nlohmann::json::parse(key_str);
+			ctx.bind(collect->groups[0].first, groupKey);
+		}
+		
+		// Compute aggregations
+		for (const auto& agg : collect->aggregations) {
+			nlohmann::json aggValue = nullptr;
+			
+			std::string funcUpper = agg.funcName;
+			std::transform(funcUpper.begin(), funcUpper.end(), funcUpper.begin(), ::toupper);
+			
+			if (funcUpper == "COUNT") {
+				aggValue = static_cast<int64_t>(docs.size());
+			} else if (funcUpper == "SUM") {
+				double sum = 0.0;
+				for (const auto& doc : docs) {
+					EvaluationContext docCtx;
+					docCtx.bind(for_node.variable, doc);
+					auto val = evaluateExpression(agg.argument, docCtx);
+					if (val.is_number()) {
+						sum += val.get<double>();
+					}
+				}
+				aggValue = sum;
+			} else if (funcUpper == "AVG") {
+				double sum = 0.0;
+				int count = 0;
+				for (const auto& doc : docs) {
+					EvaluationContext docCtx;
+					docCtx.bind(for_node.variable, doc);
+					auto val = evaluateExpression(agg.argument, docCtx);
+					if (val.is_number()) {
+						sum += val.get<double>();
+						count++;
+					}
+				}
+				aggValue = (count > 0) ? (sum / count) : 0.0;
+			} else if (funcUpper == "MIN") {
+				double minVal = std::numeric_limits<double>::max();
+				for (const auto& doc : docs) {
+					EvaluationContext docCtx;
+					docCtx.bind(for_node.variable, doc);
+					auto val = evaluateExpression(agg.argument, docCtx);
+					if (val.is_number()) {
+						minVal = std::min(minVal, val.get<double>());
+					}
+				}
+				aggValue = minVal;
+			} else if (funcUpper == "MAX") {
+				double maxVal = std::numeric_limits<double>::lowest();
+				for (const auto& doc : docs) {
+					EvaluationContext docCtx;
+					docCtx.bind(for_node.variable, doc);
+					auto val = evaluateExpression(agg.argument, docCtx);
+					if (val.is_number()) {
+						maxVal = std::max(maxVal, val.get<double>());
+					}
+				}
+				aggValue = maxVal;
+			}
+			
+			ctx.bind(agg.varName, std::move(aggValue));
+		}
+		
+		// Evaluate RETURN expression
 		if (return_node) {
-			auto result = evaluateExpression(return_node->expression, group.context);
+			auto result = evaluateExpression(return_node->expression, ctx);
 			results.push_back(std::move(result));
-		} else {
-			results.push_back(std::move(group.payload));
 		}
 	}
-
+	
 	span.setAttribute("groupby.group_count", static_cast<int64_t>(results.size()));
 	span.setStatus(true);
 	return {Status::OK(), std::move(results)};
-}
-
-std::pair<QueryEngine::Status, std::vector<QueryEngine::GroupAggregateResult>> QueryEngine::executeGroupByOnEntities(
-	const query::ForNode& for_node,
-	const std::shared_ptr<query::CollectNode>& collect,
-	const std::vector<query::LetNode>& let_nodes,
-	const std::vector<BaseEntity>& entities
-) const {
-	auto span = Tracer::startSpan("QueryEngine.executeGroupByOnEntities");
-	span.setAttribute("groupby.input_count", static_cast<int64_t>(entities.size()));
-
-	if (!collect) {
-		span.setStatus(false, "No COLLECT clause provided");
-		return {Status::Error("executeGroupByOnEntities: No GROUP BY clause"), {}};
-	}
-
-	span.setAttribute("groupby.group_field_count", static_cast<int64_t>(collect->groups.size()));
-	span.setAttribute("groupby.aggregate_count", static_cast<int64_t>(collect->aggregations.size()));
-
-	struct NormalizedAggSpec {
-		std::string var;
-		std::string func;
-		std::shared_ptr<query::Expression> argument;
-	};
-
-	std::vector<NormalizedAggSpec> specs;
-	specs.reserve(collect->aggregations.size());
-	for (const auto& agg : collect->aggregations) {
-		std::string func = agg.funcName;
-		std::transform(func.begin(), func.end(), func.begin(), ::tolower);
-		specs.push_back({agg.varName, std::move(func), agg.argument});
-	}
-
-	struct AggState {
-		uint64_t cnt = 0;
-		double sum = 0.0;
-		double min = std::numeric_limits<double>::infinity();
-		double max = -std::numeric_limits<double>::infinity();
-	};
-
-	struct GroupState {
-		bool initialized = false;
-		nlohmann::json groupObject = nlohmann::json::object();
-		std::unordered_map<std::string, AggState> aggregates;
-		uint64_t implicitCount = 0;
-	};
-
-	std::unordered_map<std::string, GroupState> buckets;
-	buckets.reserve(entities.size());
-
-	for (const auto& entity : entities) {
-		nlohmann::json doc;
-		try {
-			doc = nlohmann::json::parse(entity.toJson());
-		} catch (...) {
-			continue;
-		}
-		doc["_key"] = entity.getPrimaryKey();
-
-		EvaluationContext ctx;
-		ctx.bind(for_node.variable, doc);
-
-		for (const auto& let : let_nodes) {
-			auto val = evaluateExpression(let.expression, ctx);
-			ctx.bind(let.variable, std::move(val));
-		}
-
-		std::string keyStr = "__all__";
-		nlohmann::json groupObject = nlohmann::json::object();
-
-		if (!collect->groups.empty()) {
-			nlohmann::json keyArray = nlohmann::json::array();
-			for (const auto& grp : collect->groups) {
-				nlohmann::json value = grp.second ? evaluateExpression(grp.second, ctx) : nlohmann::json();
-				groupObject[grp.first] = value;
-				keyArray.push_back(value);
-			}
-			keyStr = keyArray.dump();
-		}
-
-		auto& bucket = buckets[keyStr];
-		if (!bucket.initialized) {
-			bucket.groupObject = std::move(groupObject);
-			bucket.initialized = true;
-		}
-
-		if (collect->aggregations.empty()) {
-			bucket.implicitCount += 1;
-			continue;
-		}
-
-		for (const auto& spec : specs) {
-			auto& st = bucket.aggregates[spec.var];
-			if (spec.func == "count") {
-				st.cnt += 1;
-				continue;
-			}
-			if (!spec.argument) {
-				continue;
-			}
-			auto val = evaluateExpression(spec.argument, ctx);
-			if (!val.is_number()) {
-				continue;
-			}
-			double num = val.get<double>();
-			st.cnt += 1;
-			st.sum += num;
-			if (num < st.min) st.min = num;
-			if (num > st.max) st.max = num;
-		}
-	}
-
-	std::vector<GroupAggregateResult> rows;
-	rows.reserve(buckets.size());
-
-	for (auto& [_, bucket] : buckets) {
-		EvaluationContext resultCtx;
-		nlohmann::json row = nlohmann::json::object();
-
-		if (!collect->groups.empty()) {
-			for (const auto& grp : collect->groups) {
-				nlohmann::json value = bucket.groupObject.contains(grp.first)
-				    ? bucket.groupObject[grp.first]
-				    : nlohmann::json();
-				row[grp.first] = value;
-				resultCtx.bind(grp.first, value);
-			}
-		}
-
-		if (collect->aggregations.empty()) {
-			nlohmann::json countVal = static_cast<uint64_t>(bucket.implicitCount);
-			row["count"] = countVal;
-			resultCtx.bind("count", countVal);
-		} else {
-			for (const auto& spec : specs) {
-				nlohmann::json value = nullptr;
-				auto it = bucket.aggregates.find(spec.var);
-				AggState state;
-				if (it != bucket.aggregates.end()) {
-					state = it->second;
-				}
-				if (spec.func == "count") {
-					value = static_cast<uint64_t>(state.cnt);
-				} else if (spec.func == "sum") {
-					value = state.sum;
-				} else if (spec.func == "avg") {
-					value = state.cnt ? (state.sum / static_cast<double>(state.cnt)) : 0.0;
-				} else if (spec.func == "min") {
-					value = state.cnt ? state.min : 0.0;
-				} else if (spec.func == "max") {
-					value = state.cnt ? state.max : 0.0;
-				}
-				row[spec.var] = value;
-				resultCtx.bind(spec.var, value);
-			}
-		}
-
-		bool passHaving = true;
-		if (collect->having) {
-			passHaving = evaluateCondition(collect->having, resultCtx);
-		}
-
-		if (passHaving) {
-			rows.push_back(GroupAggregateResult{std::move(row), std::move(resultCtx)});
-		}
-	}
-
-	span.setAttribute("groupby.group_count", static_cast<int64_t>(rows.size()));
-	span.setStatus(true);
-	return {Status::OK(), std::move(rows)};
 }
 
 // Recursive Path Query Implementation (Multi-Hop Traversal with Temporal Support)

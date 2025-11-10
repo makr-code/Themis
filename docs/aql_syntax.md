@@ -1,50 +1,24 @@
 ﻿# AQL - THEMIS Query Language
 
-**Version:** 1.4  
-**Datum:** 09. November 2025  
+**Version:** 1.0  
+**Datum:** 30. Oktober 2025  
 **Inspiriert von:** ArangoDB AQL, mit Fokus auf Multi-Modell-Queries
 
 ---
 
-## Überblick
+## �berblick
 
-**AQL (Advanced Query Language)** ist eine deklarative SQL-ähnliche Sprache für THEMIS, optimiert für hybride Queries über relationale, Graph-, Vektor- und Dokument-Daten.
+**AQL (Advanced Query Language)** ist eine deklarative SQL-�hnliche Sprache f�r THEMIS, optimiert f�r hybride Queries �ber relationale, Graph-, Vektor- und Dokument-Daten.
 
 **Design-Prinzipien:**
-- ✓ **Einfach:** SQL-ähnliche Syntax für schnelle Adoption
-- ✓ **Mächtig:** Multi-Modell-Support (Relational, Graph, Vector)
-- ✓ **Optimierbar:** Automatische Index-Auswahl via Optimizer
-- ✓ **Erweiterbar:** Schrittweise Erweiterung (Aggregationen, Joins, Subqueries)
+- ? **Einfach:** SQL-�hnliche Syntax f�r schnelle Adoption
+- ? **M�chtig:** Multi-Modell-Support (Relational, Graph, Vector)
+- ? **Optimierbar:** Automatische Index-Auswahl via Optimizer
+- ? **Erweiterbar:** Schrittweise Erweiterung (Aggregationen, Joins, Subqueries)
 
 ---
 
-## Quick Start
-
-Ein kleiner Einstieg in AQL mit den wichtigsten Mustern.
-
-```aql
-// Top-10 aktive Nutzer in Berlin
-FOR u IN users
-  FILTER u.city == "Berlin" AND u.active == true
-  SORT u.created_at DESC
-  LIMIT 10
-  RETURN { name: u.name, email: u.email }
-
-// Einfache Equality-Join (MVP)
-FOR u IN users
-  FOR o IN orders
-  FILTER u._key == o.user_id
-  LIMIT 5
-  RETURN u  // Hinweis: Im JOIN-Pfad derzeit nur Variable als RETURN erlaubt
-
-// DISTINCT auf Feld
-FOR u IN users
-  RETURN DISTINCT u.city
-```
-
----
-
-## Syntax-Übersicht
+## Syntax-�bersicht
 
 ### Grundstruktur
 
@@ -58,36 +32,22 @@ FOR variable IN collection
 ```
 
 **Execution-Reihenfolge:**
-1. `FOR` - Iteration über Collection/Index
-2. `FILTER` - Prädikat-Evaluation (mit Index-Nutzung)
-3. `SORT` - Sortierung (mit Index-Nutzung wenn möglich)
+1. `FOR` - Iteration �ber Collection/Index
+2. `FILTER` - Pr�dikat-Evaluation (mit Index-Nutzung)
+3. `SORT` - Sortierung (mit Index-Nutzung wenn m�glich)
 4. `LIMIT` - Pagination/Offset
 5. `RETURN` - Projektion (Felder/Objekte/Arrays)
 
 ---
 
-## MVP-Einschränkungen und Hinweise
+## MVP-Einschr�nkungen und Hinweise
 
 Damit Erwartungen klar sind, hier die wichtigsten Begrenzungen des aktuellen MVP:
 
-- **OR/NOT:** Vollständig unterstützt seit v1.4
-  - OR wird über DNF-Konvertierung (Disjunctive Normal Form) gehandhabt
-  - NOT wird zur Laufzeit evaluiert (Post-Filter); kein Index-Pushdown
-  - Mehrere FILTER-Klauseln mit OR werden via kartesisches Produkt zu DNF vereinigt
-  - Bei NOT-only Filtern (ohne andere Prädikate) wird automatisch Full-Scan-Fallback aktiviert
-- **DISTINCT:** Vollständig unterstützt seit v1.4
-  - Hash-basierte De-Duplizierung nach Projektion
-  - Funktioniert mit Skalaren und Objekten
-  - LIMIT wird nach DISTINCT angewandt
-- **Joins:** MVP unterstützt Equality-Joins über genau zwei FOR-Klauseln
-  - Pattern: `FOR u IN users FOR o IN orders FILTER u._key == o.user_id`
-  - Zusätzliche Filter pro Seite erlaubt (werden pro Seite vorgezogen)
-  - HTTP-Constraint: RETURN muss aktuell eine der gebundenen Variablen sein (`u` oder `o`); konstruierte Objekte im JOIN-RETURN folgen
-  - Grammatik: LET steht vor FILTER; `LET` nach `FILTER` führt zu einem Parserfehler
-  - SORT im Join-Pfad derzeit nicht unterstützt; LIMIT wird nach dem Join angewandt (mit Early-Out ohne SORT)
-- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt; Join-spezifischer Pfad unterstützt Equality-Joins
-- LET in FILTER: Einfache LET-Bindungen werden vor der Übersetzung extrahiert ("pre-extracted"); bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`
-- Subqueries und komplexe verschachtelte Ausdrücke sind (noch) eingeschränkt und werden iterativ erweitert
+- OR-Operator: Vollst�ndig unterst�tzt �ber DNF-Konvertierung. FULLTEXT kann in OR-Ausdr�cken verwendet werden.
+- Feld-zu-Feld Vergleiche (z. B. `u.city == o.city`) sind im Translator nicht allgemein erlaubt. Ein spezieller Join-Pfad erlaubt jedoch Gleichheits-Joins �ber genau zwei FOR-Klauseln (siehe Abschnitt �Einfache Joins (MVP)�).
+- LET in FILTER: Falls einfache LET-Bindungen in FILTER vorkommen, werden diese vor der �bersetzung extrahiert (�pre-extracted�). Bei `explain: true` signalisiert der Plan dies mit `plan.let_pre_extracted = true`.
+- Subqueries, OR, komplexe Ausdr�cke/Funktionen sind (noch) eingeschr�nkt und werden iterativ erweitert.
 
 ## Kern-Klauseln
 
@@ -108,20 +68,18 @@ FOR u IN users
 
 **Multi-Collection (Joins - MVP seit 31.10.2025):**
 
-Themis unterstützt Nested-Loop- und (wo möglich) Hash-Joins über zwei Collections via sequenzielle `FOR`-Klauseln:
+Themis unterst�tzt Nested-Loop-Joins �ber mehrere Collections via sequenzielle `FOR`-Klauseln:
 
 ```aql
 FOR u IN users
   FOR o IN orders
     FILTER o.user_id == u._key
-  RETURN {user: u.name, order: o.id}
-
-Hinweis (HTTP, MVP): Im JOIN-Pfad darf aktuell nur eine gebundene Variable zurückgegeben werden (z. B. `RETURN u`). Konstruierte Objekte wie oben sind geplant und außerhalb von JOINs bereits möglich.
+    RETURN {user: u.name, order: o.id}
 ```
 
 **Join-Arten (MVP):**
-- **Equality Join:** Verknüpfung über `FILTER var1.field == var2.field`
-- **Cross Product + Filter:** Kartesisches Produkt mit nachträglicher Filterung
+- **Equality Join:** Verkn�pfung �ber `FILTER var1.field == var2.field`
+- **Cross Product + Filter:** Kartesisches Produkt mit nachtr�glicher Filterung
 
 **Beispiel - User-City-Join:**
 ```aql
@@ -136,10 +94,10 @@ FOR user IN users
 ```
 
 **Performance-Hinweise:**
-- Nested-Loop kann teuer sein bei großen Datasets (O(n·m))
-- Empfehlung: FILTER-Bedingungen so spezifisch wie möglich setzen
-- Hash-Join-Optimierung für 2-FOR Equality-Joins ist aktiv (Build/Probe, Filter-Pushdown)
-- Verwende Indizes auf Join-Spalten (z. B. `city_id`, `_key`) wo möglich
+- ?? Nested-Loop kann **teuer** sein bei gro�en Datasets (O(n�m) Komplexit�t)
+- ?? Empfehlung: FILTER-Bedingungen so spezifisch wie m�glich
+- ?? Zuk�nftig: Hash-Join-Optimierung f�r gro�e Collections geplant
+- ?? Verwende Indizes auf Join-Spalten (z.B. `city_id`) wo m�glich
 
 **Multi-FOR Limitierungen (MVP):**
 - Maximal 2-3 FOR-Klauseln empfohlen (Performance)
@@ -165,25 +123,6 @@ FOR user IN users
       RETURN {user: u.name, order: o.id}
   ```
 
-#### Join-Optimierungen (MVP)
-
-- Hash-Join für 2-FOR Equality-Joins
-  - Aktiv, wenn die Join-Bedingung als Gleichheit zwischen zwei Variablen-Feldern vorliegt:
-    `FILTER left.field == right.field`
-  - Build-Phase auf der ersten FOR-Collection, Probe-Phase auf der zweiten
-  - Einseitige FILTER (nur eine Variable betroffen) werden pro Seite vorgezogen (Push-Down)
-  - Die Gleichheitsbedingung wird nicht doppelt geprüft (im Probe-Schritt bereits sichergestellt)
-  - Übrige Multi-Variablen-FILTER werden nach dem Join angewandt
-- Nested-Loop als Fallback
-  - Für nicht-gleichheitsbasierte Bedingungen oder >2 FOR-Klauseln
-  - Ebenfalls mit FILTER-Push-Down je Seite
-- LIMIT Early-Out
-  - Ohne SORT bricht der Executor früher ab, sobald `offset + count` Ergebnisse erreicht sind
-  - Mit SORT wird LIMIT erst nach der Sortierung angewandt (kein Early-Out)
-- LET-Unterstützung
-  - LET-Bindings werden je Treffer-Kontext ausgewertet und können in FILTER verwendet werden
-  - HTTP-Constraint: Im JOIN-Pfad darf RETURN aktuell nur `left` oder `right` Variable sein; RETURN von LET/ausdrücken folgt
-
 ---
 
 ### 2. FILTER - Bedingungen
@@ -203,11 +142,9 @@ FILTER doc.age <= 65          // Kleiner-Gleich
 FILTER doc.age > 18 AND doc.city == "Berlin"
 FILTER doc.status == "active" OR doc.status == "pending"
 FILTER NOT doc.deleted
-FILTER NOT (doc.city == "Berlin")
-FILTER doc.age >= 30 AND NOT (doc.status == "inactive")
 ```
 
-**OR-Operator (vollständig unterstützt seit v1.4):**
+**OR-Operator (v1.3):**
 ```aql
 // Einfaches OR
 FILTER doc.status == "active" OR doc.status == "pending"
@@ -217,39 +154,7 @@ FILTER (doc.status == "active" AND doc.age >= 30) OR doc.city == "Berlin"
 
 // Komplexe DNF-Expansion
 FILTER (doc.city == "Berlin" OR doc.city == "Munich") AND doc.status == "active"
-
-// Mehrere FILTER-Klauseln mit OR (DNF-Merge)
-FILTER doc.city == "Berlin" OR doc.city == "Munich"
-FILTER doc.age >= 30
-// → Wird intern zu DNF konvertiert: (city=Berlin AND age>=30) OR (city=Munich AND age>=30)
 ```
-
-**NOT-Operator (vollständig unterstützt seit v1.4):**
-```aql
-// Einfache Negation
-FILTER NOT (doc.city == "Berlin")
-
-// NOT mit AND kombiniert
-FILTER doc.age >= 30 AND NOT (doc.city == "Berlin")
-
-// NOT in komplexen Ausdrücken
-FILTER (doc.status == "active" OR doc.status == "pending") AND NOT doc.deleted
-
-// Planner rewrites einfache Vergleiche für Index-Pushdown
-FILTER NOT (doc.age < 30)                 // → doc.age >= 30
-FILTER NOT (doc.status == "inactive")    // → doc.status < "inactive" OR doc.status > "inactive"
-```
-
-**Hinweise zu OR/NOT:**
-- **OR:** Vollständig unterstützt über DNF-Konvertierung (Disjunctive Normal Form)
-  - Translator konvertiert OR-Ausdrücke in Disjunktionen
-  - Mehrere FILTER-Klauseln mit OR werden via kartesisches Produkt zu DNF vereinigt
-  - FULLTEXT kann in OR-Ausdrücken verwendet werden
-- **NOT:** Vergleichsoperatoren werden via De-Morgan/Komplement-Regeln in Index-Pushdown übersetzt; komplexe Ausdrücke (Funktionen, Subqueries) fallen auf Runtime-Post-Filter zurück
-  - Beispiele: `NOT (x < v)` → `x >= v`, `NOT (x <= v)` → `x > v`, `NOT (x == v)` → `(x < v) OR (x > v)`
-  - Enthalten Filter ausschließlich nicht-pushdown-fähige NOT-Ausdrücke, wird weiterhin ein Full-Scan-Fallback aktiviert
-  - NOT kann mit AND/OR kombiniert werden und fügt sich in die DNF-Konvertierung ein
-- **Performance:** OR/NOT können in manchen Fällen Index-Nutzung einschränken; für optimale Performance strukturelle Prädikate mit OR/NOT kombinieren
 
 **IN-Operator:**
 ```aql
@@ -276,16 +181,16 @@ FILTER FULLTEXT(doc.title, "neural") AND doc.category == "Research" AND doc.view
 FILTER doc.lang == "en" AND FULLTEXT(doc.abstract, "machine learning")  // Order flexible
 ```
 
-**FULLTEXT-Funktionsdetails (aktualisiert v1.4):**
+**FULLTEXT-Funktionsdetails:**
 - **Argumente:** `FULLTEXT(field, query [, limit])`
   - `field` - Spaltenname mit Fulltext-Index
   - `query` - Suchquery (Tokens mit AND-Logik, oder `"phrase"` f�r exakte Phrasen)
   - `limit` - Optional: Max. Ergebnisse (default 1000)
 - **Ranking:** BM25-Scoring (k1=1.2, b=0.75)
 - **Features:** Stemming (EN/DE), Stopwords, Normalization (Umlaute)
-- **Hybrid Queries (v1.4):** 
-  - ? `FULLTEXT(...) AND <predicates>` - Intersection-based (BM25 + strukturelle Filter)
-  - ? `FULLTEXT(...) OR <expr>` - Volltext-Kandidaten vereinigt mit strukturellen Treffern; falls gemischte Quellen, fuer globale Relevanzsortierung `SORT BM25(doc) DESC` explizit angeben.
+- **Hybrid Queries (v1.3):** 
+  - ? `FULLTEXT(...) AND <predicates>` - Intersection-based (BM25 n structural filters)
+  - ? `FULLTEXT(...) OR <expr>` - Noch nicht unterst�tzt (geplant v1.4)
 - **Execution Strategy:** Fulltext-Scan zuerst (BM25-ranked), dann Intersection mit strukturellen Filtern
 - **Siehe:** `docs/search/fulltext_api.md` f�r Index-Erstellung und Konfiguration
 
@@ -350,28 +255,6 @@ RETURN doc
 RETURN doc.name
 RETURN doc.email
 ```
-
-**DISTINCT - De-Duplizierung (seit v1.4):**
-```aql
-// Einfaches DISTINCT auf einzelnem Feld
-FOR user IN users
-  RETURN DISTINCT user.city
-
-// DISTINCT auf konstruierten Objekten
-FOR user IN users
-  RETURN DISTINCT {city: user.city, status: user.status}
-
-// DISTINCT mit LIMIT (LIMIT wird nach DISTINCT angewandt)
-FOR user IN users
-  LIMIT 0, 100
-  RETURN DISTINCT user.category
-```
-
-**Hinweise zu DISTINCT:**
-- Hash-basierte De-Duplizierung nach Projektion
-- Funktioniert mit Skalaren (Strings, Zahlen) und Objekten
-- LIMIT muss im Query vor RETURN stehen (Grammatik), wird aber nach DISTINCT ausgeführt
-- Performance: O(n) mit Hash-Set; bei sehr großen Result-Sets Memory beachten
 
 **Objekt-Konstruktion:**
 ```aql
@@ -452,17 +335,6 @@ FOR user IN users
 - Komplexe Funktionen (CONCAT, SUBSTRING, etc.) in Entwicklung
 - Explain: Wenn `LET`-Variablen in `FILTER` zu einfachen Gleichheitspr�dikaten vor der �bersetzung extrahiert wurden, enth�lt der Plan das Flag `plan.let_pre_extracted = true`
 
-FAQ zu LET (MVP):
-- Wo kommt LET hin? Immer vor FILTER (Grammatik). Beispiel:
-  ```aql
-  FOR u IN users
-    LET n = u.name
-    FILTER u.age >= 18
-    RETURN u
-  ```
-- Kann ich im JOIN `RETURN` eine LET-Variable zurückgeben? Aktuell nein; im JOIN-Pfad nur `u` oder `o`. Außerhalb von JOINs ja.
-- Darf LET mehrere Ausdrücke kombinieren? Ja, solange die Ausdrücke Basis sind (Feldzugriffe, Arithmetik, Literale).
-
 ---
 
 ### COLLECT - Aggregationen (MVP seit 31.10.2025)
@@ -504,14 +376,6 @@ FOR order IN orders
   RETURN {status, total_count, total_amount, avg_amount, min_amount, max_amount}
 ```
 
-**Mehrere GROUP-BY Felder:**
-```aql
-FOR order IN orders
-  COLLECT city = order.city, status = order.status
-  AGGREGATE total = COUNT()
-  RETURN {city, status, total}
-```
-
 **COLLECT mit FILTER:**
 ```aql
 FOR user IN users
@@ -519,15 +383,6 @@ FOR user IN users
   COLLECT city = user.city
   AGGREGATE adult_count = COUNT()
   RETURN {city, adult_count}
-```
-
-**HAVING-Filter nach Aggregation:**
-```aql
-FOR user IN users
-  COLLECT city = user.city
-  AGGREGATE total = COUNT()
-  HAVING total >= 100
-  RETURN {city, total}
 ```
 
 **Unterst�tzte Aggregatfunktionen (MVP):**
@@ -549,9 +404,9 @@ FOR user IN users
 - `UNIQUE(expr)` - Distinct Values
 
 Hinweise (MVP):
-- Gruppierung erfolgt ueber exakte JSON-Werte der Group-Keys (String, Zahl, Bool)
-- Mehrere GROUP BY-Felder werden gemeinsam gehasht und sind jetzt unterstuetzt
-- HAVING-Clause (Post-Aggregation-Filter) akzeptiert Gruppen- und Aggregations-Variablen
+- Gruppierung erfolgt �ber exakte String-Matches der Group-Keys
+- Mehrere GROUP BY-Felder via Tuple-Keys geplant
+- HAVING-Clause (Post-Aggregation-Filter) in Entwicklung
 
 ---
 
@@ -727,7 +582,7 @@ FOR doc IN articles
 
 ## Einfache Joins (MVP)
 
-Unterstützt werden Equality-Joins über genau zwei `FOR`-Klauseln mit einem Gleichheitsprädikat zwischen Variablen.
+Unterst�tzt werden Equality-Joins �ber genau zwei `FOR`-Klauseln mit einem Gleichheitspr�dikat zwischen Variablen.
 
 ```aql
 FOR u IN users
@@ -737,23 +592,23 @@ FOR u IN users
 ```
 
 Eigenschaften und Einschr�nkungen (MVP):
-- Genau zwei `FOR`-Klauseln; ein Equality-Prädikat `var1.field == var2.field` in `FILTER`.
-- Zusätzliche `FILTER` pro Seite sind erlaubt und werden vor dem Join angewendet.
-- `RETURN` muss aktuell eine der Variablen zurückgeben (typisch `u` oder `o`).
-- `LIMIT` wird nach dem Join angewendet (Early-Out ohne SORT). `SORT` im Join-Pfad ist derzeit nicht unterstützt.
+- Genau zwei `FOR`-Klauseln; ein Equality-Pr�dikat `var1.field == var2.field` in `FILTER`.
+- Zus�tzliche `FILTER` pro Seite sind erlaubt und werden vor dem Join angewendet.
+- `RETURN` muss aktuell eine der Variablen zur�ckgeben (typisch `u` oder `o`).
+- `LIMIT` wird nach dem Join angewendet. `SORT` im Join-Pfad ist derzeit nicht unterst�tzt.
 - `explain: true` liefert einen Plan, der den Join-Pfad ausweist; bei LET-Pre-Extraction wird `plan.let_pre_extracted = true` gesetzt.
 
-Projektion mit LET im Join-Kontext (MVP-kompatibel):
+Projektion mit LET im Join-Kontext:
 
 ```aql
 FOR u IN users
   FOR o IN orders
   FILTER u._key == o.user_id
-  LET info = { user: u.name, order: o._key }
-  RETURN u          // Aktuell muss im JOIN RETURN eine gebundene Variable sein
+  LET info = { user: u.name, order: o.id }
+  RETURN info
 ```
 
-Hinweis: Komplexe Projektionen im JOIN sind geplant (z. B. `RETURN info`). Außerhalb von JOINs sind konstruierte Objekte bereits unterstützt. Nutze `LIMIT` wo sinnvoll.
+Hinweis: Komplexe Projektionen k�nnen je nach Datenvolumen h�here Kosten verursachen; nutze `LIMIT` wo sinnvoll.
 
 ---
 
@@ -893,8 +748,8 @@ FOR loc IN restaurants
 ```
 
 **Optimizer:**
-- Nutzt Geo-Index für Bounding-Box-Scan
-- Post-Filter für exakte Distanz-Berechnung
+- Nutzt Geo-Index f�r Bounding-Box-Scan
+- Post-Filter f�r exakte Distanz-Berechnung
 
 ---
 
@@ -914,8 +769,8 @@ FOR product IN products
 ```
 
 **Pre-Filtering vs Post-Filtering:**
-- Pre-Filter: Bitset für `price < 100 AND in_stock == true` → k-NN
-- Post-Filter: k-NN (20) → Filter → Top-10
+- Pre-Filter: Bitset f�r `price < 100 AND in_stock == true` ? k-NN
+- Post-Filter: k-NN (20) ? Filter ? Top-10
 
 ---
 
@@ -983,7 +838,7 @@ POST /query/aql
 }
 ```
 
-### Index-Hints (später)
+### Index-Hints (sp�ter)
 
 ```aql
 FOR doc IN users USE INDEX idx_age_city
@@ -1013,7 +868,7 @@ enum class ASTNodeType {
     Variable          // doc, user, etc.
 };
 
-// Beispiel-AST für: FOR u IN users FILTER u.age > 18 RETURN u.name
+// Beispiel-AST f�r: FOR u IN users FILTER u.age > 18 RETURN u.name
 ForNode {
     variable: "u",
     collection: "users",
@@ -1055,40 +910,15 @@ ForNode {
 - Geo-Queries (GEO_DISTANCE, GEO_BOX)
 - Fulltext (FULLTEXT, BM25)
 
-### Phase 4 (später):
+### Phase 4 (sp�ter):
 - Joins (Multi-Collection)
 - Subqueries
 - Transactions (BEGIN, COMMIT, ROLLBACK)
 - INSERT, UPDATE, DELETE via AQL
 
-### Ausblick & Roadmap (High-Level)
-
-Kurzfristig (1–2 Releases):
-- Erweiterte JOIN-Projektion: `RETURN {user: u, order: o}` innerhalb von JOINs
-- Mehr als 2 FOR-Klauseln mit adaptiven Strategien (Hash-Chain / Merge-Joins)
-- Zusätzliche Aggregationen: `STDDEV`, `VARIANCE`, `PERCENTILE`, `UNIQUE`
-- Subqueries: Inline (`LET x = (FOR ... RETURN ...)`) und korrelierte Subqueries
-- Verbesserter Explain-Plan: Kosten-Schätzung und Index-Wahl Ranking
-
-Mittelfristig (3–5 Releases):
-- Window Functions (z. B. `ROW_NUMBER()`, `MOVING_AVG()`)
-- Query Caching / Reusable Execution Plans
-- Materialisierte Views für häufige Aggregationen / Joins
-- Adaptive Fulltext + Vector Re-Ranking (Hybrid Retrieval Pipeline)
-- Graph-Pattern-Matching (Cypher-inspirierte Kurznotation)
-
-Langfristig (>5 Releases):
-- Kostenbasierter Optimizer mit Statistiksammlung
-- Federation: Remote-Table-Refs (z. B. andere Cluster / Storage Engines)
-- Multi-Tenant Isolation mit Ressourcen-Limits je Query
-- Automatische Index-Empfehlungen und Online Index-Builds
-- Streaming Queries / Continuous Aggregations
-
-Design-Prioritäten dabei: Vorhersehbare Performance, klare Fehlermeldungen, inkrementelle Erweiterbarkeit.
-
 ---
 
-## Performance-Überlegungen
+## Performance-�berlegungen
 
 **Index-Nutzung:**
 - FILTER mit `==` ? Equality-Index
@@ -1098,20 +928,20 @@ Design-Prioritäten dabei: Vorhersehbare Performance, klare Fehlermeldungen, ink
 
 **Optimizer-Strategien:**
 - **Filter-Pushdown:** FILTER vor SORT (reduziert Sortier-Kosten)
-- **Index-Auswahl:** Kleinster geschätzter Index zuerst
-- **Short-Circuit:** LIMIT früh anwenden (z.B. Top-K)
+- **Index-Auswahl:** Kleinster gesch�tzter Index zuerst
+- **Short-Circuit:** LIMIT fr�h anwenden (z.B. Top-K)
 
 **Vermeiden:**
 - Full-Table-Scans ohne LIMIT
-- Sortierung ohne Index auf großen Datasets
+- Sortierung ohne Index auf gro�en Datasets
 - Aggregationen ohne COLLECT (ineffizient)
 
 ---
 
-## Kompatibilität & Erweiterungen
+## Kompatibilit�t & Erweiterungen
 
 **ArangoDB AQL:**
-- Ähnliche Syntax (FOR, FILTER, SORT, LIMIT, RETURN)
+- �hnliche Syntax (FOR, FILTER, SORT, LIMIT, RETURN)
 - Unterschiede: THEMIS nutzt natives MVCC, kein `_key` zwingend
 
 **SQL-Vergleich:**
@@ -1161,48 +991,6 @@ FOR user IN users
   "entity_key": "orders:12345"
 }
 ```
-
----
-
-## FAQ – Häufige Fragen
-
-1) Warum bekomme ich beim JOIN einen 400-Fehler: "JOIN currently supports RETURN of one bound variable"?
-- Im aktuellen MVP darf im JOIN-Pfad nur eine der gebundenen Variablen zurückgegeben werden (z. B. `RETURN u` oder `RETURN o`).
-- Workaround: Gib eine der Variablen zurück und projiziere außerhalb des JOINs; Unterstützung für konstruierte Objekte im JOIN folgt.
-
-2) Meine Query mit `LET` schlägt fehl – woran liegt’s?
-- `LET` muss vor `FILTER` stehen. Beispiel:
-  ```aql
-  FOR u IN users
-    LET city = u.city
-    FILTER u.age >= 18
-    RETURN {name: u.name, city}
-  ```
-
-3) `SORT` in einem JOIN bringt keine Wirkung – ist das ein Bug?
-- `SORT` im JOIN-Pfad ist im MVP noch nicht unterstützt. `LIMIT` funktioniert (mit Early-Out ohne SORT). Globale Sortierung erfordert derzeit einen anderen Query-Aufbau.
-
-4) `NOT`-Filter verlangsamen meine Query – was tun?
-- `NOT` wird als Runtime-Post-Filter ausgewertet (kein Index-Pushdown). Kombiniere `NOT` mit selektiven positiven Filtern, um die Kandidatenmenge zu reduzieren.
-
-5) Volltext liefert leere Ergebnisse – brauche ich einen Index?
-- Ja. Richte zuerst einen Fulltext-Index ein (siehe `docs/search/fulltext_api.md`). Ohne Index findet keine BM25-Suche statt.
-
-6) Wie nutze ich Cursor-basierte Pagination per HTTP?
-- Sende `use_cursor: true` im Request; die Antwort enthält `has_more` und `next_cursor`. Für die nächste Seite `cursor` wieder mitsenden.
-
-7) Wann sollte ich `allow_full_scan` verwenden?
-- Nur für kleine Datenmengen, Tests oder Debugging. In Produktion Indizes nutzen und `allow_full_scan` vermeiden.
-
-8) Warum sehe ich duplizierte Werte und wie entferne ich sie?
-- Nutze `RETURN DISTINCT <expr>`. DISTINCT wird nach der Projektion angewandt und dedupliziert per Hashing (Achtung auf Speicherbedarf bei großen Ergebnismengen).
-
-9) Wieso ist meine JOIN-Query langsam?
-- Prüfe, ob ein Equality-Prädikat zwischen zwei Variablen existiert (z. B. `a.ref == b._key`).
-- Sorge für Indizes auf Join-Feldern, setze zusätzliche FILTER und nutze LIMIT (ohne SORT greift Early-Out).
-
-10) Wie erhalte ich einen Explain-Plan?
-- Sende den Request mit `{"explain": true}` an `POST /query/aql`. Der Plan enthält u. a. Modus, geschätzte Kosten und Flags wie `let_pre_extracted`.
 
 ---
 
@@ -1287,28 +1075,10 @@ FOR user IN users
 
 ### 1. JOIN-Optimierung
 
-Schlecht:
-```aql
-FOR a IN largeA
-  FOR b IN largeB
-  RETURN a   // Kein Join-Prädikat: komplettes kartesisches Produkt
-```
+** Schlecht:** Kartesisches Produkt ohne Filter
+** Gut:** Spezifische FILTER-Bedingungen, LIMIT verwenden
 
-Gut:
-```aql
-FOR a IN largeA
-  FOR b IN largeB
-  FILTER a.ref_id == b._key AND b.status == "active"
-  LIMIT 100
-  RETURN a
-```
-
-Hinweise:
-- Immer ein Equality-Prädikat zwischen Variablen setzen (`a.ref_id == b._key`).
-- Zusätzliche selektive FILTER früh setzen (Pushdown reduziert Join-Input).
-- LIMIT ohne SORT ermöglicht Early-Out.
-
-### 2. LET für Wiederverwendung
+### 2. LET f�r Wiederverwendung
 
 Berechnungen einmal durchf�hren, mehrfach nutzen:
 
@@ -1325,30 +1095,27 @@ Datenvolumen reduzieren bevor gruppiert wird.
 
 ---
 
-## Implementation-Status (09.11.2025)
+## Implementation-Status (03.11.2025)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| FOR (Single) | Production | Vollständig optimiert |
-| FOR (Join) | MVP | 2-FOR Equality, Hash-Join + Nested-Loop Fallback |
-| FILTER | Production | Equality, Range, AND, OR, NOT, FULLTEXT |
-| OR-Operator | Production | DNF-Konvertierung, Index-Merge |
-| NOT-Operator | Production | Runtime Post-Filter, Full-Scan-Fallback möglich |
-| FULLTEXT() | Production | BM25, Stemming, Phrasen |
-| FULLTEXT + AND | Production | Hybrid Intersection |
-| FULLTEXT + OR | Production | Disjunktive Zusammenführung |
-| FULLTEXT_SCORE() | Production | Score verfügbar in RETURN |
-| SORT | Production | Index-optimiert |
-| LIMIT | Production | Offset + Count, Early-Out ohne SORT |
-| RETURN | Production | Feld/Objekt/Array (JOIN: eingeschränkt auf Variable) |
-| DISTINCT | Production | Hash De-Duplikation nach Projektion |
-| LET | MVP | Basis-Ausdrücke, Reihenfolge: vor FILTER |
-| COLLECT | MVP | COUNT/SUM/AVG/MIN/MAX |
-| Aggregat-Erweiterungen | Planned | STDDEV, VARIANCE, PERCENTILE |
-| Subqueries | Planned | Phase 1.4 |
+| **FOR** (Single) | ? Production | Vollst�ndig optimiert |
+| **FOR** (Multi/Join) | ? MVP | Nested-Loop, Hash-Join geplant |
+| **FILTER** | ? Production | Equality + Range + AND + OR + FULLTEXT |
+| **OR-Operator** | ? Production | DNF-Konvertierung, Index-Merge |
+| **FULLTEXT()** | ? Production | BM25-Ranking, Stemming, Phrasen |
+| **FULLTEXT + AND** | ? Production | Hybrid Queries (BM25 n structural filters) |
+| **SORT** | ? Production | Index-optimiert |
+| **LIMIT** | ? Production | Offset + Count |
+| **RETURN** | ? Production | Field/Object/Array |
+| **LET** | ? MVP | Basis-Expressions, Arithmetik |
+| **COLLECT** | ? MVP | Hash-Grouping, COUNT/SUM/AVG/MIN/MAX |
+| **FULLTEXT + OR** | ?? Planned | Per-Disjunct FULLTEXT execution |
+| **FULLTEXT_SCORE()** | ?? Planned | Score in RETURN-Expression |
+| **Subqueries** | ?? Planned | Phase 1.4 |
 
 ---
 
-**Dokumentations-Version:** 1.4 (09. November 2025)  
-**Letzte Aktualisierung:** FULLTEXT OR-Unterstützung & Ranking-Merge, AQL OR vollständig produktiv, PII-Policy/Authorization Hinweise
+**Dokumentations-Version:** 1.3 (03. November 2025)  
+**Letzte Aktualisierung:** FULLTEXT + AND Hybrid Queries implementiert (13 Tests PASSED)
 

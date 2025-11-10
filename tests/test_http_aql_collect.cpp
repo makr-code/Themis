@@ -6,7 +6,6 @@
 #include <chrono>
 #include <filesystem>
 #include <set>
-#include <optional>
 
 #include "server/http_server.h"
 #include "storage/rocksdb_wrapper.h"
@@ -115,57 +114,4 @@ TEST_F(HttpAqlCollectTest, Collect_Global_AvgAge_Berlin) {
     ASSERT_EQ(groups.size(), 1);
     double avg = groups[0]["avgAge"].get<double>();
     EXPECT_NEAR(avg, (25.0 + 28.0) / 2.0, 1e-9);
-}
-
-TEST_F(HttpAqlCollectTest, Collect_MultiGroup_BooleanKey) {
-    json req = {
-        {"query", "FOR u IN users COLLECT city = u.city, isAdult = u.age >= 18 AGGREGATE cnt = COUNT()"},
-        {"allow_full_scan", true}
-    };
-    auto res = post("/query/aql", req);
-    ASSERT_EQ(res.result(), http::status::ok) << res.body();
-    auto body = json::parse(res.body());
-    ASSERT_TRUE(body.contains("groups"));
-    auto groups = body["groups"].get<json::array_t>();
-    ASSERT_EQ(groups.size(), 2);
-
-    std::optional<int> berlinAdult;
-    std::optional<int> hamburgMinor;
-    for (const auto& g : groups) {
-        ASSERT_TRUE(g.contains("city"));
-        ASSERT_TRUE(g.contains("isAdult"));
-        ASSERT_TRUE(g.contains("cnt"));
-        std::string city = g["city"].get<std::string>();
-        bool isAdult = g["isAdult"].get<bool>();
-        int cnt = g["cnt"].get<int>();
-        if (city == "Berlin" && isAdult) {
-            berlinAdult = cnt;
-        } else if (city == "Hamburg" && !isAdult) {
-            hamburgMinor = cnt;
-        } else {
-            FAIL() << "Unexpected group: " << g.dump();
-        }
-    }
-    ASSERT_TRUE(berlinAdult.has_value());
-    ASSERT_TRUE(hamburgMinor.has_value());
-    EXPECT_EQ(*berlinAdult, 2);
-    EXPECT_EQ(*hamburgMinor, 1);
-}
-
-TEST_F(HttpAqlCollectTest, Collect_HavingFiltersGroups) {
-    json req = {
-        {"query", "FOR u IN users COLLECT city = u.city AGGREGATE total = COUNT() HAVING total >= 2"},
-        {"allow_full_scan", true}
-    };
-    auto res = post("/query/aql", req);
-    ASSERT_EQ(res.result(), http::status::ok) << res.body();
-    auto body = json::parse(res.body());
-    ASSERT_TRUE(body.contains("groups"));
-    auto groups = body["groups"].get<json::array_t>();
-    ASSERT_EQ(groups.size(), 1);
-    const auto& group = groups.front();
-    ASSERT_TRUE(group.contains("city"));
-    ASSERT_TRUE(group.contains("total"));
-    EXPECT_EQ(group["city"].get<std::string>(), "Berlin");
-    EXPECT_EQ(group["total"].get<int>(), 2);
 }

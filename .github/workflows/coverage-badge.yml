@@ -1,9 +1,9 @@
 name: Coverage Badge
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # Manually triggered only
+  # push:
+  #   branches: [ main ]
 
 permissions:
   contents: write

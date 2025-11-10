@@ -8,14 +8,14 @@
 
 ## Overview
 
-This feature extends Themis's temporal graph capabilities from single-timestamp queries to **time-range queries**. You can now find all edges that overlap with or are fully contained within a spec[...]  
+This feature extends Themis's temporal graph capabilities from single-timestamp queries to **time-range queries**. You can now find all edges that overlap with or are fully contained within a specified time window.
 
 ### Use Cases
 
-- **Audit Queries:** "Show all relationships valid during Q4 2024"  
-- **Compliance:** "Find edges fully contained within investigation period"  
-- **Historical Analysis:** "What connections existed between 2020-2022?"  
-- **Temporal Analytics:** "Relationships overlapping with event timeframe"  
+- **Audit Queries:** "Show all relationships valid during Q4 2024"
+- **Compliance:** "Find edges fully contained within investigation period"
+- **Historical Analysis:** "What connections existed between 2020-2022?"
+- **Temporal Analytics:** "Relationships overlapping with event timeframe"
 
 ---
 
@@ -111,7 +111,7 @@ getOutEdgesInTimeRange(std::string_view fromPk,
 Find all edges with **any overlap** with time window [1000, 2000]:
 
 ```cpp
-graph(db);
+GraphIndexManager graph(db);
 
 // Add edges with different temporal periods
 BaseEntity e1("edge1");
@@ -298,7 +298,7 @@ auto [status, edges] = graph.getEdgesInTimeRange(500, 1500);
 
 ```
 # Edge entity storage
-e<edge_id> -> BaseEntity(id, _from, _to, valid_from, valid_to, ...)
+edge:<edge_id> -> BaseEntity(id, _from, _to, valid_from, valid_to, ...)
 
 # Graph adjacency indices (temporal data stored in entity, not index)
 graph:out:<from_pk>:<edge_id> -> <to_pk>
@@ -422,8 +422,7 @@ rpq.window_end = 2000000;
 
 ### 3. Temporal Aggregations
 
-**Problem:** No aggregate queries over time windows  
-**Solution:** Add temporal statistics
+✅ **Implemented!** Temporal statistics now available:
 
 ```cpp
 auto [status, stats] = graph.getTemporalStats(1000, 2000);
@@ -482,5 +481,5 @@ while (iter.hasNext()) {
 
 - [Recursive Path Queries](./recursive_path_queries.md) - Multi-hop temporal reasoning
 - [Temporal Graph Design](./temporal_graphs.md) - Overall temporal architecture
-- [Graph Index](./indexes.md#graph-index-property-graph) - Adjacency index design
+- [Graph Index](./indexes.md#graph-index) - Adjacency index design
 - [MVCC Design](./mvcc_design.md) - Transaction temporal semantics

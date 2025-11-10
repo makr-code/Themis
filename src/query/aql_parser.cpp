@@ -13,11 +13,11 @@ namespace query {
 
 enum class TokenType {
     // Keywords
-    FOR, IN, FILTER, SORT, LIMIT, RETURN, LET, DISTINCT,
+    FOR, IN, FILTER, SORT, LIMIT, RETURN, LET,
     ASC, DESC, AND, OR, XOR, NOT,
     GRAPH, OUTBOUND, INBOUND, ANY,
     TYPE,
-    COLLECT, AGGREGATE, HAVING,
+    COLLECT, AGGREGATE,
     TRUE, FALSE, NULL_LITERAL,
     
     // Operators
@@ -195,8 +195,7 @@ private:
         if (lower == "in") return Token(TokenType::IN, value, line, col);
         if (lower == "filter") return Token(TokenType::FILTER, value, line, col);
         if (lower == "sort") return Token(TokenType::SORT, value, line, col);
-    if (lower == "limit") return Token(TokenType::LIMIT, value, line, col);
-    if (lower == "distinct") return Token(TokenType::DISTINCT, value, line, col);
+        if (lower == "limit") return Token(TokenType::LIMIT, value, line, col);
     if (lower == "return") return Token(TokenType::RETURN, value, line, col);
     if (lower == "let") return Token(TokenType::LET, value, line, col);
         if (lower == "asc") return Token(TokenType::ASC, value, line, col);
@@ -213,9 +212,8 @@ private:
         if (lower == "inbound") return Token(TokenType::INBOUND, value, line, col);
         if (lower == "any") return Token(TokenType::ANY, value, line, col);
     if (lower == "type") return Token(TokenType::TYPE, value, line, col);
-    if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
-    if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
-    if (lower == "having") return Token(TokenType::HAVING, value, line, col);
+        if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
+        if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
         
         return Token(TokenType::IDENTIFIER, value, line, col);
     }
@@ -574,16 +572,9 @@ private:
     
     std::shared_ptr<ReturnNode> parseReturnClause() {
         expect(TokenType::RETURN, "Expected RETURN");
-        bool isDistinct = false;
-        if (match(TokenType::DISTINCT)) {
-            // Support syntax: RETURN DISTINCT <expr>
-            advance();
-            isDistinct = true;
-        }
+        
         auto expr = parseExpression();
-        auto node = std::make_shared<ReturnNode>(expr);
-        node->distinct = isDistinct;
-        return node;
+        return std::make_shared<ReturnNode>(expr);
     }
 
     std::shared_ptr<CollectNode> parseCollectClause() {
@@ -592,26 +583,15 @@ private:
 
         // Optional group variable(s): var = expr
         if (!match(TokenType::AGGREGATE)) {
-            while (true) {
-                if (!match(TokenType::IDENTIFIER)) {
-                    throw std::runtime_error("Expected variable name after COLLECT");
-                }
-                std::string var = current().value;
-                advance();
-                expect(TokenType::ASSIGN, "Expected '=' after group variable in COLLECT");
-                auto expr = parseExpression();
-                node->groups.emplace_back(var, expr);
-
-                if (match(TokenType::COMMA)) {
-                    advance();
-                    // Allow trailing comma before AGGREGATE for leniency
-                    if (match(TokenType::AGGREGATE)) {
-                        break;
-                    }
-                    continue;
-                }
-                break;
+            if (!match(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected variable name after COLLECT");
             }
+            std::string var = current().value;
+            advance();
+            expect(TokenType::ASSIGN, "Expected '=' after group variable in COLLECT");
+            auto expr = parseExpression();
+            node->groups.emplace_back(var, expr);
+            // MVP: allow only one group; additional groups via comma could be added later
         }
 
         // Optional AGGREGATE section
@@ -643,11 +623,6 @@ private:
                 CollectNode::Aggregation ag{outVar, funcName, arg};
                 node->aggregations.push_back(std::move(ag));
             }
-        }
-
-        if (match(TokenType::HAVING)) {
-            advance();
-            node->having = parseExpression();
         }
 
         return node;
