@@ -32,7 +32,6 @@ RUN git clone https://github.com/microsoft/vcpkg.git vcpkg \
 ENV VCPKG_ROOT=/opt/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV VCPKG_FEATURE_FLAGS=manifests,registries
-ENV VCPKG_MAX_CONCURRENCY=0
 ENV PATH="${VCPKG_ROOT}:${PATH}"
 
 # Ensure compilers are discoverable by CMake
@@ -51,27 +50,10 @@ RUN set -eux; \
 # Allow overriding target triplet at build time too (kept for later stages)
 ENV VCPKG_TRIPLET=${VCPKG_TRIPLET}
 
-# Pre-install (manifest) dependencies explicitly for clearer diagnostics before CMake configure
-RUN set -eux; \
-        cd /src || true; \
-        mkdir -p /work; \
-        cp /opt/vcpkg/vcpkg.json /work/ 2>/dev/null || true; \
-        # Use manifest from project root once copied
-        :
-
 # Build
 WORKDIR /src
 COPY . .
-RUN set -eux; \
-        if [ -f vcpkg.json ]; then \
-            /opt/vcpkg/vcpkg install --triplet "${VCPKG_TRIPLET}" --clean-after-build || ( \
-                echo "===== vcpkg install failed; dumping logs ====="; \
-                ls -la /opt/vcpkg/buildtrees || true; \
-                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo --- {} ---; tail -n +1 {}' \; || true; \
-                false ); \
-        else \
-            echo "No vcpkg.json manifest found; skipping explicit install"; \
-        fi
+
 RUN set -eux; \
         cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -80,14 +62,10 @@ RUN set -eux; \
             -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DCMAKE_C_COMPILER=/usr/bin/gcc \
             -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-        || ( \
-                echo "===== CMake configure failed; dumping vcpkg logs ====="; \
+        && cmake --build build -j || ( \
+                echo "===== Build failed; dumping vcpkg logs ====="; \
                 ls -la /opt/vcpkg/buildtrees || true; \
-                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo --- {} ---; tail -n +1 {}' \; || true; \
-                false ); \
-        cmake --build build -j || ( \
-                echo "===== CMake build failed; dumping vcpkg logs ====="; \
-                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo --- {} ---; tail -n +1 {}' \; || true; \
+                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo "=== {} ==="; tail -100 {}' \; 2>/dev/null || true; \
                 false )
 
 # Runtime image

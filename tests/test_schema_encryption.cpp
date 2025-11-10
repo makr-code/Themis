@@ -188,21 +188,36 @@ TEST_F(SchemaEncryptionTest, QueryAql_WithEncryptedFields_AutoDecrypts) {
     json entity1 = {{"name", "Alice"}, {"email", "alice@example.com"}, {"ssn", "123-45-6789"}};
     json put1 = {{"key", "users:user1"}, {"blob", entity1.dump()}};
     auto put1_res = http_request(http::verb::put, "127.0.0.1", 18200, "/entities/users:user1", put1, admin_headers_);
-    ASSERT_TRUE(put1_res.result() == http::status::ok || put1_res.result() == http::status::created);
+    ASSERT_TRUE(put1_res.result() == http::status::ok || put1_res.result() == http::status::created) << "Failed to insert Alice: " << put1_res.body();
     
     json entity2 = {{"name", "Bob"}, {"email", "bob@example.com"}, {"ssn", "987-65-4321"}};
     json put2 = {{"key", "users:user2"}, {"blob", entity2.dump()}};
     auto put2_res = http_request(http::verb::put, "127.0.0.1", 18200, "/entities/users:user2", put2, admin_headers_);
     ASSERT_TRUE(put2_res.result() == http::status::ok || put2_res.result() == http::status::created);
     
+    // Verify entity was stored by fetching directly
+    auto get_res = http_request(http::verb::get, "127.0.0.1", 18200, "/entities/users:user1", std::nullopt, admin_headers_);
+    ASSERT_EQ(get_res.result(), http::status::ok) << "Direct GET failed: " << get_res.body();
+    auto get_entity = json::parse(get_res.body());
+    std::cout << "Direct GET entity: " << get_entity.dump(2) << std::endl;
+    
+    // Query with simple full scan (no filter to test retrieval first)
+    json query_body1 = {{"query", "FOR u IN users RETURN u"}, {"allow_full_scan", true}};
+    auto query_res1 = http_request(http::verb::post, "127.0.0.1", 18200, "/query/aql", query_body1, admin_headers_);
+    std::cout << "Full scan response status: " << query_res1.result_int() << std::endl;
+    std::cout << "Full scan response body: " << query_res1.body() << std::endl;
+    
     // Query with filter to use index
     json query_body = {{"query", "FOR u IN users FILTER u.name == 'Alice' RETURN u"}};
     auto query_res = http_request(http::verb::post, "127.0.0.1", 18200, "/query/aql", query_body, admin_headers_);
+    std::cout << "Filtered query response status: " << query_res.result_int() << std::endl;
+    std::cout << "Filtered query response body: " << query_res.body() << std::endl;
+    
     ASSERT_EQ(query_res.result(), http::status::ok) << query_res.body();
     
     auto response = json::parse(query_res.body());
     ASSERT_TRUE(response.contains("entities"));
-    EXPECT_GE(response["entities"].size(), 1);
+    EXPECT_GE(response["entities"].size(), 1) << "Expected at least 1 entity, got: " << response["entities"].dump();
     
     // Verify Alice's data is decrypted
     bool found_alice = false;
