@@ -34,7 +34,6 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV VCPKG_FEATURE_FLAGS=manifests,registries
 # Reduce noise and allow vcpkg to size parallelism automatically
 ENV VCPKG_DISABLE_METRICS=1
-ENV VCPKG_MAX_CONCURRENCY=0
 ENV PATH="${VCPKG_ROOT}:${PATH}"
 
 # Ensure compilers are discoverable by CMake
@@ -65,7 +64,8 @@ RUN set -eux; \
         echo "===== vcpkg install failed; dumping vcpkg logs ====="; \
         ls -la /opt/vcpkg/buildtrees || true; \
         # Show the last logs of each port (configure/build/install)
-        find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' -exec sh -c 'echo "=== {} ==="; tail -n 200 "{}"' \; 2>/dev/null || true; \
+        find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
+            -exec sh -c 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' sh {} + 2>/dev/null || true; \
         false )
 
 RUN set -eux; \
@@ -82,7 +82,8 @@ RUN set -eux; \
                 echo "===== Build failed; dumping vcpkg logs ====="; \
                 ls -la /opt/vcpkg/buildtrees || true; \
                 # Dump most recent vcpkg port logs (configure/build/install)
-                find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' -exec sh -c 'echo "=== {} ==="; tail -n 200 "{}"' \; 2>/dev/null || true; \
+                find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
+                    -exec sh -c 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' sh {} + 2>/dev/null || true; \
                 # Also dump CMake configure error/output logs if present
                 if [ -f build/CMakeFiles/CMakeError.log ]; then echo "=== build/CMakeFiles/CMakeError.log ==="; tail -n 200 build/CMakeFiles/CMakeError.log; fi; \
                 if [ -f build/CMakeFiles/CMakeOutput.log ]; then echo "=== build/CMakeFiles/CMakeOutput.log ==="; tail -n 200 build/CMakeFiles/CMakeOutput.log; fi; \
