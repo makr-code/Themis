@@ -17,7 +17,22 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
-find_package(CURL CONFIG REQUIRED)
+
+# Prefer config-mode (vcpkg/system packages that export a CURLConfig.cmake), but fall back to module mode
+find_package(CURL CONFIG QUIET)
+if(NOT CURL_FOUND)
+    # Module mode provides CURL_FOUND, CURL_LIBRARIES, CURL_INCLUDE_DIRS
+    find_package(CURL REQUIRED)
+endif()
+
+# Provide a consistent target name expected elsewhere in the project
+if(CURL_FOUND AND NOT TARGET CURL::libcurl AND DEFINED CURL_LIBRARIES)
+    add_library(CURL::libcurl UNKNOWN IMPORTED)
+    set_target_properties(CURL::libcurl PROPERTIES
+        IMPORTED_LOCATION "${CURL_LIBRARIES}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CURL_INCLUDE_DIRS}"
+    )
+endif()
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
