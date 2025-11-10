@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "themisdb-sdk"
+version = "0.1.0a0"
+description = "Python client SDK for ThemisDB"
+readme = "README.md"
+authors = [{ name = "ThemisDB Team" }]
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/makr-code/ThemisDB"
+***

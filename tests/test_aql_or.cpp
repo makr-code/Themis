@@ -1,6 +1,7 @@
 // AQL OR Operator Tests
 
 #include <gtest/gtest.h>
+#include <set>
 #include "query/aql_parser.h"
 #include "query/aql_translator.h"
 #include "query/query_engine.h"
@@ -224,6 +225,71 @@ TEST_F(AQLOrTest, TranslateDNFExpansion) {
     }
 }
 
+TEST_F(AQLOrTest, TranslateNotLessThanPushdown) {
+    std::string aql = R"(
+        FOR user IN users
+        FILTER NOT (user.age < 30)
+        RETURN user
+    )";
+
+    AQLParser parser;
+    auto parseResult = parser.parse(aql);
+    ASSERT_TRUE(parseResult.success);
+
+    auto translateResult = AQLTranslator::translate(parseResult.query);
+    ASSERT_TRUE(translateResult.success) << translateResult.error_message;
+    EXPECT_FALSE(translateResult.disjunctive.has_value());
+
+    const auto& cq = translateResult.query;
+    ASSERT_EQ(cq.rangePredicates.size(), 1);
+    const auto& rp = cq.rangePredicates[0];
+    EXPECT_EQ(rp.column, "age");
+    ASSERT_TRUE(rp.lower.has_value());
+    EXPECT_EQ(*rp.lower, "30");
+    EXPECT_TRUE(rp.includeLower); // >= 30
+    EXPECT_FALSE(rp.upper.has_value());
+}
+
+TEST_F(AQLOrTest, TranslateNotEqualsExpandsToRanges) {
+    std::string aql = R"(
+        FOR user IN users
+        FILTER NOT (user.status == "active")
+        RETURN user
+    )";
+
+    AQLParser parser;
+    auto parseResult = parser.parse(aql);
+    ASSERT_TRUE(parseResult.success);
+
+    auto translateResult = AQLTranslator::translate(parseResult.query);
+    ASSERT_TRUE(translateResult.success) << translateResult.error_message;
+    ASSERT_TRUE(translateResult.disjunctive.has_value());
+
+    const auto& dq = *translateResult.disjunctive;
+    EXPECT_EQ(dq.disjuncts.size(), 2);
+
+    bool sawLower = false;
+    bool sawUpper = false;
+    for (const auto& conj : dq.disjuncts) {
+        ASSERT_EQ(conj.rangePredicates.size(), 1);
+        const auto& rp = conj.rangePredicates[0];
+        EXPECT_EQ(rp.column, "status");
+        if (rp.upper.has_value() && !rp.lower.has_value()) {
+            EXPECT_EQ(*rp.upper, "active");
+            EXPECT_FALSE(rp.includeUpper); // < "active"
+            sawUpper = true;
+        } else if (rp.lower.has_value() && !rp.upper.has_value()) {
+            EXPECT_EQ(*rp.lower, "active");
+            EXPECT_FALSE(rp.includeLower); // > "active"
+            sawLower = true;
+        } else {
+            FAIL() << "Unexpected NOT equality expansion";
+        }
+    }
+    EXPECT_TRUE(sawLower);
+    EXPECT_TRUE(sawUpper);
+}
+
 // ============================================================================
 // Execution Tests
 // ============================================================================
@@ -302,6 +368,32 @@ TEST_F(AQLOrTest, ExecuteMixedAndOr) {
     std::set<std::string> keySet(keys.begin(), keys.end());
     EXPECT_TRUE(keySet.count("u1"));
     EXPECT_TRUE(keySet.count("u3"));
+    EXPECT_TRUE(keySet.count("u5"));
+}
+
+TEST_F(AQLOrTest, ExecuteNotEqualsWithFallback) {
+    std::string aql = R"(
+        FOR user IN users
+        FILTER NOT (user.status == "active")
+        RETURN user
+    )";
+
+    AQLParser parser;
+    auto parseResult = parser.parse(aql);
+    ASSERT_TRUE(parseResult.success);
+
+    auto translateResult = AQLTranslator::translate(parseResult.query);
+    ASSERT_TRUE(translateResult.success) << translateResult.error_message;
+    ASSERT_TRUE(translateResult.disjunctive.has_value());
+
+    auto [status, keys] = engine->executeOrKeysWithFallback(*translateResult.disjunctive);
+    ASSERT_TRUE(status.ok) << status.message;
+
+    EXPECT_EQ(keys.size(), 3);
+
+    std::set<std::string> keySet(keys.begin(), keys.end());
+    EXPECT_TRUE(keySet.count("u2"));
+    EXPECT_TRUE(keySet.count("u4"));
     EXPECT_TRUE(keySet.count("u5"));
 }
 

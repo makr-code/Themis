@@ -6040,121 +6040,31 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             }
         }
 
-        // COLLECT/GROUP BY (MVP): falls vorhanden, f�hre In-Memory-Gruppierung/Aggregation �ber die Ergebnisse aus
+        // COLLECT/GROUP BY (erweiterte Aggregationen)
         if (parse_result.query && parse_result.query->collect && !use_cursor) {
             auto collectSpan = Tracer::startSpan("aql.collect");
             const auto& collect = *parse_result.query->collect;
-            using namespace themis::query;
-            
+
             collectSpan.setAttribute("collect.input_count", static_cast<int64_t>(sliced.size()));
             collectSpan.setAttribute("collect.group_by_count", static_cast<int64_t>(collect.groups.size()));
             collectSpan.setAttribute("collect.aggregates_count", static_cast<int64_t>(collect.aggregations.size()));
 
-            // Extrahiere aus einem FieldAccess-Ausdruck die Feld-Pfad-Notation (z.B. doc.city -> "city", doc.addr.city -> "addr.city")
-            auto extractColumn = [&](const std::shared_ptr<themis::query::Expression>& expr)->std::string {
-                auto* fa = dynamic_cast<FieldAccessExpr*>(expr.get());
-                if (!fa) return std::string();
-                std::vector<std::string> parts;
-                parts.push_back(fa->field);
-                auto* cur = fa->object.get();
-                while (auto* fa2 = dynamic_cast<FieldAccessExpr*>(cur)) {
-                    parts.push_back(fa2->field);
-                    cur = fa2->object.get();
-                }
-                // Root erwartet Variable; deren Name wird ignoriert
-                std::string col;
-                for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
-                    if (!col.empty()) col += ".";
-                    col += *it;
-                }
-                return col;
-            };
+            auto [collectStatus, groupedRows] = engine.executeGroupByOnEntities(
+                parse_result.query->for_node,
+                parse_result.query->collect,
+                parse_result.query->let_nodes,
+                sliced
+            );
 
-            // MVP: Unterst�tze 0..1 Group-Variablen
-            std::string groupVarName;
-            std::string groupColumn;
-            if (!collect.groups.empty()) {
-                groupVarName = collect.groups[0].first;
-                if (collect.groups[0].second) {
-                    groupColumn = extractColumn(collect.groups[0].second);
-                }
+            if (!collectStatus.ok) {
+                collectSpan.setStatus(false, collectStatus.message);
+                span.setStatus(false, "COLLECT execution failed");
+                return makeErrorResponse(http::status::bad_request, collectStatus.message, req);
             }
 
-            struct AggSpec { std::string var; std::string func; std::string col; };
-            std::vector<AggSpec> aggs;
-            aggs.reserve(collect.aggregations.size());
-            for (const auto& a : collect.aggregations) {
-                std::string func = a.funcName; std::transform(func.begin(), func.end(), func.begin(), ::tolower);
-                std::string col;
-                if (a.argument) col = extractColumn(a.argument);
-                aggs.push_back({a.varName, func, col});
-            }
-
-            struct AggState { uint64_t cnt=0; double sum=0.0; double min=std::numeric_limits<double>::infinity(); double max=-std::numeric_limits<double>::infinity(); };
-            std::unordered_map<std::string, std::unordered_map<std::string, AggState>> acc;
-
-            auto toGroupKey = [&](const themis::BaseEntity& e)->std::string{
-                if (groupColumn.empty()) return std::string("__all__");
-                auto v = e.getFieldAsString(groupColumn);
-                return v.value_or(std::string(""));
-            };
-            auto toNumber = [&](const themis::BaseEntity& e, const std::string& col, std::optional<double>& out)->bool{
-                if (col.empty()) { out = 1.0; return true; }
-                auto dv = e.getFieldAsDouble(col);
-                if (dv.has_value()) { out = *dv; return true; }
-                auto sv = e.getFieldAsString(col);
-                if (sv.has_value()) {
-                    try { out = std::stod(*sv); return true; } catch (...) { /* ignore */ }
-                }
-                return false;
-            };
-
-            for (const auto& e : sliced) {
-                std::string key = toGroupKey(e);
-                auto& bucket = acc[key];
-                // Update je Aggregation
-                if (aggs.empty()) {
-                    bucket[std::string("count")].cnt += 1;
-                } else {
-                    for (const auto& a : aggs) {
-                        auto& st = bucket[a.var];
-                        if (a.func == "count") {
-                            st.cnt += 1;
-                        } else if (a.func == "sum" || a.func == "avg" || a.func == "min" || a.func == "max") {
-                            std::optional<double> num;
-                            if (toNumber(e, a.col, num) && num.has_value()) {
-                                st.cnt += 1;
-                                st.sum += *num;
-                                if (*num < st.min) st.min = *num;
-                                if (*num > st.max) st.max = *num;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Baue Ausgabe
             nlohmann::json groups = nlohmann::json::array();
-            for (const auto& [k, mp] : acc) {
-                nlohmann::json row = nlohmann::json::object();
-                if (!groupVarName.empty()) row[groupVarName] = k;
-                if (aggs.empty()) {
-                    auto it = mp.find("count");
-                    uint64_t c = (it != mp.end()) ? it->second.cnt : 0;
-                    row["count"] = c;
-                } else {
-                    for (const auto& a : aggs) {
-                        const auto it = mp.find(a.var);
-                        if (it == mp.end()) continue;
-                        const auto& st = it->second;
-                        if (a.func == "count") row[a.var] = static_cast<uint64_t>(st.cnt);
-                        else if (a.func == "sum") row[a.var] = st.sum;
-                        else if (a.func == "avg") row[a.var] = (st.cnt ? (st.sum / static_cast<double>(st.cnt)) : 0.0);
-                        else if (a.func == "min") row[a.var] = (st.cnt ? st.min : 0.0);
-                        else if (a.func == "max") row[a.var] = (st.cnt ? st.max : 0.0);
-                    }
-                }
-                groups.push_back(std::move(row));
+            for (auto& result : groupedRows) {
+                groups.push_back(std::move(result.payload));
             }
 
             nlohmann::json response_body = {
@@ -6167,7 +6077,7 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                 response_body["ast"] = parse_result.query->toJSON();
                 if (!plan_json.is_null()) response_body["plan"] = plan_json;
             }
-            
+
             collectSpan.setAttribute("collect.group_count", static_cast<int64_t>(groups.size()));
             collectSpan.setStatus(true);
             span.setAttribute("aql.result_count", static_cast<int64_t>(groups.size()));

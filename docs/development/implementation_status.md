@@ -119,11 +119,11 @@
 
   - ✅ **OR/NOT in FILTER:**
     - Parser: UnaryOp NOT, BinaryOp OR vollständig unterstützt
-    - Translator: DNF-Konvertierung (convertToDNF) für OR; NOT-Filter überspringen Pushdown
-    - Executor: Post-Filter-Auswertung für NOT (runtime); OR via DisjunctiveQuery
+    - Translator: DNF-Konvertierung (convertToDNF) für OR; NOT-Rewrite (De-Morgan) ermöglicht Index-Pushdown für Vergleichsoperatoren
+    - Executor: Post-Filter-Auswertung nur für komplexe NOT-Ausdrücke (Funktionen/Subqueries); OR via DisjunctiveQuery
     - DNF-Merge über mehrere FILTER-Klauseln (AND-Verknüpfung via kartesisches Produkt)
-    - Tests: 3/3 PASS (AqlFilter_NotBerlin, AqlFilter_AndNotAgeGe30, AqlMultipleFiltersWithOr_DNFMerge)
-    - Einschränkung: NOT erzwingt Full-Scan-Fallback wenn keine anderen Pushdown-Prädikate vorhanden
+  - Tests: erweitert (TranslateNotLessThanPushdown, TranslateNotEqualsExpandsToRanges, ExecuteNotEqualsWithFallback)
+    - Einschränkung: NOT mit Funktionsaufrufen/Subqueries erzwingt weiterhin Full-Scan-Fallback
   - ✅ **DISTINCT Keyword:**
     - Parser: TokenType::DISTINCT; ReturnNode.distinct Flag
     - Executor: De-Duplizierung nach Projektion (vor LIMIT); Hash-basiert für Skalare/Objekte
@@ -139,7 +139,7 @@
 - AQL Core erfüllt 100% der Basisfunktionen (FOR/FILTER/SORT/LIMIT/RETURN)
 - LET-Runtime durch HTTP-AQL-Tests verifiziert (HttpAqlLetTest.* PASS)
 - COLLECT MVP deckt Standard-Aggregationen ab
-- OR/NOT vollständig implementiert: OR über DNF, NOT via runtime Post-Filter
+- OR/NOT vollständig implementiert: OR über DNF, NOT via Rewrite + Index-Pushdown (Fallback für komplexe Ausdrücke)
 - DISTINCT vollständig implementiert: Hash-basierte De-Duplizierung in Projektion
 - Offene Advanced Features: Joins (MVP geplant), Multi-Gruppen COLLECT, Subqueries
 

@@ -348,9 +348,9 @@ FOR user IN users
 - `UNIQUE(expr)` - Distinct Values
 
 Hinweise (MVP):
-- Gruppierung erfolgt über exakte String-Matches der Group-Keys
-- Mehrere GROUP BY-Felder via Tuple-Keys geplant
-- HAVING-Clause (Post-Aggregation-Filter) in Entwicklung
+- Gruppierung erfolgt über exakte JSON-Werte der Group-Keys (String, Zahl, Bool)
+- Mehrere GROUP BY-Felder werden gemeinsam gehasht und sind jetzt unterstützt
+- HAVING-Clause (Post-Aggregation-Filter) akzeptiert Gruppen- und Aggregations-Variablen
 
 ---
 

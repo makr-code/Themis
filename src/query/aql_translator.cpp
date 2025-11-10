@@ -4,6 +4,202 @@
 
 namespace themis {
 
+namespace {
+
+bool isComparisonOperator(BinaryOperator op) {
+    switch (op) {
+        case BinaryOperator::Eq:
+        case BinaryOperator::Neq:
+        case BinaryOperator::Lt:
+        case BinaryOperator::Lte:
+        case BinaryOperator::Gt:
+        case BinaryOperator::Gte:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::shared_ptr<Expression> negateComparison(
+    BinaryOperator op,
+    const std::shared_ptr<Expression>& left,
+    const std::shared_ptr<Expression>& right,
+    bool& unsupported
+) {
+    switch (op) {
+        case BinaryOperator::Eq: {
+            auto less = std::make_shared<BinaryOpExpr>(BinaryOperator::Lt, left, right);
+            auto greater = std::make_shared<BinaryOpExpr>(BinaryOperator::Gt, left, right);
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::Or, less, greater);
+        }
+        case BinaryOperator::Lt:
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::Gte, left, right);
+        case BinaryOperator::Lte:
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::Gt, left, right);
+        case BinaryOperator::Gt:
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::Lte, left, right);
+        case BinaryOperator::Gte:
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::Lt, left, right);
+        case BinaryOperator::Neq:
+            return std::make_shared<BinaryOpExpr>(BinaryOperator::Eq, left, right);
+        default:
+            unsupported = true;
+            return nullptr;
+    }
+}
+
+std::shared_ptr<Expression> rewriteNegationsImpl(
+    const std::shared_ptr<Expression>& expr,
+    bool negate,
+    bool& unsupported
+) {
+    if (unsupported || !expr) {
+        if (!expr) unsupported = true;
+        return nullptr;
+    }
+
+    switch (expr->getType()) {
+        case ASTNodeType::Literal: {
+            if (!negate) return expr;
+            auto literal = std::static_pointer_cast<LiteralExpr>(expr);
+            if (std::holds_alternative<bool>(literal->value)) {
+                bool value = std::get<bool>(literal->value);
+                return std::make_shared<LiteralExpr>(LiteralValue(!value));
+            }
+            unsupported = true;
+            return nullptr;
+        }
+        case ASTNodeType::Variable:
+        case ASTNodeType::FieldAccess:
+            if (negate) {
+                unsupported = true;
+                return nullptr;
+            }
+            return expr;
+        case ASTNodeType::UnaryOp: {
+            auto unary = std::static_pointer_cast<UnaryOpExpr>(expr);
+            if (unary->op == UnaryOperator::Not) {
+                return rewriteNegationsImpl(unary->operand, !negate, unsupported);
+            }
+            auto operand = rewriteNegationsImpl(unary->operand, false, unsupported);
+            if (unsupported || !operand) return nullptr;
+            if (negate) {
+                unsupported = true;
+                return nullptr;
+            }
+            if (operand == unary->operand) return expr;
+            return std::make_shared<UnaryOpExpr>(unary->op, operand);
+        }
+        case ASTNodeType::BinaryOp: {
+            auto bin = std::static_pointer_cast<BinaryOpExpr>(expr);
+
+            if (bin->op == BinaryOperator::And || bin->op == BinaryOperator::Or) {
+                if (negate) {
+                    auto left = rewriteNegationsImpl(bin->left, true, unsupported);
+                    auto right = rewriteNegationsImpl(bin->right, true, unsupported);
+                    if (unsupported || !left || !right) return nullptr;
+                    auto newOp = (bin->op == BinaryOperator::And) ? BinaryOperator::Or : BinaryOperator::And;
+                    return std::make_shared<BinaryOpExpr>(newOp, left, right);
+                }
+                auto left = rewriteNegationsImpl(bin->left, false, unsupported);
+                auto right = rewriteNegationsImpl(bin->right, false, unsupported);
+                if (unsupported || !left || !right) return nullptr;
+                if (left == bin->left && right == bin->right) return expr;
+                return std::make_shared<BinaryOpExpr>(bin->op, left, right);
+            }
+
+            if (isComparisonOperator(bin->op)) {
+                auto left = rewriteNegationsImpl(bin->left, false, unsupported);
+                auto right = rewriteNegationsImpl(bin->right, false, unsupported);
+                if (unsupported || !left || !right) return nullptr;
+                if (!negate) {
+                    if (left == bin->left && right == bin->right) return expr;
+                    return std::make_shared<BinaryOpExpr>(bin->op, left, right);
+                }
+                return negateComparison(bin->op, left, right, unsupported);
+            }
+
+            auto left = rewriteNegationsImpl(bin->left, false, unsupported);
+            auto right = rewriteNegationsImpl(bin->right, false, unsupported);
+            if (unsupported || !left || !right) return nullptr;
+            if (negate) {
+                unsupported = true;
+                return nullptr;
+            }
+            if (left == bin->left && right == bin->right) return expr;
+            return std::make_shared<BinaryOpExpr>(bin->op, left, right);
+        }
+        case ASTNodeType::FunctionCall: {
+            if (negate) {
+                unsupported = true;
+                return nullptr;
+            }
+            auto fn = std::static_pointer_cast<FunctionCallExpr>(expr);
+            bool changed = false;
+            std::vector<std::shared_ptr<Expression>> newArgs;
+            newArgs.reserve(fn->arguments.size());
+            for (const auto& arg : fn->arguments) {
+                auto rewrittenArg = rewriteNegationsImpl(arg, false, unsupported);
+                if (unsupported || !rewrittenArg) return nullptr;
+                changed = changed || (rewrittenArg != arg);
+                newArgs.push_back(rewrittenArg);
+            }
+            if (!changed) return expr;
+            return std::make_shared<FunctionCallExpr>(fn->name, std::move(newArgs));
+        }
+        case ASTNodeType::ArrayLiteral: {
+            if (negate) {
+                unsupported = true;
+                return nullptr;
+            }
+            auto arr = std::static_pointer_cast<ArrayLiteralExpr>(expr);
+            bool changed = false;
+            std::vector<std::shared_ptr<Expression>> elements;
+            elements.reserve(arr->elements.size());
+            for (const auto& el : arr->elements) {
+                auto rewrittenEl = rewriteNegationsImpl(el, false, unsupported);
+                if (unsupported || !rewrittenEl) return nullptr;
+                changed = changed || (rewrittenEl != el);
+                elements.push_back(rewrittenEl);
+            }
+            if (!changed) return expr;
+            return std::make_shared<ArrayLiteralExpr>(std::move(elements));
+        }
+        case ASTNodeType::ObjectConstruct: {
+            if (negate) {
+                unsupported = true;
+                return nullptr;
+            }
+            auto obj = std::static_pointer_cast<ObjectConstructExpr>(expr);
+            bool changed = false;
+            std::vector<std::pair<std::string, std::shared_ptr<Expression>>> fields;
+            fields.reserve(obj->fields.size());
+            for (const auto& field : obj->fields) {
+                auto rewrittenValue = rewriteNegationsImpl(field.second, false, unsupported);
+                if (unsupported || !rewrittenValue) return nullptr;
+                changed = changed || (rewrittenValue != field.second);
+                fields.emplace_back(field.first, rewrittenValue);
+            }
+            if (!changed) return expr;
+            return std::make_shared<ObjectConstructExpr>(std::move(fields));
+        }
+        default:
+            unsupported = true;
+            return nullptr;
+    }
+}
+
+} // namespace
+
+AQLTranslator::RewriteResult AQLTranslator::rewriteNegationsForPlanner(const std::shared_ptr<Expression>& expr) {
+    bool unsupported = false;
+    auto rewritten = rewriteNegationsImpl(expr, false, unsupported);
+    if (unsupported || !rewritten) {
+        return RewriteResult{expr, false};
+    }
+    return RewriteResult{rewritten, true};
+}
+
 AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<Query>& ast) {
     if (!ast) {
         return TranslationResult::Error("Null AST provided");
@@ -46,11 +242,25 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
     
     // Process FILTER clauses
     std::string error;
-    
+
+    std::vector<std::shared_ptr<Expression>> plannerFilters(ast->filters.size());
+    std::vector<bool> filterPushdown(ast->filters.size(), false);
+
+    for (size_t i = 0; i < ast->filters.size(); ++i) {
+        const auto& filter = ast->filters[i];
+        if (!filter || !filter->condition) {
+            return TranslationResult::Error("Invalid filter node");
+        }
+        auto rewrite = rewriteNegationsForPlanner(filter->condition);
+        plannerFilters[i] = rewrite.expression ? rewrite.expression : filter->condition;
+        filterPushdown[i] = rewrite.supported;
+    }
+
     // Check if any filter contains OR - if so, use DisjunctiveQuery
     bool hasOr = false;
-    for (const auto& filter : ast->filters) {
-        if (filter && filter->condition && containsOr(filter->condition)) {
+    for (size_t i = 0; i < ast->filters.size(); ++i) {
+        const auto& exprForCheck = filterPushdown[i] ? plannerFilters[i] : ast->filters[i]->condition;
+        if (exprForCheck && containsOr(exprForCheck)) {
             hasOr = true;
             break;
         }
@@ -80,22 +290,26 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
 
         bool first = true;
         std::vector<ConjunctiveQuery> acc;
-        for (const auto& filter : ast->filters) {
-            if (!filter || !filter->condition) {
-                return TranslationResult::Error("Invalid filter node");
+        for (size_t i = 0; i < ast->filters.size(); ++i) {
+            std::vector<ConjunctiveQuery> currentParts;
+            if (!filterPushdown[i]) {
+                ConjunctiveQuery neutral; neutral.table = disjQuery.table;
+                currentParts.push_back(std::move(neutral));
+            } else {
+                currentParts = convertToDNF(plannerFilters[i], disjQuery.table, error);
+                if (!error.empty()) {
+                    return TranslationResult::Error("OR filter translation failed: " + error);
+                }
             }
-            auto parts = convertToDNF(filter->condition, disjQuery.table, error);
-            if (!error.empty()) {
-                return TranslationResult::Error("OR filter translation failed: " + error);
-            }
+
             if (first) {
-                acc = std::move(parts);
+                acc = std::move(currentParts);
                 first = false;
             } else {
-                // AND-merge: cartesian product between acc and parts
+                // AND-merge: cartesian product between acc and currentParts
                 std::vector<ConjunctiveQuery> mergedList;
                 for (const auto& l : acc) {
-                    for (const auto& r : parts) {
+                    for (const auto& r : currentParts) {
                         auto m = mergeConj(l, r);
                         if (!m.has_value()) {
                             return TranslationResult::Error("Cannot combine multiple FULLTEXT() predicates in AND - only one per clause allowed");
@@ -116,22 +330,27 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
     }
     
     // No OR: Standard conjunctive query
-    for (const auto& filter : ast->filters) {
-        if (!filter || !filter->condition) {
-            return TranslationResult::Error("Invalid filter node");
+    for (size_t idx = 0; idx < ast->filters.size(); ++idx) {
+        if (!filterPushdown[idx]) {
+            continue;
+        }
+
+        const auto& condition = plannerFilters[idx];
+        if (!condition) {
+            continue;
         }
 
         // Skip NOT filters entirely (runtime evaluation via post-filter)
-        if (filter->condition->getType() == ASTNodeType::UnaryOp) {
-            auto* u = static_cast<UnaryOpExpr*>(filter->condition.get());
+        if (condition->getType() == ASTNodeType::UnaryOp) {
+            auto* u = static_cast<UnaryOpExpr*>(condition.get());
             if (u->op == UnaryOperator::Not) {
                 continue; // do not attempt push-down translation
             }
         }
         
         // Check if filter is a FULLTEXT function call
-        if (filter->condition->getType() == ASTNodeType::FunctionCall) {
-            auto funcCall = std::static_pointer_cast<FunctionCallExpr>(filter->condition);
+        if (condition->getType() == ASTNodeType::FunctionCall) {
+            auto funcCall = std::static_pointer_cast<FunctionCallExpr>(condition);
             std::string funcName = funcCall->name;
             std::transform(funcName.begin(), funcName.end(), funcName.begin(), ::tolower);
             
@@ -237,11 +456,11 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
             preds.push_back(e);
         };
         
-        if (filter->condition->getType() == ASTNodeType::BinaryOp) {
-            auto binOp = std::static_pointer_cast<BinaryOpExpr>(filter->condition);
+        if (condition->getType() == ASTNodeType::BinaryOp) {
+            auto binOp = std::static_pointer_cast<BinaryOpExpr>(condition);
             
             if (binOp->op == BinaryOperator::And) {
-                auto fulltextFunc = findFulltext(filter->condition);
+                auto fulltextFunc = findFulltext(condition);
                 
                 if (fulltextFunc) {
                     // Parse FULLTEXT part
@@ -280,7 +499,7 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
                     
                     // Collect all non-FULLTEXT predicates
                     std::vector<std::shared_ptr<Expression>> predicateExprs;
-                    collectNonFulltext(filter->condition, predicateExprs);
+                    collectNonFulltext(condition, predicateExprs);
                     
                     // Extract each predicate
                     for (const auto& predExpr : predicateExprs) {
@@ -294,7 +513,7 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
             }
         }
         
-        if (!extractPredicates(filter->condition, query.predicates, query.rangePredicates, error)) {
+        if (!extractPredicates(condition, query.predicates, query.rangePredicates, error)) {
             return TranslationResult::Error("Filter translation failed: " + error);
         }
     }

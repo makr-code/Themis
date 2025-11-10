@@ -884,232 +884,44 @@ Risiken: Stale Reads bei Lag → mitigiert durch Versionstempel/ETag; Overadmiss
 
 ### 3.1 Python SDK
 
-**File:** `clients/python/themis/__init__.py`
+**Implementierungsstand (Nov 2025):** `clients/python/themis/__init__.py`
+
+- Topologie-Discovery: Beim ersten Request wird die Shard-Liste über `/_admin/cluster/topology` geladen. Der Parameter `metadata_endpoint` akzeptiert entweder einen relativen Pfad (z. B. `"/_admin/cluster/topology"`) oder eine vollständige URL (z. B. `"http://etcd:2379/v2/keys/themis/topology"`).
+- Health & Diagnostics: `ThemisClient.health()` ruft `/health` auf; eignet sich für Warmup/Readiness-Probes.
+- Batch-Utilities: `batch_get`, `batch_put`, `batch_delete` kapseln parallele Workloads. Bei `transport=httpx.MockTransport(...)` (Tests) wird automatisch sequenziell gearbeitet.
+- Cursor-AQL: `query(..., use_cursor=True)` parst sowohl `AqlPaginatedResponse` als auch Legacy-Formate; liefert `QueryResult` mit `items`, `has_more`, `next_cursor`.
+- Serialisierung: `put`/`batch_put` übernehmen Python-Objekte und serialisieren als JSON-Blob (`GET`/`batch_get` geben JSON wieder als Dict zurück).
 
 ```python
-from typing import Optional, List, Dict, Any
-import httpx
-import json
+from themis import ThemisClient
 
-class ThemisClient:
-    """ThemisDB Python Client SDK"""
-    
-    def __init__(
-        self,
-        endpoints: List[str],
-        namespace: str = "default",
-        timeout: int = 30,
-        max_retries: int = 3
-    ):
-        """
-        Initialize ThemisDB client
-        
-        Args:
-            endpoints: List of ThemisDB endpoints (e.g., ["http://shard1:8080", "http://shard2:8080"])
-            namespace: URN namespace for multi-tenancy
-            timeout: Request timeout in seconds
-            max_retries: Number of retries on failure
-        """
-        self.endpoints = endpoints
-        self.namespace = namespace
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self._topology_cache = None
-        self._http_client = httpx.Client(timeout=timeout)
-    
-    def get(self, model: str, collection: str, uuid: str) -> Optional[Dict[str, Any]]:
-        """
-        Get entity by URN
-        
-        Args:
-            model: Data model (relational, graph, vector, timeseries)
-            collection: Collection/table name (e.g., "users", "nodes")
-            uuid: RFC 4122 UUID v4 (e.g., "550e8400-e29b-41d4-a716-446655440000")
-        
-        Returns:
-            Entity data or None if not found
-        """
-        urn = f"urn:themis:{model}:{self.namespace}:{collection}:{uuid}"
-        endpoint = self._resolve_endpoint(urn)
-        
-        response = self._http_client.get(f"{endpoint}/entity/{urn}")
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 404:
-            return None
-        else:
-            response.raise_for_status()
-    
-    def put(self, model: str, collection: str, uuid: str, data: Dict[str, Any]) -> bool:
-        """Put entity by URN"""
-        urn = f"urn:themis:{model}:{self.namespace}:{collection}:{uuid}"
-        endpoint = self._resolve_endpoint(urn)
-        
-        response = self._http_client.put(
-            f"{endpoint}/entity/{urn}",
-            json=data
-        )
-        return response.status_code == 200
-    
-    def delete(self, model: str, collection: str, uuid: str) -> bool:
-        """Delete entity by URN"""
-        urn = f"urn:themis:{model}:{self.namespace}:{collection}:{uuid}"
-        endpoint = self._resolve_endpoint(urn)
-        
-        response = self._http_client.delete(f"{endpoint}/entity/{urn}")
-        return response.status_code == 200
-    
-    def query(self, aql: str, **params) -> List[Dict[str, Any]]:
-        """
-        Execute AQL query
-        
-        Args:
-            aql: AQL query string
-            **params: Query parameters for parameterized queries
-        
-        Returns:
-            List of result entities
-        """
-        # Determine if query is single-shard or scatter-gather
-        if self._is_single_shard_query(aql):
-            endpoint = self._resolve_query_endpoint(aql)
-            return self._execute_query(endpoint, aql, params)
-        else:
-            # Scatter-gather across all shards
-            return self._scatter_gather_query(aql, params)
-    
-    def graph_traverse(
-        self,
-        start_node: str,
-        max_depth: int = 3,
-        edge_type: Optional[str] = None
-    ) -> List[str]:
-        """
-        Graph traversal (BFS)
-        
-        Args:
-            start_node: Starting node URN
-            max_depth: Maximum traversal depth
-            edge_type: Optional edge type filter
-        
-        Returns:
-            List of node URNs
-        """
-        endpoint = self._resolve_endpoint(start_node)
-        response = self._http_client.post(
-            f"{endpoint}/graph/traverse",
-            json={
-                "start": start_node,
-                "max_depth": max_depth,
-                "edge_type": edge_type
-            }
-        )
-        response.raise_for_status()
-        return response.json()["nodes"]
-    
-    def vector_search(
-        self,
-        embedding: List[float],
-        top_k: int = 10,
-        metadata_filter: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Vector similarity search
-        
-        Args:
-            embedding: Query embedding vector
-            top_k: Number of nearest neighbors
-            metadata_filter: Optional metadata filter
-        
-        Returns:
-            List of similar documents with scores
-        """
-        # Vector search is scatter-gather across all shards
-        results = []
-        for endpoint in self.endpoints:
-            response = self._http_client.post(
-                f"{endpoint}/vector/search",
-                json={
-                    "embedding": embedding,
-                    "k": top_k,
-                    "filter": metadata_filter
-                }
-            )
-            if response.status_code == 200:
-                results.extend(response.json()["results"])
-        
-        # Merge and re-rank results
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_k]
-    
-    def _resolve_endpoint(self, urn: str) -> str:
-        """Resolve URN to shard endpoint using consistent hashing"""
-        if self._topology_cache is None:
-            self._refresh_topology()
-        
-        # Simple hash-based routing (production would use consistent hashing)
-        hash_val = hash(urn) % len(self.endpoints)
-        return self.endpoints[hash_val]
-    
-    def _refresh_topology(self):
-        """Fetch topology from metadata store"""
-        # TODO: Query etcd for shard topology
-        self._topology_cache = {"shards": self.endpoints}
-    
-    def _scatter_gather_query(self, aql: str, params: Dict) -> List[Dict]:
-        """Execute query on all shards and merge results"""
-        all_results = []
-        for endpoint in self.endpoints:
-            results = self._execute_query(endpoint, aql, params)
-            all_results.extend(results)
-        return all_results
-    
-    def _execute_query(self, endpoint: str, aql: str, params: Dict) -> List[Dict]:
-        """Execute query on a single endpoint"""
-        response = self._http_client.post(
-            f"{endpoint}/query/aql",
-            json={"query": aql, "params": params}
-        )
-        response.raise_for_status()
-        return response.json()["results"]
-    
-    def _is_single_shard_query(self, aql: str) -> bool:
-        """Analyze if query can be routed to single shard"""
-        # Simple heuristic: if query has URN filter, it's single-shard
-        return "urn:themis:" in aql.lower()
+client = ThemisClient(
+  endpoints=["http://127.0.0.1:8765"],
+  namespace="default",
+  metadata_endpoint="/_admin/cluster/topology",  # optional: vollständige URL
+)
 
-# Example Usage
-if __name__ == "__main__":
-    import uuid
-    
-    client = ThemisClient(
-        endpoints=["http://shard1:8080", "http://shard2:8080"],
-        namespace="customer_a"
-    )
-    
-    # PUT (generate UUID)
-    user_uuid = str(uuid.uuid4())  # "550e8400-e29b-41d4-a716-446655440000"
-    client.put("relational", "users", user_uuid, {"name": "Alice", "age": 30})
-    
-    # GET
-    user = client.get("relational", "users", user_uuid)
-    print(user)  # {"name": "Alice", "age": 30}
-    
-    # Query (UUIDs in results)
-    results = client.query("FOR u IN users FILTER u.age > 25 RETURN u")
-    # Results contain _key field with UUID
-    
-    # Graph Traverse
-    node_uuid = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
-    friends = client.graph_traverse(
-        f"urn:themis:graph:social:nodes:{node_uuid}", 
-        max_depth=2
-    )
-    
-    # Vector Search (returns UUIDs)
-    similar = client.vector_search([0.1, 0.2, ...], top_k=5)
-    # Result: [{"uuid": "f47ac10b-...", "score": 0.95, ...}]
+# Health-Check (liefert status/version/uptime)
+print(client.health())
+
+# Einzellesen / Schreiben
+user = client.get("relational", "users", "550e8400-e29b-41d4-a716-446655440000")
+client.put("relational", "users", "550e8400-e29b-41d4-a716-446655440000", {"name": "Alice"})
+
+# Batch-Lesen (liefert Dict mit `found`, `missing`, `errors`)
+batch = client.batch_get("relational", "users", ["1", "2", "3"])
+
+# Cursor-basiertes Paging
+page = client.query("FOR u IN users RETURN u", use_cursor=True, batch_size=50)
+while page.has_more:
+  page = client.query("FOR u IN users RETURN u", use_cursor=True, cursor=page.next_cursor)
+
+client.close()
 ```
+
+**Tests:** `clients/python/tests/test_topology.py` deckt Topologie-Fetch, Fallbacks bei Ausfällen, Batch-Serien und Cursor-Pfade ab.
+
+**Nächste Schritte:** Packaging & Publish-Flow (`pyproject.toml` vorhanden), Quickstart-Guide für weitere Sprachen spiegeln, Integrationstests gegen `docker-compose` aufnehmen.
 
 ### 3.2 JavaScript SDK
 

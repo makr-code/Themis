@@ -22,6 +22,8 @@ using query::FunctionCallExpr;
 using query::BinaryOperator;
 using query::UnaryOpExpr;
 using query::UnaryOperator;
+using query::ArrayLiteralExpr;
+using query::ObjectConstructExpr;
 
 /**
  * Translates AQL AST to QueryEngine ConjunctiveQuery
@@ -157,6 +159,13 @@ private:
         const std::string& table,
         std::string& error
     );
+    
+    struct RewriteResult {
+        std::shared_ptr<Expression> expression;
+        bool supported = false;
+    };
+
+    static RewriteResult rewriteNegationsForPlanner(const std::shared_ptr<Expression>& expr);
     
     /**
      * Extract column name from field access expression

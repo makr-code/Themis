@@ -17,7 +17,7 @@ enum class TokenType {
     ASC, DESC, AND, OR, XOR, NOT,
     GRAPH, OUTBOUND, INBOUND, ANY,
     TYPE,
-    COLLECT, AGGREGATE,
+    COLLECT, AGGREGATE, HAVING,
     TRUE, FALSE, NULL_LITERAL,
     
     // Operators
@@ -213,8 +213,9 @@ private:
         if (lower == "inbound") return Token(TokenType::INBOUND, value, line, col);
         if (lower == "any") return Token(TokenType::ANY, value, line, col);
     if (lower == "type") return Token(TokenType::TYPE, value, line, col);
-        if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
-        if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
+    if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
+    if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
+    if (lower == "having") return Token(TokenType::HAVING, value, line, col);
         
         return Token(TokenType::IDENTIFIER, value, line, col);
     }
@@ -591,15 +592,26 @@ private:
 
         // Optional group variable(s): var = expr
         if (!match(TokenType::AGGREGATE)) {
-            if (!match(TokenType::IDENTIFIER)) {
-                throw std::runtime_error("Expected variable name after COLLECT");
+            while (true) {
+                if (!match(TokenType::IDENTIFIER)) {
+                    throw std::runtime_error("Expected variable name after COLLECT");
+                }
+                std::string var = current().value;
+                advance();
+                expect(TokenType::ASSIGN, "Expected '=' after group variable in COLLECT");
+                auto expr = parseExpression();
+                node->groups.emplace_back(var, expr);
+
+                if (match(TokenType::COMMA)) {
+                    advance();
+                    // Allow trailing comma before AGGREGATE for leniency
+                    if (match(TokenType::AGGREGATE)) {
+                        break;
+                    }
+                    continue;
+                }
+                break;
             }
-            std::string var = current().value;
-            advance();
-            expect(TokenType::ASSIGN, "Expected '=' after group variable in COLLECT");
-            auto expr = parseExpression();
-            node->groups.emplace_back(var, expr);
-            // MVP: allow only one group; additional groups via comma could be added later
         }
 
         // Optional AGGREGATE section
@@ -631,6 +643,11 @@ private:
                 CollectNode::Aggregation ag{outVar, funcName, arg};
                 node->aggregations.push_back(std::move(ag));
             }
+        }
+
+        if (match(TokenType::HAVING)) {
+            advance();
+            node->having = parseExpression();
         }
 
         return node;

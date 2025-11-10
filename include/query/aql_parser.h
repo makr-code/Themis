@@ -304,6 +304,7 @@ struct CollectNode {
         std::shared_ptr<Expression> argument;              // may be null (COUNT())
     };
     std::vector<Aggregation> aggregations;                 // optional
+    std::shared_ptr<Expression> having;                    // optional HAVING clause
 
     nlohmann::json toJSON() const {
         nlohmann::json j;
@@ -318,6 +319,9 @@ struct CollectNode {
             a.push_back({{"var", ag.varName}, {"func", ag.funcName}, {"arg", ag.argument ? ag.argument->toJSON() : nlohmann::json()}});
         }
         j["aggregations"] = a;
+        if (having) {
+            j["having"] = having->toJSON();
+        }
         return j;
     }
 };

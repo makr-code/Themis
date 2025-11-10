@@ -234,6 +234,10 @@ FILTER doc.age >= 30 AND NOT (doc.city == "Berlin")
 
 // NOT in komplexen Ausdrücken
 FILTER (doc.status == "active" OR doc.status == "pending") AND NOT doc.deleted
+
+// Planner rewrites einfache Vergleiche für Index-Pushdown
+FILTER NOT (doc.age < 30)                 // → doc.age >= 30
+FILTER NOT (doc.status == "inactive")    // → doc.status < "inactive" OR doc.status > "inactive"
 ```
 
 **Hinweise zu OR/NOT:**
@@ -241,10 +245,10 @@ FILTER (doc.status == "active" OR doc.status == "pending") AND NOT doc.deleted
   - Translator konvertiert OR-Ausdrücke in Disjunktionen
   - Mehrere FILTER-Klauseln mit OR werden via kartesisches Produkt zu DNF vereinigt
   - FULLTEXT kann in OR-Ausdrücken verwendet werden
-- **NOT:** Vollständig unterstützt über Runtime-Evaluierung
-  - NOT-Filter werden nicht in Index-Pushdown übersetzt (runtime Post-Filter)
-  - Bei NOT-only Filtern (ohne andere Prädikate) wird automatisch Full-Scan-Fallback aktiviert
-  - NOT kann mit AND/OR kombiniert werden
+- **NOT:** Vergleichsoperatoren werden via De-Morgan/Komplement-Regeln in Index-Pushdown übersetzt; komplexe Ausdrücke (Funktionen, Subqueries) fallen auf Runtime-Post-Filter zurück
+  - Beispiele: `NOT (x < v)` → `x >= v`, `NOT (x <= v)` → `x > v`, `NOT (x == v)` → `(x < v) OR (x > v)`
+  - Enthalten Filter ausschließlich nicht-pushdown-fähige NOT-Ausdrücke, wird weiterhin ein Full-Scan-Fallback aktiviert
+  - NOT kann mit AND/OR kombiniert werden und fügt sich in die DNF-Konvertierung ein
 - **Performance:** OR/NOT können in manchen Fällen Index-Nutzung einschränken; für optimale Performance strukturelle Prädikate mit OR/NOT kombinieren
 
 **IN-Operator:**
@@ -500,6 +504,14 @@ FOR order IN orders
   RETURN {status, total_count, total_amount, avg_amount, min_amount, max_amount}
 ```
 
+**Mehrere GROUP-BY Felder:**
+```aql
+FOR order IN orders
+  COLLECT city = order.city, status = order.status
+  AGGREGATE total = COUNT()
+  RETURN {city, status, total}
+```
+
 **COLLECT mit FILTER:**
 ```aql
 FOR user IN users
@@ -507,6 +519,15 @@ FOR user IN users
   COLLECT city = user.city
   AGGREGATE adult_count = COUNT()
   RETURN {city, adult_count}
+```
+
+**HAVING-Filter nach Aggregation:**
+```aql
+FOR user IN users
+  COLLECT city = user.city
+  AGGREGATE total = COUNT()
+  HAVING total >= 100
+  RETURN {city, total}
 ```
 
 **Unterst�tzte Aggregatfunktionen (MVP):**
@@ -528,9 +549,9 @@ FOR user IN users
 - `UNIQUE(expr)` - Distinct Values
 
 Hinweise (MVP):
-- Gruppierung erfolgt �ber exakte String-Matches der Group-Keys
-- Mehrere GROUP BY-Felder via Tuple-Keys geplant
-- HAVING-Clause (Post-Aggregation-Filter) in Entwicklung
+- Gruppierung erfolgt ueber exakte JSON-Werte der Group-Keys (String, Zahl, Bool)
+- Mehrere GROUP BY-Felder werden gemeinsam gehasht und sind jetzt unterstuetzt
+- HAVING-Clause (Post-Aggregation-Filter) akzeptiert Gruppen- und Aggregations-Variablen
 
 ---
 
