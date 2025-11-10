@@ -6,7 +6,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ninja-build \
-    cmake \
     git \
     python3 \
     curl \
@@ -26,6 +25,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     perl \
     nasm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install modern CMake (Boost 1.89+ requires >=3.25; system is 3.22 on Ubuntu 22.04)
+ARG CMAKE_VERSION=3.27.9
+RUN set -eux; \
+    wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh; \
+    sh cmake-${CMAKE_VERSION}-linux-x86_64.sh --prefix=/usr/local --skip-license; \
+    rm cmake-${CMAKE_VERSION}-linux-x86_64.sh; \
+    cmake --version
 
 # Install vcpkg
 WORKDIR /opt
