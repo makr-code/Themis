@@ -224,21 +224,44 @@ set(THEMIS_CORE_SOURCES
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})
 
-target_link_libraries(themis_core
-    PUBLIC
-        RocksDB::rocksdb
-        simdjson::simdjson
-        TBB::tbb
-        Arrow::arrow_shared
-        fmt::fmt
-        spdlog::spdlog
-        Boost::system
-        nlohmann_json::nlohmann_json
-        CURL::libcurl
-        yaml-cpp::yaml-cpp
+# Collect link targets and only link those that exist to avoid ALIAS/missing-target errors
+set(_themis_core_link_targets "")
+foreach(dep IN ITEMS
+    RocksDB::rocksdb
+    simdjson::simdjson
+    TBB::tbb
+    Arrow::arrow_shared
+    fmt::fmt
+    spdlog::spdlog
+    Boost::system
+    nlohmann_json::nlohmann_json
+    CURL::libcurl
+    yaml-cpp::yaml-cpp
     OpenSSL::SSL
     OpenSSL::Crypto
 )
+    if(TARGET ${dep})
+        list(APPEND _themis_core_link_targets ${dep})
+    else()
+        # Try common alternate names for vcpkg / system packages
+        if("${dep}" STREQUAL "Arrow::arrow_shared" AND TARGET Arrow::arrow)
+            list(APPEND _themis_core_link_targets Arrow::arrow)
+        elseif("${dep}" STREQUAL "RocksDB::rocksdb" AND TARGET RocksDB)
+            list(APPEND _themis_core_link_targets RocksDB)
+        elseif("${dep}" STREQUAL "CURL::libcurl" AND TARGET CURL::curl)
+            list(APPEND _themis_core_link_targets CURL::curl)
+        endif()
+        if(NOT TARGET ${dep})
+            message(WARNING "Optional/expected CMake target '${dep}' not found; skipping linking to it.")
+        endif()
+    endif()
+endforeach()
+
+if(_themis_core_link_targets)
+    target_link_libraries(themis_core PUBLIC ${_themis_core_link_targets})
+else()
+    message(FATAL_ERROR "No linkable targets found for themis_core - please check dependencies and vcpkg integration.")
+endif()
 
 # Link ZSTD if available and define compile flag
 if(DEFINED THEMIS_ZSTD_TARGET)
@@ -285,7 +308,7 @@ if(THEMIS_ENABLE_TRACING)
                             "Ensure opentelemetry-cpp was found successfully with otlp-http feature.")
     endif()
     
-    target_link_libraries(themis_core PUBLIC
+target_link_libraries(themis_core PUBLIC
         opentelemetry-cpp::trace
         opentelemetry-cpp::otlp_http_exporter
     )
@@ -413,7 +436,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_group_dek.cpp
     )
     
-    target_link_libraries(themis_tests
+target_link_libraries(themis_tests
         PRIVATE
             themis_core
             GTest::gtest
@@ -491,7 +514,7 @@ if(THEMIS_BUILD_BENCHMARKS)
             benchmark::benchmark
             benchmark::benchmark_main
     )
-
+    
     # Encryption performance benchmark (standalone)
     add_executable(bench_encryption
         benchmarks/bench_encryption.cpp
