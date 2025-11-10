@@ -78,6 +78,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Upload vcpkg logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-build-logs
+          path: |
+            /opt/vcpkg/buildtrees/**/*.log
+            /opt/vcpkg/buildtrees/**/config-*-linux-*-CMakeCache.txt.log
+
   manifest:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
