@@ -32,6 +32,9 @@ RUN git clone https://github.com/microsoft/vcpkg.git vcpkg \
 ENV VCPKG_ROOT=/opt/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV VCPKG_FEATURE_FLAGS=manifests,registries
+# Reduce noise and allow vcpkg to size parallelism automatically
+ENV VCPKG_DISABLE_METRICS=1
+ENV VCPKG_MAX_CONCURRENCY=0
 ENV PATH="${VCPKG_ROOT}:${PATH}"
 
 # Ensure compilers are discoverable by CMake
@@ -54,6 +57,17 @@ ENV VCPKG_TRIPLET=${VCPKG_TRIPLET}
 WORKDIR /src
 COPY . .
 
+# Pre-resolve and build all dependencies in manifest mode so that any vcpkg
+# post-build validation errors are surfaced clearly before configuring our CMake project
+RUN set -eux; \
+    cd /src; \
+    vcpkg install --triplet=${VCPKG_TRIPLET} --clean-after-build || ( \
+        echo "===== vcpkg install failed; dumping vcpkg logs ====="; \
+        ls -la /opt/vcpkg/buildtrees || true; \
+        # Show the last logs of each port (configure/build/install)
+        find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' -exec sh -c 'echo "=== {} ==="; tail -n 200 "{}"' \; 2>/dev/null || true; \
+        false )
+
 RUN set -eux; \
         cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -62,10 +76,16 @@ RUN set -eux; \
             -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DCMAKE_C_COMPILER=/usr/bin/gcc \
             -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+            -DTHEMIS_BUILD_TESTS=OFF \
+            -DTHEMIS_BUILD_BENCHMARKS=OFF \
         && cmake --build build -j || ( \
                 echo "===== Build failed; dumping vcpkg logs ====="; \
                 ls -la /opt/vcpkg/buildtrees || true; \
-                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo "=== {} ==="; tail -100 {}' \; 2>/dev/null || true; \
+                # Dump most recent vcpkg port logs (configure/build/install)
+                find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' -exec sh -c 'echo "=== {} ==="; tail -n 200 "{}"' \; 2>/dev/null || true; \
+                # Also dump CMake configure error/output logs if present
+                if [ -f build/CMakeFiles/CMakeError.log ]; then echo "=== build/CMakeFiles/CMakeError.log ==="; tail -n 200 build/CMakeFiles/CMakeError.log; fi; \
+                if [ -f build/CMakeFiles/CMakeOutput.log ]; then echo "=== build/CMakeFiles/CMakeOutput.log ==="; tail -n 200 build/CMakeFiles/CMakeOutput.log; fi; \
                 false )
 
 # Runtime image

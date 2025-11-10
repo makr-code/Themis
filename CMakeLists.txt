@@ -227,7 +227,7 @@ target_link_libraries(themis_core
         RocksDB::rocksdb
         simdjson::simdjson
         TBB::tbb
-        Arrow::arrow_shared
+        $<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>
         fmt::fmt
         spdlog::spdlog
         Boost::system
