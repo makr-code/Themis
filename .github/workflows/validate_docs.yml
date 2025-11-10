@@ -1,118 +1,107 @@
-name: Validate docs links & build (strict)
+steps:
+- name: Checkout
+  uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
 
-on:
-  push:
-    branches: [ main, master, develop ]
-  pull_request:
+- name: Setup Python
+  uses: actions/setup-python@v4
+  with:
+    python-version: "3.11"
 
-jobs:
-  validate-docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+- name: Install dependencies
+  run: |
+    python -m pip install --upgrade pip
+    # mkdocs-print-site is not available on PyPI; remove it to avoid install failures
+    pip install mkdocs mkdocs-material
 
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+- name: Validate markdown anchors (fast, explicit check)
+  run: |
+    python3 - <<'PY'
+    import re, sys, os, pathlib, urllib.parse
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
+    root = pathlib.Path('.').resolve()
+    docs_dirs = ['docs', 'wiki_out']
+    md_files = []
+    for d in docs_dirs:
+        p = root / d
+        if p.exists():
+            md_files += [str(x) for x in p.rglob('*.md')]
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install mkdocs mkdocs-material mkdocs-print-site
+    link_re = re.compile(r'\[.*?\]\(([^)#\s\)]+)#([^\)\s]+)\)')
+    missing = []
 
-    - name: Validate markdown anchors (fast, explicit check)
-      run: |
-        python3 - <<'PY'
-        import re, sys, os, pathlib, urllib.parse
+    def slugify(s):
+        s = s.strip().lower()
+        s = re.sub(r'[^\w\s-]', '', s)
+        s = re.sub(r'[\s]+', '-', s)
+        s = re.sub(r'-+', '-', s)
+        return s
 
-        root = pathlib.Path('.').resolve()
-        docs_dirs = ['docs', 'wiki_out']
-        md_files = []
-        for d in docs_dirs:
-            p = root / d
-            if p.exists():
-                md_files += [str(x) for x in p.rglob('*.md')]
+    def file_contains_anchor(target_path, anchor):
+        text = target_path.read_text(encoding='utf-8', errors='ignore')
+        # explicit html anchor
+        if re.search(r'<a\s+(?:id|name)\s*=\s*["\']{}["\']'.format(re.escape(anchor)), text):
+            return True
+        # header slug check
+        for line in text.splitlines():
+            m = re.match(r'^\s{0,3}(#{1,6})\s*(.+)$', line)
+            if m:
+                heading = m.group(2).strip()
+                # strip trailing markdown anchors like {#id}
+                heading = re.sub(r'\s*\{\#([^\}]+)\}\s*$', '', heading)
+                if slugify(heading) == anchor.lower():
+                    return True
+                # also allow direct substring match (helps with localized titles)
+                if anchor.lower() in heading.lower():
+                    return True
+        return False
 
-        link_re = re.compile(r'\[.*?\]\(([^)#\s\)]+)#([^\)\s]+)\)')
-        missing = []
+    for src in md_files:
+        text = pathlib.Path(src).read_text(encoding='utf-8', errors='ignore')
+        for m in link_re.finditer(text):
+            target = m.group(1)
+            anchor = urllib.parse.unquote(m.group(2))
+            # resolve relative target path
+            src_dir = pathlib.Path(src).parent
+            # if target is absolute (starts with /) or just filename
+            # normalize common cases: ./indexes.md or indexes.md or ../other.md
+            target_path = (src_dir / target).resolve()
+            # if target has no extension and is a folder, append index.md
+            if not target_path.suffix:
+                candidate = target_path.with_suffix('.md')
+                if candidate.exists():
+                    target_path = candidate
+            if not target_path.exists():
+                # try looking into docs/ or wiki_out/ root
+                found = None
+                for dd in docs_dirs:
+                    cand = (root / dd / target)
+                    if cand.exists():
+                        found = cand
+                        break
+                    cand2 = (root / dd / (target + '.md'))
+                    if cand2.exists():
+                        found = cand2
+                        break
+                if found:
+                    target_path = found
+            if not target_path.exists():
+                missing.append(f"Missing target file: {src} -> {target} (anchor #{anchor})")
+                continue
+            if not file_contains_anchor(target_path, anchor):
+                missing.append(f"Missing anchor: {src} -> {target} (#{anchor}) -> checked {target_path}")
 
-        def slugify(s):
-            s = s.strip().lower()
-            s = re.sub(r'[^\w\s-]', '', s)
-            s = re.sub(r'[\s]+', '-', s)
-            s = re.sub(r'-+', '-', s)
-            return s
+    if missing:
+        print("ERROR: Found missing anchors/targets:")
+        for i in missing:
+            print(" -", i)
+        print("\nHint: Add an explicit HTML anchor in the target file, e.g. <a id=\"graph-index\"></a> before the heading.")
+        sys.exit(2)
 
-        def file_contains_anchor(target_path, anchor):
-            text = target_path.read_text(encoding='utf-8', errors='ignore')
-            # explicit html anchor
-            if re.search(r'<a\s+(?:id|name)\s*=\s*["\']{}["\']'.format(re.escape(anchor)), text):
-                return True
-            # header slug check
-            for line in text.splitlines():
-                m = re.match(r'^\s{0,3}(#{1,6})\s*(.+)$', line)
-                if m:
-                    heading = m.group(2).strip()
-                    # strip trailing markdown anchors like {#id}
-                    heading = re.sub(r'\s*\{\#([^\}]+)\}\s*$', '', heading)
-                    if slugify(heading) == anchor.lower():
-                        return True
-                    # also allow direct substring match (helps with localized titles)
-                    if anchor.lower() in heading.lower():
-                        return True
-            return False
+    print("OK: All checked anchors/targets present (basic validation).")
+    PY
 
-        for src in md_files:
-            text = pathlib.Path(src).read_text(encoding='utf-8', errors='ignore')
-            for m in link_re.finditer(text):
-                target = m.group(1)
-                anchor = urllib.parse.unquote(m.group(2))
-                # resolve relative target path
-                src_dir = pathlib.Path(src).parent
-                # if target is absolute (starts with /) or just filename
-                # normalize common cases: ./indexes.md or indexes.md or ../other.md
-                target_path = (src_dir / target).resolve()
-                # if target has no extension and is a folder, append index.md
-                if not target_path.suffix:
-                    candidate = target_path.with_suffix('.md')
-                    if candidate.exists():
-                        target_path = candidate
-                if not target_path.exists():
-                    # try looking into docs/ or wiki_out/ root
-                    found = None
-                    for dd in docs_dirs:
-                        cand = (root / dd / target)
-                        if cand.exists():
-                            found = cand
-                            break
-                        cand2 = (root / dd / (target + '.md'))
-                        if cand2.exists():
-                            found = cand2
-                            break
-                    if found:
-                        target_path = found
-                if not target_path.exists():
-                    missing.append(f"Missing target file: {src} -> {target} (anchor #{anchor})")
-                    continue
-                if not file_contains_anchor(target_path, anchor):
-                    missing.append(f"Missing anchor: {src} -> {target} (#{anchor}) -> checked {target_path}")
-
-        if missing:
-            print("ERROR: Found missing anchors/targets:")
-            for i in missing:
-                print(" -", i)
-            print("\nHint: Add an explicit HTML anchor in the target file, e.g. <a id=\"graph-index\"></a> before the heading.")
-            sys.exit(2)
-
-        print("OK: All checked anchors/targets present (basic validation).")
-        PY
-
-    - name: Build docs with mkdocs --strict
-      run: |
-        mkdocs build --strict
+- name: Build docs with mkdocs --strict
+  run: |
+    mkdocs build --strict
