@@ -31,6 +31,8 @@ RUN git clone https://github.com/microsoft/vcpkg.git vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 ENV VCPKG_ROOT=/opt/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
+ENV VCPKG_FEATURE_FLAGS=manifests,registries
+ENV VCPKG_MAX_CONCURRENCY=0
 ENV PATH="${VCPKG_ROOT}:${PATH}"
 
 # Ensure compilers are discoverable by CMake
@@ -43,30 +45,50 @@ RUN set -eux; \
     git fetch --all --tags || true; \
     git reset --hard origin/master || true; \
     ./vcpkg update || true; \
-    # remove stale or partial build state that often causes parallel configure failures
-    rm -rf buildtrees packages downloads || true
+    # remove stale or partial build state that often causes parallel configure failures (keep downloads for caching)
+    rm -rf buildtrees packages || true
 
 # Allow overriding target triplet at build time too (kept for later stages)
 ENV VCPKG_TRIPLET=${VCPKG_TRIPLET}
+
+# Pre-install (manifest) dependencies explicitly for clearer diagnostics before CMake configure
+RUN set -eux; \
+        cd /src || true; \
+        mkdir -p /work; \
+        cp /opt/vcpkg/vcpkg.json /work/ 2>/dev/null || true; \
+        # Use manifest from project root once copied
+        :
 
 # Build
 WORKDIR /src
 COPY . .
 RUN set -eux; \
-    cmake -S . -B build -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
-      -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} \
-      -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
-      -DCMAKE_C_COMPILER=/usr/bin/gcc \
-      -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && cmake --build build -j \
-    || ( \
-        echo "===== CMake configure/build failed; dumping vcpkg logs ====="; \
-        ls -la /opt/vcpkg/buildtrees || true; \
-        tail -n +1 /opt/vcpkg/buildtrees/boost-headers/*.log || true; \
-        tail -n +1 /opt/vcpkg/buildtrees/*/config-*-linux-*-CMakeCache.txt.log || true; \
-        false )
+        if [ -f vcpkg.json ]; then \
+            /opt/vcpkg/vcpkg install --triplet "${VCPKG_TRIPLET}" --clean-after-build || ( \
+                echo "===== vcpkg install failed; dumping logs ====="; \
+                ls -la /opt/vcpkg/buildtrees || true; \
+                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo --- {} ---; tail -n +1 {}' \; || true; \
+                false ); \
+        else \
+            echo "No vcpkg.json manifest found; skipping explicit install"; \
+        fi
+RUN set -eux; \
+        cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} \
+            -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
+            -DCMAKE_C_COMPILER=/usr/bin/gcc \
+            -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+        || ( \
+                echo "===== CMake configure failed; dumping vcpkg logs ====="; \
+                ls -la /opt/vcpkg/buildtrees || true; \
+                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo --- {} ---; tail -n +1 {}' \; || true; \
+                false ); \
+        cmake --build build -j || ( \
+                echo "===== CMake build failed; dumping vcpkg logs ====="; \
+                find /opt/vcpkg/buildtrees -maxdepth 2 -name '*.log' -exec sh -c 'echo --- {} ---; tail -n +1 {}' \; || true; \
+                false )
 
 # Runtime image
 FROM ubuntu:22.04 AS runtime

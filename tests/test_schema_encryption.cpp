@@ -177,9 +177,9 @@ TEST_F(SchemaEncryptionTest, GetSchema_AfterPut_ReturnsSavedSchema) {
 
 TEST_F(SchemaEncryptionTest, QueryAql_WithEncryptedFields_AutoDecrypts) {
     // Create secondary index on name field
-    json index_body = {{"table", "users"}, {"field", "name"}};
-    auto index_res = http_request(http::verb::post, "127.0.0.1", 18200, "/index/secondary", index_body, admin_headers_);
-    ASSERT_TRUE(index_res.result() == http::status::ok || index_res.result() == http::status::created);
+    json index_body = {{"table", "users"}, {"column", "name"}};
+    auto index_res = http_request(http::verb::post, "127.0.0.1", 18200, "/index/create", index_body, admin_headers_);
+    ASSERT_TRUE(index_res.result() == http::status::ok || index_res.result() == http::status::created) << "Index creation failed: " << index_res.body();
     
     json schema = {{"collections", {{"users", {{"encryption", {{"enabled", true}, {"context_type", "user"}, {"fields", json::array({"email", "ssn"})}}}}}}}};
     auto schema_res = http_request(http::verb::put, "127.0.0.1", 18200, "/config/encryption-schema", schema, admin_headers_);
