@@ -71,12 +71,12 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             VCPKG_TRIPLET=${{ matrix.triplet }}
-            # Pin vcpkg to the same commit used elsewhere in CI for reproducibility
             VCPKG_COMMIT=beea85fdd8bf6b716acdac191cde9bfc7c72b73b
+            VCPKG_KEEP_BUILDTREES=1
+            VCPKG_LOG_LEVEL=debug
           tags: ${{ env.TAGS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          progress: plain
 
   manifest:
     if: github.ref == 'refs/heads/main'
