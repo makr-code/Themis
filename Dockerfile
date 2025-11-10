@@ -31,6 +31,8 @@ ARG CMAKE_VERSION=3.27.9
 RUN set -eux; \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh; \
     sh cmake-${CMAKE_VERSION}-linux-x86_64.sh --prefix=/usr/local --skip-license; \
+    # Ensure cmake binaries are on PATH for subsequent RUN steps
+    cp -a /usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin/* /usr/local/bin/; \
     rm cmake-${CMAKE_VERSION}-linux-x86_64.sh; \
     cmake --version
 
