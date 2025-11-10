@@ -2,6 +2,7 @@
 
 FROM ubuntu:22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ninja-build \
@@ -84,16 +85,28 @@ RUN set -eux; \
             -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
             -DTHEMIS_BUILD_TESTS=OFF \
             -DTHEMIS_BUILD_BENCHMARKS=OFF \
-        && cmake --build build -j || ( \
-                echo "===== Build failed; dumping vcpkg logs ====="; \
-                ls -la /opt/vcpkg/buildtrees || true; \
-                # Dump most recent vcpkg port logs (configure/build/install)
-                find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
-                    -exec sh -c 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' sh {} + 2>/dev/null || true; \
-                # Also dump CMake configure error/output logs if present
-                if [ -f build/CMakeFiles/CMakeError.log ]; then echo "=== build/CMakeFiles/CMakeError.log ==="; tail -n 200 build/CMakeFiles/CMakeError.log; fi; \
-                if [ -f build/CMakeFiles/CMakeOutput.log ]; then echo "=== build/CMakeFiles/CMakeOutput.log ==="; tail -n 200 build/CMakeFiles/CMakeOutput.log; fi; \
-                false )
+        2>&1 | tee /tmp/cmake-config.log; \
+        cmake_config_status=${PIPESTATUS[0]}; \
+        if [ $cmake_config_status -ne 0 ]; then \
+            echo "===== CMake configure failed; dumping logs ====="; \
+            tail -n 400 /tmp/cmake-config.log || true; \
+            ls -la /opt/vcpkg/buildtrees || true; \
+            find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
+                -exec bash -lc 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' bash {} + 2>/dev/null || true; \
+            if [ -f build/CMakeFiles/CMakeError.log ]; then echo "=== build/CMakeFiles/CMakeError.log ==="; tail -n 400 build/CMakeFiles/CMakeError.log; fi; \
+            if [ -f build/CMakeFiles/CMakeOutput.log ]; then echo "=== build/CMakeFiles/CMakeOutput.log ==="; tail -n 200 build/CMakeFiles/CMakeOutput.log; fi; \
+            false; \
+        fi; \
+        cmake --build build -j 2>&1 | tee /tmp/cmake-build.log; \
+        cmake_build_status=${PIPESTATUS[0]}; \
+        if [ $cmake_build_status -ne 0 ]; then \
+            echo "===== CMake build failed; dumping logs ====="; \
+            tail -n 400 /tmp/cmake-build.log || true; \
+            ls -la /opt/vcpkg/buildtrees || true; \
+            find /opt/vcpkg/buildtrees -maxdepth 2 -type f -name '*.log' \
+                -exec bash -lc 'for f in "$@"; do echo "=== $f ==="; tail -n 200 "$f"; done' bash {} + 2>/dev/null || true; \
+            false; \
+        fi
 
 # Runtime image
 FROM ubuntu:22.04 AS runtime
