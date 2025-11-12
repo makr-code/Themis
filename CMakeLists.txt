@@ -225,6 +225,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
     src/security/pki_key_provider.cpp
+    src/security/cms_signing.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
     # Geo scaffolding (headers + stubs; safe no-ops until used)
@@ -420,6 +421,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_retention_api.cpp
         tests/test_policy_yaml.cpp
         tests/test_pki_client.cpp
+    tests/test_cms_signing.cpp
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
         tests/test_http_pii_lazy_init.cpp
