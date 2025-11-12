@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "security/signing.h"
+#include "security/signing_provider.h"
 #include "security/mock_key_provider.h"
 #include <openssl/pem.h>
 #include <openssl/x509.h>
@@ -7,7 +8,7 @@
 using namespace themis;
 
 // TestKeyProvider: returns PEM-encoded private key and cert for a given key_id
-class TestKeyProvider : public MockKeyProvider {
+class TestKeyProvider : public MockKeyProvider, public SigningProvider {
 public:
     TestKeyProvider() = default;
 
@@ -25,6 +26,26 @@ public:
         }
         if (priv_.count(key_id)) return priv_[key_id];
         return MockKeyProvider::getKey(key_id); // fallback
+    }
+
+    // Implement SigningProvider::sign by performing CMS signing locally using stored PEM
+    SigningResult sign(const std::string& key_id, const std::vector<uint8_t>& data) override {
+        // Expect key_id to be base id
+        std::string base = key_id;
+        if (!priv_.count(base)) throw KeyNotFoundException(key_id, 0);
+        auto& priv = priv_[base];
+        auto& cert = cert_[base];
+
+        BIO* pbio = BIO_new_mem_buf(priv.data(), static_cast<int>(priv.size()));
+        EVP_PKEY* pkey = PEM_read_bio_PrivateKey(pbio, nullptr, nullptr, nullptr);
+        BIO_free(pbio);
+
+        BIO* cbio = BIO_new_mem_buf(cert.data(), static_cast<int>(cert.size()));
+        X509* x = PEM_read_bio_X509(cbio, nullptr, nullptr, nullptr);
+        BIO_free(cbio);
+
+        CMSSigningService cms(std::shared_ptr<X509>(x, X509_free), std::shared_ptr<EVP_PKEY>(pkey, EVP_PKEY_free));
+        return cms.sign(data, key_id);
     }
 
 private:
