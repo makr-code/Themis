@@ -76,3 +76,11 @@ coverage/
 // Profiling
 *.prof
 perf.data*
+
+# Rust / Cargo build artifacts
+clients/rust/target/
+target/
+**/target/
+
+# Cargo lock / metadata (optional)
+**/Cargo.lock
