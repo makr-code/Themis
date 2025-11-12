@@ -71,6 +71,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <sstream>
+#include <iomanip>
 #include <tuple>
 #include <regex>
 #include <queue>
@@ -1168,6 +1169,91 @@ http::response<http::string_body> HttpServer::handleReportsCompliance(
         }
         auto result = reports_api_->generateComplianceReport(report_type);
         return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Metrics exporter (Prometheus text exposition)
+// -----------------------------------------------------------------------------
+http::response<http::string_body> HttpServer::handleMetrics(const http::request<http::string_body>& req) {
+    try {
+        std::ostringstream out;
+        out << "# HELP themis_content_blob_compressed_bytes_total Total bytes stored compressed for content blobs\n";
+        out << "# TYPE themis_content_blob_compressed_bytes_total counter\n";
+        out << "# HELP themis_content_blob_uncompressed_bytes_total Total uncompressed/original bytes observed for content blob uploads\n";
+        out << "# TYPE themis_content_blob_uncompressed_bytes_total counter\n";
+        out << "# HELP themis_content_blob_compression_skipped_total Number of uploads skipped for compression (by MIME prefix)\n";
+        out << "# TYPE themis_content_blob_compression_skipped_total counter\n";
+        out << "# HELP themis_content_blob_compression_ratio Histogram of compression ratios (original_size / compressed_size) per upload\n";
+        out << "# TYPE themis_content_blob_compression_ratio histogram\n";
+
+        // Content metrics (if available)
+        if (content_manager_) {
+            const auto& m = content_manager_->getMetrics();
+            uint64_t comp_bytes = m.compressed_bytes_total.load(std::memory_order_relaxed);
+            uint64_t uncomp_bytes = m.uncompressed_bytes_total.load(std::memory_order_relaxed);
+            uint64_t skipped = m.compression_skipped_total.load(std::memory_order_relaxed);
+            out << "themis_content_blob_compressed_bytes_total " << comp_bytes << "\n";
+            out << "themis_content_blob_uncompressed_bytes_total " << uncomp_bytes << "\n";
+            out << "themis_content_blob_compression_skipped_total " << skipped << "\n";
+
+            // Skipped by known categories
+            uint64_t skipped_img = m.compression_skipped_image_total.load(std::memory_order_relaxed);
+            uint64_t skipped_vid = m.compression_skipped_video_total.load(std::memory_order_relaxed);
+            uint64_t skipped_zip = m.compression_skipped_zip_total.load(std::memory_order_relaxed);
+            out << "themis_content_blob_compression_skipped_total{mime_prefix=\"image/\"} " << skipped_img << "\n";
+            out << "themis_content_blob_compression_skipped_total{mime_prefix=\"video/\"} " << skipped_vid << "\n";
+            out << "themis_content_blob_compression_skipped_total{mime_prefix=\"application/zip\"} " << skipped_zip << "\n";
+
+            // Build cumulative buckets from per-bucket counts
+            std::vector<std::pair<std::string, uint64_t>> buckets = {
+                {"1", m.comp_ratio_le_1.load(std::memory_order_relaxed)},
+                {"1.5", m.comp_ratio_le_1_5.load(std::memory_order_relaxed)},
+                {"2", m.comp_ratio_le_2.load(std::memory_order_relaxed)},
+                {"3", m.comp_ratio_le_3.load(std::memory_order_relaxed)},
+                {"5", m.comp_ratio_le_5.load(std::memory_order_relaxed)},
+                {"10", m.comp_ratio_le_10.load(std::memory_order_relaxed)},
+                {"100", m.comp_ratio_le_100.load(std::memory_order_relaxed)},
+                {"+Inf", m.comp_ratio_le_inf.load(std::memory_order_relaxed)}
+            };
+            // Convert per-bucket counts to cumulative counts while preserving order
+            uint64_t running = 0;
+            for (size_t i = 0; i < buckets.size(); ++i) {
+                running += buckets[i].second;
+                out << "themis_content_blob_compression_ratio_bucket{le=\"" << buckets[i].first << "\"} " << running << "\n";
+            }
+            // sum and count
+            uint64_t cnt = m.comp_ratio_count.load(std::memory_order_relaxed);
+            double sum = static_cast<double>(m.comp_ratio_sum_milli.load(std::memory_order_relaxed)) / 1000.0;
+            out << "themis_content_blob_compression_ratio_sum " << std::fixed << std::setprecision(3) << sum << "\n";
+            out << "themis_content_blob_compression_ratio_count " << cnt << "\n";
+        } else {
+            // No content manager configured: emit zeros
+            out << "themis_content_blob_compressed_bytes_total 0\n";
+            out << "themis_content_blob_uncompressed_bytes_total 0\n";
+            out << "themis_content_blob_compression_skipped_total 0\n";
+            out << "themis_content_blob_compression_skipped_total{mime_prefix=\"image/\"} 0\n";
+            out << "themis_content_blob_compression_skipped_total{mime_prefix=\"video/\"} 0\n";
+            out << "themis_content_blob_compression_skipped_total{mime_prefix=\"application/zip\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"1\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"1.5\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"2\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"3\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"5\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"10\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"100\"} 0\n";
+            out << "themis_content_blob_compression_ratio_bucket{le=\"+Inf\"} 0\n";
+            out << "themis_content_blob_compression_ratio_sum 0\n";
+            out << "themis_content_blob_compression_ratio_count 0\n";
+        }
+
+        http::response<http::string_body> res{http::status::ok, req.version()};
+        res.set(http::field::content_type, "text/plain; version=0.0.4; charset=utf-8");
+        res.body() = out.str();
+        res.prepare_payload();
+        return res;
     } catch (const std::exception& e) {
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }

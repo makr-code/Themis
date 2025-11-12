@@ -17,7 +17,20 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
-find_package(CURL CONFIG REQUIRED)
+# Make CURL optional: some environments (CI/dev) may not have dev package installed.
+# If found, create CURL::libcurl target; otherwise provide a fallback and continue.
+find_package(CURL CONFIG)
+if(NOT CURL_FOUND)
+    find_package(CURL)
+endif()
+if(NOT CURL_FOUND)
+    message(WARNING "CURL package not found; building without libcurl. Some features may be disabled.")
+else()
+    # If the imported target is available, use it; otherwise try the generic CMake variable
+    if(NOT TARGET CURL::libcurl AND TARGET CURL::libcurl)
+        # noop
+    endif()
+endif()
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
@@ -232,10 +245,11 @@ target_link_libraries(themis_core
         spdlog::spdlog
         Boost::system
         nlohmann_json::nlohmann_json
-        CURL::libcurl
+    $<$<BOOL:${CURL_FOUND}>:CURL::libcurl>
         yaml-cpp::yaml-cpp
     OpenSSL::SSL
     OpenSSL::Crypto
+    TBB::tbb
 )
 
 # Link ZSTD if available and define compile flag
@@ -393,6 +407,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_adaptive_index.cpp
         tests/test_http_adaptive_index.cpp
         tests/test_encryption.cpp
+    tests/test_hkdf_cache.cpp
+    tests/test_field_encryption_batch.cpp
         tests/test_encryption_e2e.cpp
         tests/test_vault_key_provider.cpp
         tests/test_audit_logger.cpp

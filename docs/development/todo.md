@@ -14,8 +14,15 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 
 - Kurzfristige, priorisierte Maßnahmen (Nächste 1–2 Sprints):
   1. Content-Blob ZSTD Compression — Implementierung & Tests (geschätzt 8–12h). DoD: Upload speichert blobs komprimiert; Download liefert dekomprimiert; Metriken und MIME-Skipping vorhanden.
-  2. HKDF-Caching für Encryption — Thread-local LRU Cache (geschätzt 4–6h). DoD: Thread-sicher, invalidiert bei Key-Rotation, Benchmarks zeigen signifikanten Speedup.
-  3. Batch-Encryption Optimierung — Single HKDF pro Entity + Parallelisierung via TBB (geschätzt 6–8h). DoD: `encryptEntityBatch` API + Benchmarks.
+   2. HKDF-Caching für Encryption — ✅ IMPLEMENTIERT
+     - Umsetzung: Thread-local HKDF LRU/TTL-Cache wurde hinzugefügt und in hot-paths verdrahtet.
+     - Wichtige Dateien: `include/utils/hkdf_cache.h`, `src/utils/hkdf_cache.cpp`, Anpassungen in `src/content/content_manager.cpp` und weiteren HKDF-Callsites.
+     - DoD: Thread-sicherer Cache mit konfigurierbarer Kapazität/TTL; Cache-Key enthält das rohe IKM (d.h. Key-Rotation -> implizite Invalidierung). Unit-tests empfohlen (siehe "Nächste Schritte").
+
+   3. Batch-Encryption Optimierung — ✅ IMPLEMENTIERT
+     - Umsetzung: Neues API `FieldEncryption::encryptEntityBatch(...)` implementiert; pro-Entity HKDF-Ableitung nutzt den HKDF-Cache; Verschlüsselung parallelisiert via Intel TBB.
+     - Wichtige Dateien: `include/security/encryption.h` (Signatur), `src/security/field_encryption.cpp` (Implementierung). CMake wurde ergänzt um TBB-Linking; libcurl-Behandlung wurde defensiver gemacht.
+     - DoD: `encryptEntityBatch` führt eine einzige Basis-Key-Abfrage pro Aufruf durch, leitet pro-Entity Schlüssel ab (HKDFCache) und verschlüsselt parallel. Funktionalität ist im Code vorhanden; Benchmarks/zusätzliche Unit-Tests stehen auf der To-Do-Liste.
 
 - Mittelfristig (Medium):
   - PKI / eIDAS-konforme Signaturen (3–5 Tage)

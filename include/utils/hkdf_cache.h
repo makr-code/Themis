@@ -1,3 +1,41 @@
+// Thread-local HKDF LRU cache
+#pragma once
+
+#include <string>
+#include <vector>
+#include <cstdint>
+#include <memory>
+#include <functional>
+
+namespace themis {
+namespace utils {
+
+class HKDFCache {
+public:
+    // Create or return thread-local instance
+    static HKDFCache& threadLocal();
+
+    // Derive with cache: ikm, salt, info, output_length
+    std::vector<uint8_t> derive_cached(const std::vector<uint8_t>& ikm,
+                                       const std::vector<uint8_t>& salt,
+                                       const std::string& info,
+                                       size_t output_length);
+
+    // Clear cache (useful for tests or explicit invalidation)
+    void clear();
+
+    // Configure capacity (default ~1024)
+    void setCapacity(size_t cap);
+
+private:
+    HKDFCache();
+    ~HKDFCache();
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+} // namespace utils
+} // namespace themis
 #pragma once
 
 #include <string>

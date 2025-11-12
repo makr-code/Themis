@@ -400,6 +400,13 @@ TEST_F(HttpContentApiTest, BlobCompression_CompressesTextBlobs_SkipsImages) {
     std::string decompressed = blobResp1["blob"].get<std::string>();
     EXPECT_EQ(decompressed, largeText) << "Decompressed blob should match original";
 
+    // Metrics: ensure ContentManager recorded compression metrics
+    auto cms = server_->contentMetrics();
+    ASSERT_NE(cms, nullptr) << "Content metrics should be available via server";
+    // At least some compressed bytes recorded and uncompressed total increased
+    EXPECT_GE(cms->uncompressed_bytes_total.load(), static_cast<uint64_t>(10000));
+    EXPECT_GE(cms->compressed_bytes_total.load(), static_cast<uint64_t>(rawBlob1->size()));
+
     // Test 2: Import image (should skip compression)
     std::string fakeImage(5000, 'X'); // Simple ASCII data representing binary image
     json req2 = {
@@ -425,6 +432,11 @@ TEST_F(HttpContentApiTest, BlobCompression_CompressesTextBlobs_SkipsImages) {
     auto blobResp2 = httpGet("/content/compress-image/blob");
     ASSERT_TRUE(blobResp2.contains("blob"));
     EXPECT_EQ(blobResp2["blob"].get<std::string>(), fakeImage) << "Image blob should match original";
+
+    // Metrics: skipped counters should have incremented for image
+    ASSERT_NE(cms, nullptr);
+    EXPECT_GE(cms->compression_skipped_total.load(), static_cast<uint64_t>(1));
+    EXPECT_GE(cms->compression_skipped_image_total.load(), static_cast<uint64_t>(1));
 
     // Test 3: Small blob (should skip compression due to size threshold)
     std::string smallText = "Small"; // <4KB threshold
