@@ -5,6 +5,9 @@
 #include <cstring>
 #include <sstream>
 #include <iomanip>
+#include "utils/hkdf_cache.h"
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
 
 namespace themis {
 
@@ -146,6 +149,30 @@ EncryptedBlob EncryptedBlob::fromBase64(const std::string& b64) {
     blob.tag = base64_decode(parts[idx_version + 3]);
 
     return blob;
+}
+
+std::vector<EncryptedBlob> FieldEncryption::encryptEntityBatch(const std::vector<std::pair<std::string,std::string>>& items,
+                                                                const std::string& key_id) {
+    std::vector<EncryptedBlob> out;
+    out.resize(items.size());
+    // Fetch base key once
+    auto base_key = key_provider_->getKey(key_id);
+    auto metadata = key_provider_->getKeyMetadata(key_id);
+    // For each entity: derive per-entity key via HKDF(base_key, salt=entity_salt, info="entity:<salt>")
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, items.size()), [&](const tbb::blocked_range<size_t>& r){
+        for (size_t i = r.begin(); i != r.end(); ++i) {
+            const auto& ent = items[i];
+            std::vector<uint8_t> salt(ent.first.begin(), ent.first.end());
+            std::string info = std::string("entity:") + ent.first;
+            auto derived = themis::utils::HKDFCache::threadLocal().derive_cached(base_key, salt, info, base_key.size());
+            try {
+                out[i] = encryptWithKey(ent.second, key_id, metadata.version, derived);
+            } catch (...) {
+                // On error, leave default constructed blob; errors should be handled by caller
+            }
+        }
+    });
+    return out;
 }
 
 nlohmann::json EncryptedBlob::toJson() const {

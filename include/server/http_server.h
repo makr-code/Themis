@@ -134,6 +134,11 @@ public:
      */
     bool isRunning() const { return running_; }
 
+    // Test helper: expose content manager metrics (nullable)
+    const themis::content::ContentManager::Metrics* contentMetrics() const {
+        return content_manager_ ? &content_manager_->getMetrics() : nullptr;
+    }
+
 private:
     // Session class for handling individual connections
     class Session : public std::enable_shared_from_this<Session> {

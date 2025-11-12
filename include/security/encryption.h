@@ -230,6 +230,21 @@ public:
      */
     std::string decryptWithKey(const EncryptedBlob& blob,
                                 const std::vector<uint8_t>& key);
+
+    /**
+     * @brief Batch encrypt multiple entity payloads using a per-entity derived key.
+     *
+     * Each item in `items` is a pair (entity_salt, plaintext). For each entity,
+     * the implementation will fetch the base key once and derive a per-entity key
+     * using HKDF(entity_salt) and then encrypt the plaintext. The operation is
+     * parallelized using TBB.
+     *
+     * @param items Vector of (entity_salt, plaintext) pairs
+     * @param key_id Logical key identifier
+     * @return Vector of EncryptedBlob results in the same order as input
+     */
+    std::vector<EncryptedBlob> encryptEntityBatch(const std::vector<std::pair<std::string,std::string>>& items,
+                                                  const std::string& key_id);
     
     /**
      * @brief Decrypt an encrypted blob to string (alias for decryptToString)

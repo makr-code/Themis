@@ -297,6 +297,10 @@ ContentManager::ContentManager(
     , field_encryption_(std::move(field_encryption))
 {}
 
+const ContentManager::Metrics& ContentManager::getMetrics() const {
+    return metrics_;
+}
+
 void ContentManager::registerProcessor(std::unique_ptr<IContentProcessor> processor) {
     if (!processor) return;
     auto cats = processor->getSupportedCategories();
@@ -392,14 +396,21 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                 }
             } catch (...) {}
 
+            std::string matched_skip_prefix;
             auto should_compress = [&](const std::string& mime, size_t size) -> bool {
                 if (!compress) return false;
                 if (size <= 4096) return false; // Skip small blobs (<4KB)
                 // Skip if MIME starts with any of the skip prefixes
                 for (const auto& p : skip_mimes) {
                     if (!p.empty()) {
-                        if (p.back()=='/' && mime.rfind(p, 0) == 0) return false; // prefix like image/
-                        if (mime == p) return false; // exact
+                        if (p.back()=='/' && mime.rfind(p, 0) == 0) {
+                            matched_skip_prefix = p;
+                            return false; // prefix like image/
+                        }
+                        if (mime == p) {
+                            matched_skip_prefix = p;
+                            return false; // exact
+                        }
                     }
                 }
                 return true;
@@ -422,6 +433,24 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                     meta.compression_type = "zstd";
                     THEMIS_INFO("Content blob {} compressed: {}B -> {}B (ratio: {:.2f}x)", 
                                meta.id, original_size, compressed_size, compression_ratio);
+                    // Update metrics
+                    try {
+                        metrics_.compressed_bytes_total.fetch_add(static_cast<uint64_t>(compressed_size));
+                        metrics_.uncompressed_bytes_total.fetch_add(static_cast<uint64_t>(original_size));
+                        // compression ratio tracking
+                        uint64_t ratio_milli = static_cast<uint64_t>(compression_ratio * 1000.0f);
+                        metrics_.comp_ratio_sum_milli.fetch_add(ratio_milli);
+                        metrics_.comp_ratio_count.fetch_add(1);
+                        // place into per-bucket (non-cumulative)
+                        if (compression_ratio <= 1.0f) metrics_.comp_ratio_le_1.fetch_add(1);
+                        else if (compression_ratio <= 1.5f) metrics_.comp_ratio_le_1_5.fetch_add(1);
+                        else if (compression_ratio <= 2.0f) metrics_.comp_ratio_le_2.fetch_add(1);
+                        else if (compression_ratio <= 3.0f) metrics_.comp_ratio_le_3.fetch_add(1);
+                        else if (compression_ratio <= 5.0f) metrics_.comp_ratio_le_5.fetch_add(1);
+                        else if (compression_ratio <= 10.0f) metrics_.comp_ratio_le_10.fetch_add(1);
+                        else if (compression_ratio <= 100.0f) metrics_.comp_ratio_le_100.fetch_add(1);
+                        else metrics_.comp_ratio_le_inf.fetch_add(1);
+                    } catch (...) {}
                 } else {
                     // Fallback to raw (compression failed or increased size)
                     to_store.assign(bb.begin(), bb.end());
@@ -442,6 +471,15 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                 to_store.assign(bb.begin(), bb.end());
                 meta.compressed = false;
                 meta.compression_type.clear();
+                // If compression was enabled but skipped due to MIME prefix, record skip metrics
+                try {
+                    if (compress && !matched_skip_prefix.empty()) {
+                        metrics_.compression_skipped_total.fetch_add(1);
+                        if (matched_skip_prefix == "image/" || matched_skip_prefix.rfind("image/",0)==0) metrics_.compression_skipped_image_total.fetch_add(1);
+                        else if (matched_skip_prefix == "video/" || matched_skip_prefix.rfind("video/",0)==0) metrics_.compression_skipped_video_total.fetch_add(1);
+                        else if (matched_skip_prefix == "application/zip" || matched_skip_prefix == "application/gzip") metrics_.compression_skipped_zip_total.fetch_add(1);
+                    }
+                } catch (...) {}
             }
 
             // Optional encryption of blob based on config:content_encryption_schema and user_context
@@ -466,7 +504,7 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                     auto meta_info = kp->getKeyMetadata(encryption_key_id, 0);
                     // HKDF ableiten (info = "content_blob")
                     std::vector<uint8_t> salt(ctx.begin(), ctx.end());
-                    auto derived_key = themis::utils::HKDFHelper::derive(key_bytes, salt, "content_blob", key_bytes.size());
+                    auto derived_key = themis::utils::HKDFCache::threadLocal().derive_cached(key_bytes, salt, "content_blob", key_bytes.size());
                     auto blobEnc = field_encryption_->encryptWithKey(std::string(to_store.begin(), to_store.end()), encryption_key_id, meta_info.version, derived_key);
                     json bjson = blobEnc.toJson();
                     std::string benc = bjson.dump();
@@ -481,6 +519,13 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                 return Status::Error("failed to store blob");
             }
             meta.size_bytes = static_cast<int64_t>(bb.size());
+            // If compression was not applied but compression enabled, still record uncompressed bytes total
+            try {
+                if (compress) {
+                    // Only add uncompressed total if we didn't already add it for compressed path
+                    if (!meta.compressed) metrics_.uncompressed_bytes_total.fetch_add(static_cast<uint64_t>(original_size));
+                }
+            } catch (...) {}
         }
         // Chunks verarbeiten
         std::vector<std::string> chunk_ids;
@@ -556,7 +601,7 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                         auto dek = kp->getKey("dek");
                         auto meta_info = kp->getKeyMetadata("dek", 0);
                         std::string info = std::string("vector_meta:") + f;
-                        auto derived = themis::utils::HKDFHelper::derive(dek, salt, info, dek.size());
+                        auto derived = themis::utils::HKDFCache::threadLocal().derive_cached(dek, salt, info, dek.size());
                         auto blobEnc = field_encryption_->encryptWithKey(plain, std::string("dek"), meta_info.version, derived);
                         std::string enc_b64 = blobEnc.toBase64();
                         // Metadaten ersetzen: <f>_encrypted + <f>_enc Flag, Original entfernen/neutralisieren
@@ -688,7 +733,7 @@ std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& con
                         std::string b64 = enc_section[enc_key].get<std::string>();
                         auto blob = EncryptedBlob::fromBase64(b64);
                         std::string info = std::string("vector_meta:") + f;
-                        auto derived = themis::utils::HKDFHelper::derive(dek, salt, info, dek.size());
+                        auto derived = themis::utils::HKDFCache::threadLocal().derive_cached(dek, salt, info, dek.size());
                         std::string plain = field_encryption_->decryptWithKey(blob, derived);
                         auto pj = json::parse(plain);
                         j[f] = pj; // wiederherstellen
@@ -722,7 +767,7 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
             auto kp = field_encryption_->getKeyProvider();
             auto key_bytes = kp->getKey(blob.key_id, blob.key_version);
             std::vector<uint8_t> salt(ctx.begin(), ctx.end());
-            auto derived_key = themis::utils::HKDFHelper::derive(key_bytes, salt, "content_blob", key_bytes.size());
+            auto derived_key = themis::utils::HKDFCache::threadLocal().derive_cached(key_bytes, salt, "content_blob", key_bytes.size());
             std::string plain = field_encryption_->decryptWithKey(blob, derived_key);
             
             // Lazy Re-Encryption: Check if blob uses outdated key version
@@ -744,7 +789,7 @@ std::optional<std::string> ContentManager::getContentBlob(const std::string& con
                 try {
                     // Re-encrypt with latest key version
                     auto latest_key = kp->getKey(blob.key_id); // no version arg -> latest
-                    auto latest_derived = themis::utils::HKDFHelper::derive(latest_key, salt, "content_blob", latest_key.size());
+                    auto latest_derived = themis::utils::HKDFCache::threadLocal().derive_cached(latest_key, salt, "content_blob", latest_key.size());
                     auto new_blob = field_encryption_->encryptWithKey(plain, blob.key_id, latest_version, latest_derived);
                     json new_bj = new_blob.toJson();
                     std::string new_raw = new_bj.dump();

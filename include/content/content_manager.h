@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <atomic>
 #include <nlohmann/json.hpp>
 #include "content/content_type.h"
 #include "content/content_processor.h"
@@ -248,6 +249,32 @@ public:
     };
     Stats getStats();
 
+    /// Metrics for Prometheus exposition
+    struct Metrics {
+        std::atomic<uint64_t> compressed_bytes_total{0};
+        std::atomic<uint64_t> uncompressed_bytes_total{0};
+        std::atomic<uint64_t> compression_skipped_total{0};
+        std::atomic<uint64_t> compression_skipped_image_total{0};
+        std::atomic<uint64_t> compression_skipped_video_total{0};
+        std::atomic<uint64_t> compression_skipped_zip_total{0};
+
+        // Compression ratio histogram-like buckets (per-upload)
+        std::atomic<uint64_t> comp_ratio_le_1{0};
+        std::atomic<uint64_t> comp_ratio_le_1_5{0};
+        std::atomic<uint64_t> comp_ratio_le_2{0};
+        std::atomic<uint64_t> comp_ratio_le_3{0};
+        std::atomic<uint64_t> comp_ratio_le_5{0};
+        std::atomic<uint64_t> comp_ratio_le_10{0};
+        std::atomic<uint64_t> comp_ratio_le_100{0};
+        std::atomic<uint64_t> comp_ratio_le_inf{0};
+
+        // Sum/count for average compression ratio (sum stored as milli * 1000)
+        std::atomic<uint64_t> comp_ratio_sum_milli{0};
+        std::atomic<uint64_t> comp_ratio_count{0};
+    };
+
+    const Metrics& getMetrics() const;
+
 private:
     std::shared_ptr<RocksDBWrapper> storage_;
     std::shared_ptr<VectorIndexManager> vector_index_;
@@ -257,6 +284,9 @@ private:
     
     // Processor registry (Category → Processor)
     std::unordered_map<ContentCategory, std::unique_ptr<IContentProcessor>> processors_;
+
+    // Metrics instance (atomics) for Prometheus exposition
+    mutable Metrics metrics_;
 
     // Helper methods
     std::string generateUuid();
