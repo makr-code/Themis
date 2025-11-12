@@ -1091,6 +1091,61 @@ nlohmann::json QueryEngine::evaluateExpression(
 				}
 				return 0.0;
 			}
+
+			// SHORTESTPATH(start, target [, graph_id])
+			if (name == "shortestpath") {
+				// Arity 2 or 3
+				if (fn->arguments.size() != 2 && fn->arguments.size() != 3) {
+					return nullptr;
+				}
+				if (!graphIdx_) return nullptr; // Graph subsystem not available
+				// Evaluate start and target
+				auto a0 = evaluateExpression(fn->arguments[0], ctx);
+				auto a1 = evaluateExpression(fn->arguments[1], ctx);
+				if (!a0.is_string() || !a1.is_string()) return nullptr;
+				std::string start = a0.get<std::string>();
+				std::string target = a1.get<std::string>();
+				std::string graph_id = "";
+				if (fn->arguments.size() == 3) {
+					auto a2 = evaluateExpression(fn->arguments[2], ctx);
+					if (!a2.is_string()) return nullptr;
+					graph_id = a2.get<std::string>();
+				}
+				// Call dijkstra (optionally with graph scope)
+				std::pair<GraphIndexManager::Status, GraphIndexManager::PathResult> pres;
+				if (graph_id.empty()) {
+					pres = graphIdx_->dijkstra(start, target);
+				} else {
+					pres = graphIdx_->dijkstra(start, target, std::string_view(""), graph_id);
+				}
+				if (!pres.first.ok) return nullptr;
+				nlohmann::json out = nlohmann::json::object();
+				out["vertices"] = pres.second.path;
+				out["totalCost"] = pres.second.totalCost;
+				// Resolve edge IDs between successive vertices using outAdjacency
+				nlohmann::json edges = nlohmann::json::array();
+				const auto& path = pres.second.path;
+				for (size_t i = 0; i + 1 < path.size(); ++i) {
+					auto from = path[i];
+					auto to = path[i+1];
+					auto adjPair = graphIdx_->outAdjacency(from);
+					if (!adjPair.first.ok) {
+						edges.push_back(nullptr);
+						continue;
+					}
+					bool found = false;
+					for (const auto& ai : adjPair.second) {
+						if (ai.targetPk == to) {
+							edges.push_back(ai.edgeId);
+							found = true;
+							break;
+						}
+					}
+					if (!found) edges.push_back(nullptr);
+				}
+				out["edges"] = edges;
+				return out;
+			}
 			// Unbekannte Funktion im MVP: kein Wert
 			return nullptr;
 		}

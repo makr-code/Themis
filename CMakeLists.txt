@@ -168,6 +168,7 @@ set(THEMIS_CORE_SOURCES
     src/storage/rocksdb_wrapper.cpp
     src/storage/base_entity.cpp
     src/storage/key_schema.cpp
+    src/storage/backup_manager.cpp
     
     src/index/secondary_index.cpp
     src/index/graph_index.cpp
@@ -180,6 +181,8 @@ set(THEMIS_CORE_SOURCES
     src/security/mock_key_provider.cpp
     src/security/vault_key_provider.cpp
     src/security/key_cache.cpp
+        src/security/keyprovider_signing.cpp
+    src/security/vault_signing_provider.cpp
     src/security/field_encryption.cpp
     src/security/encrypted_field.cpp
     
@@ -208,9 +211,11 @@ set(THEMIS_CORE_SOURCES
     src/content/content_type.cpp
     src/content/content_manager.cpp
     src/content/text_processor.cpp
+    src/content/mock_clip_processor.cpp
     
     src/cache/semantic_cache.cpp
     src/llm/llm_interaction_store.cpp
+    src/llm/prompt_manager.cpp
     src/cdc/changefeed.cpp
     src/timeseries/timeseries.cpp
     src/timeseries/tsstore.cpp
@@ -410,6 +415,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_aql_parser.cpp
         tests/test_aql_translator.cpp
         tests/test_text_processor.cpp
+    tests/test_prompt_manager.cpp
+    tests/test_mock_clip.cpp
         tests/test_backup_restore.cpp
         tests/test_cursor.cpp
         tests/test_temporal_graph.cpp
@@ -432,9 +439,12 @@ if(THEMIS_BUILD_TESTS)
     tests/test_hkdf_cache.cpp
     tests/test_field_encryption_batch.cpp
     tests/test_pki_eidas.cpp
+    tests/test_pki_api_handler.cpp
     tests/test_wal_archiving.cpp
         tests/test_encryption_e2e.cpp
         tests/test_vault_key_provider.cpp
+        tests/test_vault_key_provider_retry.cpp
+    tests/test_wal_backup_manager.cpp
         tests/test_audit_logger.cpp
         tests/test_pii_detector.cpp
         tests/test_retention_manager.cpp
@@ -443,6 +453,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_policy_yaml.cpp
         tests/test_pki_client.cpp
     tests/test_cms_signing.cpp
+        tests/test_keyprovider_signing.cpp
+    tests/test_vault_signing_provider.cpp
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
         tests/test_http_pii_lazy_init.cpp

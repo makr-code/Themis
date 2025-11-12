@@ -5,6 +5,21 @@ LOGO Erklärung ***WICHTIG***:
 "Noctua veritatem sapientia scientiaque administrat."
 Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wissen."
 
+## Offene Tasks (Übersicht — zuerst sichtbar)
+
+Die Datei beginnt jetzt mit den offenen Tasks zur schnellen Nachverfolgung. Abschlossene Tasks finden sich weiter unten im Dokument.
+
+- [ ] Content-Blob ZSTD Compression (ZSTD Level 19, skip compressed MIME-Typen) — TODO
+- [ ] HKDF-Caching für Encryption (Thread-local LRU/TTL-Cache) — TODO
+- [ ] Batch-Encryption Optimierung (single HKDF call pro Entity, TBB Parallelisierung) — TODO
+- [ ] Inkrementelle Backups / WAL-Archiving — TODO
+- [ ] eIDAS-konforme Signaturen / PKI Integration (Produktiv-Ready) — TODO
+- [ ] LLM Interaction Store & Prompt Management (Prompt-Versioning, CoT Storage) — TODO
+- [ ] Multi-Modal Embeddings (Text+Image+Audio) — TODO
+- [ ] Filesystem: Chunking/Hybrid-Search Follow-ups (Batch-Insert, Reindex/Compaction, Pagination) — TODO
+
+_Hinweis:_ Dieser Abschnitt wurde eingefügt, damit offene Aufgaben direkt am Dokumentanfang sichtbar sind. Der restliche Inhalt des Dokuments (inkl. bereits abgeschlossener Items und detaillierter Roadmap) bleibt unverändert weiter unten.
+
 ## Scan-Update (12.11.2025)
 
 - Scan-Zusammenfassung:
@@ -31,6 +46,18 @@ Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wis
 - Vorgehen / Optionen:
   - Ich kann die Shortlist in einzelne Git-Tasks (Issues) aufsplitten, PR-Branches vorschlagen und `docs/development/todo.md` weiter mit Checkbox-Status synchronisieren.
   - Soll ich die Änderungen jetzt committen und pushen? Falls ja, ich erledige das automatisch und aktualisiere den internen Task-Status.
+
+  ## Automatisches Code-Audit (12.11.2025)
+
+  Kurze Ergebnisübersicht der automatischen Quellcode-Prüfung (Parser/Translator/HTTP/Tests/Benchmarks/Arrow/Tracing):
+
+  - AQL (Query-Language): Parser (src/query/aql_parser.cpp) und Translator (src/query/aql_translator.cpp) sind implementiert. HTTP-Handler für AQL (`POST /query/aql`) ist in `src/server/http_server.cpp` vorhanden und nutzt Parser + Translator. EXPLAIN/PROFILE-Ausgaben werden unterstützt (explain-Flag im Request). Status: IMPLEMENTIERT ✅
+  - Query-Optimizer: `src/query/query_optimizer.cpp` und dazugehörige Header sind vorhanden; Optimizer-Strategien (Selektivitätsschätzung, Predicate-Ordering) sind implementiert. Status: IMPLEMENTIERT ✅ (erweiterte Join-Order/Kostenmodell-Verbesserungen noch geplant)
+  - Tests & Benchmarks: Umfangreiche Unit-Tests für Parser/Translator/HTTP-AQL liegen unter `tests/` vor; Benchmarks (`benchmarks/`) für Query/MVCC/Vector existieren und sind in CMake konfiguriert. Status: VORHANDEN ✅
+  - Apache Arrow: CMake findet Arrow (find_package) und vcpkg manifest enthält `arrow`, es gibt Design-Docs/Pläne (VCCDB Design), aber keine produktive Arrow‑Codepfade (keine Nutzung von Arrow-APIs im src/). Status: GEPLANT / NICHT INTEGRIERT ⏳
+  - Tracing / Observability: OpenTelemetry-Integration ist vorgesehen (CMake-Option THEMIS_ENABLE_TRACING), `src/utils/tracing.cpp` und Instrumentierung (Spans, Attributes) sind in kritischen Pfaden (HTTP → Query → AQL Operators) vorhanden. Ein manueller E2E‑Lauf (Jaeger OTLP Collector + Service) ist noch erforderlich, um das Tracing-Testplan-Checklist vollständig zu verifizieren. Status: INSTRUMENTIERT ✅ / E2E-VALIDIERUNG PENDING ⚠️
+
+  Hinweis: Die obigen Statusangaben basieren auf statischer Quellcode-Analyse (Datei-/Symbolsuche + Lesen der relevanten Implementierungen). Ein vollständiges "grün/rot"-Signal erfordert einen Build + Testlauf (empfohlen: cmake, build, ctest), sowie das Starten der externen Dienste (z. B. Jaeger) für die E2E-Verifikation.
 
 
 **Projekt:** Themis - Multi-Modell-Datenbanksystem (Relational, Graph, Vektor, Dokument)  
@@ -806,10 +833,16 @@ Gating: Baseline AQL muss stabil sein, bevor Graph/Vector darauf aufbauen
 ### 3) Graph
 
 #### Done
-- ✅ BFS/Dijkstra/A*, Adjazenz-Indizes, Traversal-Syntax
-- ✅ Konservatives Pruning auf letzter Ebene; Konstanten-Vorprüfung; Short-Circuit-Zählung
-- ✅ Frontier-/Result-Limits (soft) + Metriken pro Tiefe (EXPLAIN/PROFILE)
-- ✅ Pfad-Constraints Designdokument (docs/path_constraints.md)
+ - [x] BFS/Dijkstra/A*, Adjazenz-Indizes, Traversal-Syntax
+ - [x] Konservatives Pruning auf letzter Ebene; Konstanten-Vorprüfung; Short-Circuit-Zählung
+ - [x] Frontier-/Result-Limits (soft) + Metriken pro Tiefe (EXPLAIN/PROFILE)
+ - [x] Pfad-Constraints Designdokument (docs/path_constraints.md)
+
+**Belege (static code evidence):**
+- Implementierung: GraphIndexManager APIs (bfs, bfsAtTime, dijkstra, dijkstraAtTime, aStar, rebuildTopology, addEdge, deleteEdge) — siehe `include/index/graph_index.h` und `src/index/graph_index.cpp`.
+- HTTP-Handler: `POST /graph/traverse` → Routing/Handler in `src/server/http_server.cpp` (Aufruf z.B. `graph_index_->bfs(...)`, Tracing-Spans gesetzt).
+- Unit-/Integrationstests: `tests/test_graph_index.cpp`, `tests/test_graph_bfs_fix.cpp`, `tests/test_temporal_graph.cpp`, `tests/test_graph_type_filtering.cpp` (prüfen Add/Delete, RebuildTopology, BFS/Dijkstra, Temporal-Varianten).
+- OpenAPI/Doku: `openapi/openapi.yaml` und `docs/path_constraints.md` dokumentieren Traversal-API und Konzepte.
 
 #### Planned
 - Pfad-Constraints Implementierung (PATH.ALL/NONE/ANY) für sicheres frühes Pruning
@@ -822,12 +855,46 @@ Gating: Erforderlich vor Filesystem‑Chunk‑Graph und Hybrid‑Queries
 ### 4) Vector
 
 #### Done
-- ✅ HNSWlib Integration (L2), Whitelist-Pre-Filter, HTTP /vector/search
+ - [x] HNSWlib Integration (L2), Whitelist-Pre-Filter, HTTP /vector/search
+
+**Belege (static code evidence):**
+- Implementierung: VectorIndexManager APIs (init, addEntity, updateEntity, removeByPk, searchKnn, saveIndex, loadIndex, setEfSearch, getDimension/getVectorCount) — siehe `include/index/vector_index.h` und `src/index/vector_index.cpp`.
+- HTTP-Handler: `POST /vector/search` → Routing/Handler in `src/server/http_server.cpp` (Aufruf z.B. `vector_index_->searchKnn(...)`, Tracing/Metrics integriert).
+- HNSW Build-Integration: `CMakeLists.txt` enthält bedingtes Find/Define für HNSW (THEMIS_HNSW_ENABLED) und `src/index/vector_index.cpp` kompiliert bedingt mit HNSW-Unterstützung.
+- Unit-/Integrationstests: `tests/test_vector_index.cpp`, `tests/test_http_vector.cpp`, `tests/test_http_vector_largescale.cpp` (prüfen init/add/remove/search, save/load, HTTP-API).
+- OpenAPI/Doku: `openapi/openapi.yaml` und `docs/*` referenzieren `/vector/search` und Index-APIs.
+
+**Citations (file:line — short quote):**
+- `include/index/vector_index.h:41` — "Status init(std::string_view objectName, int dim, Metric metric = Metric::COSINE,"
+- `include/index/vector_index.h:50` — "Status setEfSearch(int efSearch);"
+- `include/index/vector_index.h:56-57` — "Status saveIndex(const std::string& directory) const;" / "Status loadIndex(const std::string& directory);"
+- `include/index/vector_index.h:79` — "std::pair<Status, std::vector<Result>> searchKnn("
+- `src/index/vector_index.cpp:111` — "VectorIndexManager::Status VectorIndexManager::init(std::string_view objectName, int dim, Metric metric,"
+- `src/index/vector_index.cpp:168` — "VectorIndexManager::Status VectorIndexManager::setEfSearch(int efSearch) {"
+- `src/index/vector_index.cpp:560` — "VectorIndexManager::Status VectorIndexManager::loadIndex(const std::string& directory) {"
+- `tests/test_vector_index.cpp:243` — "TEST_F(VectorIndexTest, PersistenceRoundtrip_SaveAndLoad) {"
+- `tests/test_vector_index.cpp:300` — "TEST_F(VectorIndexTest, SetEfSearch_UpdatesSearchParameter) {"
+- `src/server/http_server.cpp:7022` — "auto [status, results] = vector_index_->searchKnn(queryVector, want_k);"
+- `src/server/http_server.cpp:7080` — "auto status = vector_index_->saveIndex(directory);"
+- `src/server/http_server.cpp:7116` — "auto status = vector_index_->loadIndex(directory);"
+- `src/server/http_server.cpp:7182` — "auto status = vector_index_->setEfSearch(efSearch);"
+
+Graph quick citations:
+- `include/index/graph_index.h:120` — "std::pair<Status, std::vector<std::string>> bfs("
+- `src/server/http_server.cpp:706` — "if (target == \"/graph/traverse\" && method == http::verb::post) return Route::GraphTraversePost;"
 
 #### Planned (Priorisiert)
-- Cosine/Dot + Normalisierung; HNSW-Persistenz (save/load); konfigurierbare M/ef*; Batch-Ops
-- Recall/Latency-Metriken; Reindex/Compaction; Pagination/Cursor
-- Hybrid-Search & Reranking (optional)
+ - [x] Cosine/Dot + Normalisierung; HNSW-Persistenz (save/load); konfigurierbare M/efSearch (hot-update efSearch) — Implementiert.
+   
+   Belege (static code evidence):
+   - `include/index/vector_index.h`, `src/index/vector_index.cpp` (Deklaration & Implementierung: `init`, `addEntity`, `updateEntity`, `removeByPk`, `searchKnn`, `saveIndex`, `loadIndex`, `setEfSearch`, `rebuildFromStorage`).
+   - Tests: `tests/test_vector_index.cpp` (`PersistenceRoundtrip_SaveAndLoad`, `SetEfSearch_UpdatesSearchParameter`, `SearchKnn_FindsNearestNeighbors`, u.v.m.).
+   - HTTP Integration: `tests/test_http_vector.cpp` (endpoints: `/vector/index/stats`, `/vector/index/config`, `/vector/index/save`, `/vector/index/load`, `/vector/search`, `/vector/batch_insert`).
+   - Build: `CMakeLists.txt` (`find_package(hnswlib CONFIG)` → `THEMIS_HNSW_ENABLED`), `src/index/vector_index.cpp` uses HNSW when enabled.
+
+ - [ ] Batch-Operationen (Batch-Inserts, Reindex/Compaction) — offen / geplant.
+ - [ ] Recall/Latency-Metriken; Pagination/Cursor — offen / geplant.
+ - [ ] Hybrid-Search & Reranking (optional) — offen / geplant.
 
 Prereqs: Phase 0–2 (Core + AQL + Graph Grundfunktionen)
 Gating: Persistenz muss da sein, bevor Filesystem‑Chunks produktiv genutzt werden

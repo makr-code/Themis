@@ -29,6 +29,7 @@
 #include "server/pii_api_handler.h"
 #include "server/retention_api_handler.h"
 #include "server/keys_api_handler.h"
+#include "server/pki_api_handler.h"
 #include "server/classification_api_handler.h"
 #include "server/reports_api_handler.h"
 #include "server/auth_middleware.h"
@@ -49,6 +50,7 @@ class Changefeed;
 class TSStore;
 class ContinuousAggregateManager;
 class AdaptiveIndexManager;
+class PromptManager;
 
 namespace server {
 
@@ -174,6 +176,8 @@ private:
     http::response<http::string_body> handleQuery(const http::request<http::string_body>& req);
     http::response<http::string_body> handleQueryAql(const http::request<http::string_body>& req);
     http::response<http::string_body> handleGraphTraverse(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleGraphEdgeCreate(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleGraphEdgeDelete(const http::request<http::string_body>& req);
     http::response<http::string_body> handleVectorSearch(const http::request<http::string_body>& req);
     http::response<http::string_body> handleVectorIndexSave(const http::request<http::string_body>& req);
     http::response<http::string_body> handleVectorIndexLoad(const http::request<http::string_body>& req);
@@ -219,6 +223,11 @@ private:
     http::response<http::string_body> handleLlmInteractionPost(const http::request<http::string_body>& req);
     http::response<http::string_body> handleLlmInteractionList(const http::request<http::string_body>& req);
     http::response<http::string_body> handleLlmInteractionGet(const http::request<http::string_body>& req);
+    // Prompt Template management
+    http::response<http::string_body> handlePromptTemplatePost(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePromptTemplateList(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePromptTemplateGet(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePromptTemplatePut(const http::request<http::string_body>& req);
     http::response<http::string_body> handleChangefeedGet(const http::request<http::string_body>& req);
     http::response<http::string_body> handleChangefeedStreamSse(const http::request<http::string_body>& req);
     // CDC admin endpoints
@@ -282,6 +291,10 @@ private:
     // Keys API endpoints (Skeleton)
     http::response<http::string_body> handleKeysListKeys(const http::request<http::string_body>& req);
     http::response<http::string_body> handleKeysRotateKey(const http::request<http::string_body>& req);
+
+    // PKI endpoints (sign/verify)
+    http::response<http::string_body> handlePkiSign(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiVerify(const http::request<http::string_body>& req);
 
     // Classification API endpoints (Skeleton)
     http::response<http::string_body> handleClassificationListRules(const http::request<http::string_body>& req);
@@ -366,6 +379,9 @@ private:
     // LLM Interaction Store (Sprint A)
     std::unique_ptr<LLMInteractionStore> llm_store_;
     rocksdb::ColumnFamilyHandle* llm_cf_handle_ = nullptr;
+    // Prompt Manager for managing prompt templates (in-memory or RocksDB-backed)
+    std::unique_ptr<themis::PromptManager> prompt_manager_;
+    rocksdb::ColumnFamilyHandle* prompt_cf_handle_ = nullptr;
     
     // Changefeed (Sprint A CDC)
     std::shared_ptr<Changefeed> changefeed_; // shared_ptr for SSE manager
@@ -410,6 +426,8 @@ private:
     
     // Keys API Handler (Skeleton)
     std::unique_ptr<themis::server::KeysApiHandler> keys_api_;
+    // PKI API Handler
+    std::unique_ptr<themis::server::PkiApiHandler> pki_api_;
     
     // Classification API Handler (Skeleton)
     std::unique_ptr<themis::server::ClassificationApiHandler> classification_api_;
