@@ -156,6 +156,7 @@ set(THEMIS_CORE_SOURCES
     src/storage/rocksdb_wrapper.cpp
     src/storage/base_entity.cpp
     src/storage/key_schema.cpp
+    src/storage/backup_manager.cpp
     
     src/index/secondary_index.cpp
     src/index/graph_index.cpp
@@ -414,6 +415,7 @@ if(THEMIS_BUILD_TESTS)
     tests/test_wal_archiving.cpp
         tests/test_encryption_e2e.cpp
         tests/test_vault_key_provider.cpp
+    tests/test_wal_backup_manager.cpp
         tests/test_audit_logger.cpp
         tests/test_pii_detector.cpp
         tests/test_retention_manager.cpp
