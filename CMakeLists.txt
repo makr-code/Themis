@@ -169,6 +169,7 @@ set(THEMIS_CORE_SOURCES
     src/security/mock_key_provider.cpp
     src/security/vault_key_provider.cpp
     src/security/key_cache.cpp
+        src/security/keyprovider_signing.cpp
     src/security/field_encryption.cpp
     src/security/encrypted_field.cpp
     
@@ -424,6 +425,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_policy_yaml.cpp
         tests/test_pki_client.cpp
     tests/test_cms_signing.cpp
+        tests/test_keyprovider_signing.cpp
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
         tests/test_http_pii_lazy_init.cpp
