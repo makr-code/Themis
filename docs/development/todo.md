@@ -5,6 +5,27 @@ LOGO Erklärung ***WICHTIG***:
 "Noctua veritatem sapientia scientiaque administrat."
 Das bedeutet übersetzt: "Die Eule verwaltet die Wahrheit durch Weisheit und Wissen."
 
+## Scan-Update (12.11.2025)
+
+- Scan-Zusammenfassung:
+  - Repo-weit wurden viele TODO-/FIXME-Marker in Code und Dokumentation gefunden (z. B. Content-Blob ZSTD, HKDF-Caching, Batch-Encryption, PKI/eIDAS, TSStore-Integration).
+  - `wiki_out/development/implementation_status.md` enthält einen aktuellen Audit-Abgleich; dort sind mehrere Diskrepanzen zu `todo.md` dokumentiert (z. B. Cosine-Distanz, Backup/Restore Endpoints).
+  - Branch `main` ist synchron mit `origin/main` und `.gitignore` wurde für Rust/Cargo `target/` aktualisiert (siehe Commit cafd76e).
+
+- Kurzfristige, priorisierte Maßnahmen (Nächste 1–2 Sprints):
+  1. Content-Blob ZSTD Compression — Implementierung & Tests (geschätzt 8–12h). DoD: Upload speichert blobs komprimiert; Download liefert dekomprimiert; Metriken und MIME-Skipping vorhanden.
+  2. HKDF-Caching für Encryption — Thread-local LRU Cache (geschätzt 4–6h). DoD: Thread-sicher, invalidiert bei Key-Rotation, Benchmarks zeigen signifikanten Speedup.
+  3. Batch-Encryption Optimierung — Single HKDF pro Entity + Parallelisierung via TBB (geschätzt 6–8h). DoD: `encryptEntityBatch` API + Benchmarks.
+
+- Mittelfristig (Medium):
+  - PKI / eIDAS-konforme Signaturen (3–5 Tage)
+  - Inkrementelle Backups / WAL-Archiving (2–3 Tage)
+
+- Vorgehen / Optionen:
+  - Ich kann die Shortlist in einzelne Git-Tasks (Issues) aufsplitten, PR-Branches vorschlagen und `docs/development/todo.md` weiter mit Checkbox-Status synchronisieren.
+  - Soll ich die Änderungen jetzt committen und pushen? Falls ja, ich erledige das automatisch und aktualisiere den internen Task-Status.
+
+
 **Projekt:** Themis - Multi-Modell-Datenbanksystem (Relational, Graph, Vektor, Dokument)  
 **Technologie-Stack:** C++, RocksDB TransactionDB (MVCC), Intel TBB, HNSWlib, Apache Arrow  
 **Datum:** 08. November 2025
