@@ -1822,21 +1822,55 @@ http::response<http::string_body> HttpServer::handleMetrics(
             }
         }
 
-        // Export latency histogram buckets
-        auto export_bucket = [&](const char* name, uint64_t val){
-            out += std::string(name) + " " + std::to_string(val) + "\n";
-        };
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"100\"}", latency_bucket_100us_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"500\"}", latency_bucket_500us_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"1000\"}", latency_bucket_1ms_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"5000\"}", latency_bucket_5ms_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"10000\"}", latency_bucket_10ms_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"50000\"}", latency_bucket_50ms_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"100000\"}", latency_bucket_100ms_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"500000\"}", latency_bucket_500ms_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"1000000\"}", latency_bucket_1s_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"5000000\"}", latency_bucket_5s_.load(std::memory_order_relaxed));
-        export_bucket("vccdb_latency_bucket_microseconds{le=\"+Inf\"}", latency_bucket_inf_.load(std::memory_order_relaxed));
+        // Export latency histogram buckets (ensure Prometheus cumulative semantics)
+        {
+            // load raw bucket values (may be cumulative already or per-bucket).
+            std::vector<uint64_t> raw = {
+                latency_bucket_100us_.load(std::memory_order_relaxed),
+                latency_bucket_500us_.load(std::memory_order_relaxed),
+                latency_bucket_1ms_.load(std::memory_order_relaxed),
+                latency_bucket_5ms_.load(std::memory_order_relaxed),
+                latency_bucket_10ms_.load(std::memory_order_relaxed),
+                latency_bucket_50ms_.load(std::memory_order_relaxed),
+                latency_bucket_100ms_.load(std::memory_order_relaxed),
+                latency_bucket_500ms_.load(std::memory_order_relaxed),
+                latency_bucket_1s_.load(std::memory_order_relaxed),
+                latency_bucket_5s_.load(std::memory_order_relaxed),
+                latency_bucket_inf_.load(std::memory_order_relaxed)
+            };
+
+            // detect if raw is already non-decreasing (cumulative). If not, treat as per-bucket and compute running sum.
+            bool non_decreasing = true;
+            for (size_t i = 1; i < raw.size(); ++i) if (raw[i] < raw[i-1]) { non_decreasing = false; break; }
+
+            uint64_t running = 0;
+            auto emit = [&](const char* name, uint64_t value){ out += std::string(name) + " " + std::to_string(value) + "\n"; };
+
+            const char* names[] = {
+                "vccdb_latency_bucket_microseconds{le=\"100\"}",
+                "vccdb_latency_bucket_microseconds{le=\"500\"}",
+                "vccdb_latency_bucket_microseconds{le=\"1000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"5000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"10000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"50000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"100000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"500000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"1000000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"5000000\"}",
+                "vccdb_latency_bucket_microseconds{le=\"+Inf\"}"
+            };
+
+            for (size_t i = 0; i < raw.size(); ++i) {
+                if (non_decreasing) {
+                    // values already cumulative
+                    running = raw[i];
+                } else {
+                    // raw are per-bucket counts -> accumulate
+                    running += raw[i];
+                }
+                emit(names[i], running);
+            }
+        }
 
         // Sum + count for histogram
         uint64_t total_latency_us = latency_sum_us_.load(std::memory_order_relaxed);
@@ -1881,17 +1915,41 @@ http::response<http::string_body> HttpServer::handleMetrics(
     auto export_page_bucket = [&](const char* name, uint64_t val){ out += std::string(name) + " " + std::to_string(val) + "\n"; };
     out += "# HELP vccdb_page_fetch_time_ms_bucket Cursor page fetch time histogram buckets (ms)\n";
     out += "# TYPE vccdb_page_fetch_time_ms_bucket histogram\n";
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"1\"}", page_bucket_1ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"5\"}", page_bucket_5ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"10\"}", page_bucket_10ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"25\"}", page_bucket_25ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"50\"}", page_bucket_50ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"100\"}", page_bucket_100ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"250\"}", page_bucket_250ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"500\"}", page_bucket_500ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"1000\"}", page_bucket_1000ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"5000\"}", page_bucket_5000ms_.load(std::memory_order_relaxed));
-    export_page_bucket("vccdb_page_fetch_time_ms_bucket{le=\"+Inf\"}", page_bucket_inf_.load(std::memory_order_relaxed));
+    {
+        std::vector<uint64_t> raw = {
+            page_bucket_1ms_.load(std::memory_order_relaxed),
+            page_bucket_5ms_.load(std::memory_order_relaxed),
+            page_bucket_10ms_.load(std::memory_order_relaxed),
+            page_bucket_25ms_.load(std::memory_order_relaxed),
+            page_bucket_50ms_.load(std::memory_order_relaxed),
+            page_bucket_100ms_.load(std::memory_order_relaxed),
+            page_bucket_250ms_.load(std::memory_order_relaxed),
+            page_bucket_500ms_.load(std::memory_order_relaxed),
+            page_bucket_1000ms_.load(std::memory_order_relaxed),
+            page_bucket_5000ms_.load(std::memory_order_relaxed),
+            page_bucket_inf_.load(std::memory_order_relaxed)
+        };
+        bool non_decreasing = true;
+        for (size_t i = 1; i < raw.size(); ++i) if (raw[i] < raw[i-1]) { non_decreasing = false; break; }
+        uint64_t running = 0;
+        const char* names[] = {
+            "vccdb_page_fetch_time_ms_bucket{le=\"1\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"5\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"10\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"25\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"50\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"100\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"250\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"500\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"1000\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"5000\"}",
+            "vccdb_page_fetch_time_ms_bucket{le=\"+Inf\"}"
+        };
+        for (size_t i = 0; i < raw.size(); ++i) {
+            if (non_decreasing) running = raw[i]; else running += raw[i];
+            out += std::string(names[i]) + " " + std::to_string(running) + "\n";
+        }
+    }
     out += "# HELP vccdb_page_fetch_time_ms_sum Total cursor page fetch time in milliseconds\n";
     out += "# TYPE vccdb_page_fetch_time_ms_sum counter\n";
     out += "vccdb_page_fetch_time_ms_sum " + std::to_string(page_sum_ms_.load(std::memory_order_relaxed)) + "\n";
