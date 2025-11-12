@@ -9,6 +9,8 @@
 #include <map>
 #include <mutex>
 #include <chrono>
+#include <random>
+#include <thread>
 
 using json = nlohmann::json;
 
@@ -83,6 +85,8 @@ struct VaultKeyProvider::Impl {
     // Metrics
     size_t total_requests = 0;
     size_t cache_hits = 0;
+    // Optional test hook to override HTTP behavior in unit tests
+    std::function<std::string(const std::string&, const std::string&, const std::string&)> test_request_override;
     
     Impl(const Config& cfg) : config(cfg), curl(nullptr) {
         curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -96,6 +100,7 @@ struct VaultKeyProvider::Impl {
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, config.request_timeout_ms);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, config.verify_ssl ? 1L : 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, config.verify_ssl ? 2L : 0L);
+        test_request_override = nullptr;
     }
     
     ~Impl() {
@@ -107,6 +112,10 @@ struct VaultKeyProvider::Impl {
     
     std::string performRequest(const std::string& url, const std::string& method, 
                                 const std::string& body = "") {
+        // If a test hook is set, call it (bypass curl). Useful for unit tests.
+        if (test_request_override) {
+            return test_request_override(url, method, body);
+        }
         std::lock_guard<std::mutex> lock(mutex);
         
         std::string response;
@@ -134,7 +143,16 @@ struct VaultKeyProvider::Impl {
         curl_slist_free_all(headers);
         
         if (res != CURLE_OK) {
-            throw KeyOperationException(std::string("CURL error: ") + curl_easy_strerror(res));
+            bool transient = false;
+            switch (res) {
+                case CURLE_OPERATION_TIMEDOUT:
+                case CURLE_COULDNT_CONNECT:
+                case CURLE_COULDNT_RESOLVE_HOST:
+                case CURLE_PARTIAL_FILE:
+                    transient = true; break;
+                default: transient = false; break;
+            }
+            throw KeyOperationException(std::string("CURL error: ") + curl_easy_strerror(res), -1, std::string(), transient);
         }
         
         // Check HTTP status
@@ -144,11 +162,11 @@ struct VaultKeyProvider::Impl {
         if (http_code == 404) {
             throw KeyNotFoundException("key", 0);  // Will be refined by caller
         } else if (http_code == 403) {
-            throw KeyOperationException("Vault authentication failed (403 Forbidden)");
+            throw KeyOperationException("Vault authentication failed (403 Forbidden)", (int)http_code, response, false);
         } else if (http_code >= 500) {
-            throw KeyOperationException("Vault server error (HTTP " + std::to_string(http_code) + ")");
+            throw KeyOperationException("Vault server error (HTTP " + std::to_string(http_code) + ")", (int)http_code, response, true);
         } else if (http_code >= 400) {
-            throw KeyOperationException("Vault request failed (HTTP " + std::to_string(http_code) + "): " + response);
+            throw KeyOperationException("Vault request failed (HTTP " + std::to_string(http_code) + "): " + response, (int)http_code, response, false);
         }
         
         return response;
@@ -213,6 +231,10 @@ std::string VaultKeyProvider::httpPost(const std::string& path, const std::strin
 std::string VaultKeyProvider::httpList(const std::string& path) {
     std::string url = impl_->config.vault_addr + path;
     return impl_->performRequest(url, "LIST");
+}
+
+void VaultKeyProvider::setTestRequestOverride(std::function<std::string(const std::string&, const std::string&, const std::string&)> fn) {
+    impl_->test_request_override = std::move(fn);
 }
 
 std::string VaultKeyProvider::readSecret(const std::string& key_id, uint32_t version) {
@@ -443,53 +465,76 @@ std::vector<KeyMetadata> VaultKeyProvider::listKeys() {
 
 SigningResult VaultKeyProvider::sign(const std::string& key_id, const std::vector<uint8_t>& data) {
     // Build path for transit sign: /v1/<transit_mount>/sign/<key_id>
-    std::string mount = impl_->config.kv_mount_path; // fallback
-    try {
-        // prefer explicit transit_mount when configured
-        mount = impl_->config.transit_mount.empty() ? std::string("transit") : impl_->config.transit_mount;
-    } catch (...) {
-        mount = "transit";
-    }
-
+    std::string mount = impl_->config.transit_mount.empty() ? std::string("transit") : impl_->config.transit_mount;
     std::string path = "/v1/" + mount + "/sign/" + key_id;
 
     // Prepare JSON payload
     nlohmann::json payload;
     payload["input"] = base64_encode(data);
 
-    // Perform HTTP POST
-    std::string response = httpPost(path, payload.dump());
+    // Retry/backoff parameters from config
+    int max_retries = impl_->config.transit_max_retries > 0 ? impl_->config.transit_max_retries : 3;
+    int base_backoff_ms = impl_->config.transit_backoff_ms > 0 ? impl_->config.transit_backoff_ms : 200;
 
-    // Parse response and extract signature
-    try {
-        nlohmann::json j = nlohmann::json::parse(response);
-        std::string sig_b64;
-        if (j.contains("data") && j["data"].contains("signature")) {
-            sig_b64 = j["data"]["signature"].get<std::string>();
-        } else if (j.contains("data") && j["data"].contains("signatures") && j["data"]["signatures"].is_array()) {
-            sig_b64 = j["data"]["signatures"][0].get<std::string>();
-        } else if (j.contains("data") && j["data"].contains("signed")) {
-            sig_b64 = j["data"]["signed"].get<std::string>();
-        }
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_real_distribution<double> jitter_dist(0.5, 1.5);
 
-        // Vault transit can return strings like "vault:v1:BASE64" - strip prefix if present
-        if (!sig_b64.empty()) {
-            if (sig_b64.rfind("vault:", 0) == 0) {
-                size_t pos = sig_b64.find(':', 6);
-                if (pos != std::string::npos && pos + 1 < sig_b64.size()) {
-                    sig_b64 = sig_b64.substr(pos + 1);
-                }
+    int attempt = 0;
+    while (true) {
+        ++attempt;
+        try {
+            std::string response = httpPost(path, payload.dump());
+            // Parse response and extract signature
+            nlohmann::json j = nlohmann::json::parse(response);
+            std::string sig_b64;
+            if (j.contains("data") && j["data"].contains("signature")) {
+                sig_b64 = j["data"]["signature"].get<std::string>();
+            } else if (j.contains("data") && j["data"].contains("signatures") && j["data"]["signatures"].is_array()) {
+                sig_b64 = j["data"]["signatures"][0].get<std::string>();
+            } else if (j.contains("data") && j["data"].contains("signed")) {
+                sig_b64 = j["data"]["signed"].get<std::string>();
             }
-            SigningResult res;
-            res.signature = base64_decode(sig_b64);
-            res.algorithm = "VAULT+TRANSIT";
-            return res;
-        }
-    } catch (...) {
-        // fallthrough to error
-    }
 
-    throw KeyOperationException("Vault transit sign failed or returned unexpected payload");
+            if (!sig_b64.empty()) {
+                if (sig_b64.rfind("vault:", 0) == 0) {
+                    size_t pos = sig_b64.find(':', 6);
+                    if (pos != std::string::npos && pos + 1 < sig_b64.size()) {
+                        sig_b64 = sig_b64.substr(pos + 1);
+                    }
+                }
+                SigningResult res;
+                res.signature = base64_decode(sig_b64);
+                res.algorithm = "VAULT+TRANSIT";
+                return res;
+            }
+
+            // If response parsed but no signature -> permanent error
+            throw KeyOperationException("Vault transit sign returned unexpected payload", -1, response, false);
+
+        } catch (const KeyOperationException& koe) {
+            // If already a KeyOperationException, decide whether to retry based on transient flag
+            if (koe.transient() && attempt <= max_retries) {
+                double factor = jitter_dist(rng);
+                int sleep_ms = static_cast<int>(base_backoff_ms * factor);
+                std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+                base_backoff_ms *= 2; // exponential base for next attempt
+                continue;
+            }
+            throw;
+        } catch (const std::exception& ex) {
+            // Treat network/parse errors as transient for retry purposes for a few attempts
+            bool is_transient = true;
+            if (attempt <= max_retries) {
+                double factor = jitter_dist(rng);
+                int sleep_ms = static_cast<int>(base_backoff_ms * factor);
+                std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+                base_backoff_ms *= 2;
+                continue;
+            }
+            throw KeyOperationException(std::string("Vault transit sign failed: ") + ex.what(), -1, std::string(), is_transient);
+        }
+    }
 }
 
 KeyMetadata VaultKeyProvider::getKeyMetadata(const std::string& key_id, uint32_t version) {

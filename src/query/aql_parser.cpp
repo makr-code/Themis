@@ -851,12 +851,34 @@ private:
         if (match(TokenType::IDENTIFIER)) {
             std::string name = current().value;
             advance();
-            
-            // Function call
+
+            // Support dotted function syntax like PATH.ALL(...) or MODULE.FUNC(...)
+            if (match(TokenType::DOT) && peek().type == TokenType::IDENTIFIER && peek(1).type == TokenType::LPAREN) {
+                // consume '.'
+                advance();
+                // second identifier
+                std::string sec = current().value;
+                advance();
+                // combine name
+                std::string fullName = name + "." + sec;
+                // expect '(' and parse args
+                expect(TokenType::LPAREN, "Expected '(' after function name");
+                std::vector<std::shared_ptr<Expression>> args;
+                if (!match(TokenType::RPAREN)) {
+                    do {
+                        if (!args.empty()) expect(TokenType::COMMA, "Expected comma");
+                        args.push_back(parseExpression());
+                    } while (match(TokenType::COMMA));
+                }
+                expect(TokenType::RPAREN, "Expected ')'");
+                return std::make_shared<FunctionCallExpr>(fullName, std::move(args));
+            }
+
+            // Function call (simple identifier)
             if (match(TokenType::LPAREN)) {
                 advance();
                 std::vector<std::shared_ptr<Expression>> args;
-                
+
                 if (!match(TokenType::RPAREN)) {
                     do {
                         if (!args.empty()) {
@@ -865,11 +887,11 @@ private:
                         args.push_back(parseExpression());
                     } while (match(TokenType::COMMA));
                 }
-                
+
                 expect(TokenType::RPAREN, "Expected ')'");
                 return std::make_shared<FunctionCallExpr>(name, std::move(args));
             }
-            
+
             // Simple variable
             return std::make_shared<VariableExpr>(name);
         }

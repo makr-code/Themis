@@ -43,6 +43,7 @@
 
 // Sprint A features - include BEFORE http_server.h to have complete types
 #include "llm/llm_interaction_store.h"
+#include "llm/prompt_manager.h"
 #include "cdc/changefeed.h"
 #include <algorithm>
 
@@ -57,6 +58,7 @@
 // Now include http_server.h which has forward declarations
 #include "server/http_server.h"
 #include "server/keys_api_handler.h"
+#include "server/pki_api_handler.h"
 #include "server/classification_api_handler.h"
 #include "server/reports_api_handler.h"
 #include "server/auth_middleware.h"
@@ -67,6 +69,8 @@
 #include "query/query_optimizer.h"
 #include "query/aql_parser.h"
 #include "query/aql_translator.h"
+
+#include "security/signing.h"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -182,6 +186,29 @@ HttpServer::HttpServer(
         pii_api_ = std::make_unique<PIIApiHandler>(storage_->getRawDB(), nullptr);
         THEMIS_INFO("PII Manager initialized using default CF (feature flag off, CF isolation disabled)");
     }
+
+    // Initialize PromptManager (Prompt Template Registry)
+    try {
+        // Try to create a dedicated column family for prompt templates; fall back to default CF
+        prompt_cf_handle_ = nullptr;
+        if (storage_) {
+            try {
+                prompt_cf_handle_ = storage_->getOrCreateColumnFamily("prompt_templates");
+                THEMIS_INFO("PromptManager: using dedicated CF 'prompt_templates'");
+                prompt_manager_ = std::make_unique<themis::PromptManager>(storage_.get(), prompt_cf_handle_);
+            } catch (const std::exception& ex) {
+                THEMIS_WARN("PromptManager: failed to create dedicated CF, falling back to in-memory: {}", ex.what());
+                prompt_manager_ = std::make_unique<themis::PromptManager>();
+            }
+        } else {
+            // No storage available (tests / in-memory run)
+            prompt_manager_ = std::make_unique<themis::PromptManager>();
+            THEMIS_INFO("PromptManager initialized in-memory (no storage provided)");
+        }
+    } catch (const std::exception& ex) {
+        THEMIS_ERROR("PromptManager initialization failure: {}", ex.what());
+        prompt_manager_ = std::make_unique<themis::PromptManager>();
+    }
     
     // Initialize Time-Series Store (Sprint B) if feature enabled
     if (config_.feature_timeseries) {
@@ -262,6 +289,13 @@ HttpServer::HttpServer(
     // Initialize Keys API Handler with KeyProvider
     keys_api_ = std::make_unique<themis::server::KeysApiHandler>(key_provider_);
     THEMIS_INFO("Keys API Handler initialized");
+    // Initialize PKI API Handler using a SigningService backed by the KeyProvider
+    try {
+        pki_api_ = std::make_unique<themis::server::PkiApiHandler>(themis::createKeyProviderSigningService(key_provider_));
+        THEMIS_INFO("PKI API Handler initialized");
+    } catch (const std::exception& e) {
+        THEMIS_WARN("Failed to initialize PKI API Handler: {}", e.what());
+    }
     
     // Initialize PII Detector for Classification API (simplified - no PKI for now)
     auto pii_detector = std::make_shared<themis::utils::PIIDetector>();
@@ -560,6 +594,11 @@ namespace {
         CacheQueryPost,
         CachePutPost,
         CacheStatsGet,
+    // Prompt Template endpoints
+    PromptTemplatePost,
+    PromptTemplateList,
+    PromptTemplateGet,
+    PromptTemplatePut,
         LlmInteractionPost,
         LlmInteractionGetList,
         LlmInteractionGetById,
@@ -608,6 +647,8 @@ namespace {
         EncryptionSchemaGet,
         EncryptionSchemaPut,
         // Keys / Classification / Reports
+    PkiSignPost,
+    PkiVerifyPost,
         KeysListGet,
         KeysRotatePost,
         ClassificationRulesGet,
@@ -663,6 +704,8 @@ namespace {
         if (target == "/index/rebuild" && method == http::verb::post) return Route::IndexRebuildPost;
         if (target == "/index/reindex" && method == http::verb::post) return Route::IndexReindexPost;
         if (target == "/graph/traverse" && method == http::verb::post) return Route::GraphTraversePost;
+    if (target == "/graph/edge" && method == http::verb::post) return Route::GraphEdgePost;
+    if (target.rfind("/graph/edge/", 0) == 0 && method == http::verb::delete_) return Route::GraphEdgeDelete;
         if (target == "/vector/search" && method == http::verb::post) return Route::VectorSearchPost;
     if (target == "/vector/batch_insert" && method == http::verb::post) return Route::VectorBatchInsertPost;
     if (target == "/vector/by-filter" && method == http::verb::delete_) return Route::VectorDeleteByFilterDelete;
@@ -670,6 +713,10 @@ namespace {
         if (target == "/cache/query" && method == http::verb::post) return Route::CacheQueryPost;
         if (target == "/cache/put" && method == http::verb::post) return Route::CachePutPost;
         if (target == "/cache/stats" && method == http::verb::get) return Route::CacheStatsGet;
+    if (target == "/prompt_template" && method == http::verb::post) return Route::PromptTemplatePost;
+    if (target == "/prompt_template" && method == http::verb::get) return Route::PromptTemplateList;
+    if (target.rfind("/prompt_template/", 0) == 0 && method == http::verb::get) return Route::PromptTemplateGet;
+    if (target.rfind("/prompt_template/", 0) == 0 && method == http::verb::put) return Route::PromptTemplatePut;
         if (target == "/llm/interaction" && method == http::verb::post) return Route::LlmInteractionPost;
     if (target == "/llm/interaction" && method == http::verb::get) return Route::LlmInteractionGetList;
     if (target.rfind("/llm/interaction/", 0) == 0 && method == http::verb::get) return Route::LlmInteractionGetById;
@@ -696,6 +743,12 @@ namespace {
         if (target == "/vector/index/config" && method == http::verb::get) return Route::VectorIndexConfigGet;
         if (target == "/vector/index/config" && method == http::verb::put) return Route::VectorIndexConfigPut;
     if (target == "/vector/index/stats" && method == http::verb::get) return Route::VectorIndexStatsGet;
+        // PKI endpoints
+        if (path_only.rfind("/api/pki/", 0) == 0 && method == http::verb::post) {
+            // Expect: /api/pki/:key_id/sign or /api/pki/:key_id/verify
+            if (path_only.size() >= 5 && path_only.compare(path_only.size() - 5, 5, "/sign") == 0) return Route::PkiSignPost;
+            if (path_only.size() >= 7 && path_only.compare(path_only.size() - 7, 7, "/verify") == 0) return Route::PkiVerifyPost;
+        }
         // Keys API
         if (path_only == "/keys" && method == http::verb::get) return Route::KeysListGet;
         if (path_only == "/keys/rotate" && method == http::verb::post) return Route::KeysRotatePost;
@@ -846,6 +899,18 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::CacheQueryPost:
             response = handleCacheQuery(req);
             break;
+        case Route::PromptTemplatePost:
+            response = handlePromptTemplatePost(req);
+            break;
+        case Route::PromptTemplateList:
+            response = handlePromptTemplateList(req);
+            break;
+        case Route::PromptTemplateGet:
+            response = handlePromptTemplateGet(req);
+            break;
+        case Route::PromptTemplatePut:
+            response = handlePromptTemplatePut(req);
+            break;
         case Route::CachePutPost:
             response = handleCachePut(req);
             break;
@@ -923,6 +988,12 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::KeysListGet:
             response = handleKeysListKeys(req);
+            break;
+        case Route::PkiSignPost:
+            response = handlePkiSign(req);
+            break;
+        case Route::PkiVerifyPost:
+            response = handlePkiVerify(req);
             break;
         case Route::KeysRotatePost:
             response = handleKeysRotateKey(req);
@@ -1065,6 +1136,69 @@ http::response<http::string_body> HttpServer::handleKeysListKeys(
     }
 }
 
+http::response<http::string_body> HttpServer::handlePkiSign(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+
+        // Authorization: require pki:sign when auth is enabled
+        if (auto resp = requireAccess(req, "pki:sign", "pki.sign", "/api/pki")) return *resp;
+
+        // Extract key_id from path: /api/pki/:key_id/sign
+        auto path = std::string(req.target());
+        auto key_id = extractPathParam(path, "/api/pki/");
+        // key_id currently contains "<key_id>/sign" -> trim suffix
+        if (key_id.size() > 5 && key_id.compare(key_id.size() - 5, 5, "/sign") == 0) {
+            key_id = key_id.substr(0, key_id.size() - 5);
+        }
+        if (key_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->sign(key_id, body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiVerify(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+
+        // Authorization: require pki:verify when auth is enabled
+        if (auto resp = requireAccess(req, "pki:verify", "pki.verify", "/api/pki")) return *resp;
+
+        // Extract key_id from path: /api/pki/:key_id/verify
+        auto path = std::string(req.target());
+        auto key_id = extractPathParam(path, "/api/pki/");
+        if (key_id.size() > 7 && key_id.compare(key_id.size() - 7, 7, "/verify") == 0) {
+            key_id = key_id.substr(0, key_id.size() - 7);
+        }
+        if (key_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->verify(key_id, body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
 http::response<http::string_body> HttpServer::handleKeysRotateKey(
     const http::request<http::string_body>& req
 ) {
@@ -1139,6 +1273,98 @@ http::response<http::string_body> HttpServer::handleClassificationTest(
         auto body = json::parse(req.body());
         auto result = classification_api_->testClassification(body);
         return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Prompt Template CRUD handlers
+// -----------------------------------------------------------------------------
+
+http::response<http::string_body> HttpServer::handlePromptTemplatePost(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!prompt_manager_) return makeErrorResponse(http::status::service_unavailable, "PromptManager not available", req);
+        // Authorization: require data:write for creating templates
+        if (auto resp = requireAccess(req, "data:write", "prompt_template.create", "/prompt_template")) return *resp;
+
+        if (req.body().empty()) return makeErrorResponse(http::status::bad_request, "Missing JSON body", req);
+        auto body = json::parse(req.body());
+        themis::PromptManager::PromptTemplate t;
+        if (body.contains("id")) t.id = body.value("id", std::string());
+        if (body.contains("name")) t.name = body.value("name", std::string());
+        if (body.contains("version")) t.version = body.value("version", std::string());
+        if (body.contains("content")) t.content = body.value("content", std::string());
+        if (body.contains("metadata")) t.metadata = body["metadata"];
+        if (body.contains("active")) t.active = body.value("active", true);
+
+        auto created = prompt_manager_->createTemplate(std::move(t));
+        return makeResponse(http::status::created, created.toJson().dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePromptTemplateList(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!prompt_manager_) return makeErrorResponse(http::status::service_unavailable, "PromptManager not available", req);
+        // Authorization: require data:read for listing templates
+        if (auto resp = requireAccess(req, "data:read", "prompt_template.list", "/prompt_template")) return *resp;
+
+        auto list = prompt_manager_->listTemplates();
+        nlohmann::json out = nlohmann::json::array();
+        for (const auto& t : list) out.push_back(t.toJson());
+        return makeResponse(http::status::ok, out.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePromptTemplateGet(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!prompt_manager_) return makeErrorResponse(http::status::service_unavailable, "PromptManager not available", req);
+        // Authorization: require data:read
+        if (auto resp = requireAccess(req, "data:read", "prompt_template.get", "/prompt_template")) return *resp;
+
+        std::string path = std::string(req.target());
+        auto id = extractPathParam(path, "/prompt_template/");
+        if (id.empty()) return makeErrorResponse(http::status::bad_request, "Missing template id", req);
+        auto opt = prompt_manager_->getTemplate(id);
+        if (!opt.has_value()) return makeErrorResponse(http::status::not_found, "Template not found", req);
+        return makeResponse(http::status::ok, opt->toJson().dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePromptTemplatePut(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!prompt_manager_) return makeErrorResponse(http::status::service_unavailable, "PromptManager not available", req);
+        // Authorization: require data:write for updates
+        if (auto resp = requireAccess(req, "data:write", "prompt_template.update", "/prompt_template")) return *resp;
+
+        std::string path = std::string(req.target());
+        auto id = extractPathParam(path, "/prompt_template/");
+        if (id.empty()) return makeErrorResponse(http::status::bad_request, "Missing template id", req);
+        if (req.body().empty()) return makeErrorResponse(http::status::bad_request, "Missing JSON body", req);
+        auto body = json::parse(req.body());
+        nlohmann::json metadata = nlohmann::json::object();
+        bool active = true;
+        if (body.contains("metadata")) metadata = body["metadata"];
+        if (body.contains("active")) active = body.value("active", true);
+        bool ok = prompt_manager_->updateTemplate(id, metadata, active);
+        if (!ok) return makeErrorResponse(http::status::not_found, "Template not found", req);
+        auto updated_opt = prompt_manager_->getTemplate(id);
+        nlohmann::json out = updated_opt ? updated_opt->toJson() : nlohmann::json::object();
+        return makeResponse(http::status::ok, out.dump(), req);
     } catch (const std::exception& e) {
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
@@ -4907,6 +5133,64 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             std::function<bool(const Expression*, const std::string&, const std::optional<std::string>&)> evalBoolExpr;
             evalBoolExpr = [&](const Expression* e, const std::string& vpk, const std::optional<std::string>& eid)->bool{
                 if (!e) return true;
+                // Special handling: PATH.ALL / PATH.ANY / PATH.NONE
+                if (auto* fe = dynamic_cast<const FunctionCallExpr*>(e)) {
+                    std::string fname = fe->name; std::transform(fname.begin(), fname.end(), fname.begin(), ::tolower);
+                    if (fname == "path.all" || fname == "path.any" || fname == "path.none") {
+                        // Expect two arguments: variable name (v or e) and a predicate expression
+                        if (fe->arguments.size() != 2) return false;
+                        auto* varExpr = dynamic_cast<const VariableExpr*>(fe->arguments[0].get());
+                        if (!varExpr) return false;
+                        std::string varName = varExpr->name; // 'v' or 'e'
+                        const Expression* inner = fe->arguments[1].get();
+                        // Reconstruct path from startVertex to vpk using parent map
+                        std::vector<std::string> pathNodes;
+                        std::vector<std::string> pathEdges; // edges between pathNodes[i] -> pathNodes[i+1]
+                        std::string cur = vpk;
+                        // If vpk empty, nothing to evaluate
+                        if (cur.empty()) {
+                            // Empty path: PATH.ALL & PATH.NONE -> true, PATH.ANY -> false
+                            if (fname == "path.any") return false; else return true;
+                        }
+                        // Walk back using parent map if available
+                        pathNodes.push_back(cur);
+                        auto itp = parent.find(cur);
+                        while (itp != parent.end()) {
+                            pathEdges.push_back(itp->second.edgeId);
+                            pathNodes.push_back(itp->second.parent);
+                            itp = parent.find(pathNodes.back());
+                        }
+                        // Now reverse to get start->...->cur
+                        std::reverse(pathNodes.begin(), pathNodes.end());
+                        std::reverse(pathEdges.begin(), pathEdges.end());
+
+                        bool any = false;
+                        bool all = true;
+                        // If varName == "v", evaluate inner for each vertex in pathNodes
+                        if (varName == "v") {
+                            for (const auto& nodePk : pathNodes) {
+                                bool r = evalBoolExpr(inner, nodePk, std::nullopt);
+                                any = any || r;
+                                all = all && r;
+                            }
+                        } else if (varName == "e") {
+                            // Iterate over edges; align edge i with nodes i -> i+1
+                            for (size_t i = 0; i < pathEdges.size(); ++i) {
+                                const auto& eid2 = pathEdges[i];
+                                // For edge evaluation, set vpk to the 'to' vertex (pathNodes[i+1]) and eid to edge id
+                                bool r = evalBoolExpr(inner, pathNodes[i+1], std::optional<std::string>(eid2));
+                                any = any || r;
+                                all = all && r;
+                            }
+                        } else {
+                            return false; // unknown var
+                        }
+
+                        if (fname == "path.all") return all;
+                        if (fname == "path.none") return !any;
+                        return any; // path.any
+                    }
+                }
                 if (auto* ue = dynamic_cast<const UnaryOpExpr*>(e)) {
                     if (ue->op == UnaryOperator::Not) return !evalBoolExpr(ue->operand.get(), vpk, eid);
                     return false;

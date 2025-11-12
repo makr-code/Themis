@@ -65,9 +65,25 @@ class KeyOperationException : public std::runtime_error {
 public:
     explicit KeyOperationException(const std::string& message)
         : std::runtime_error(message)
+        , http_code_(-1)
+        , transient_(false)
     {}
+
+    KeyOperationException(const std::string& message, int http_code, const std::string& vault_message, bool transient)
+        : std::runtime_error(message)
+        , http_code_(http_code)
+        , vault_message_(vault_message)
+        , transient_(transient)
+    {}
+
+    int httpCode() const { return http_code_; }
+    const std::string& vaultMessage() const { return vault_message_; }
+    bool transient() const { return transient_; }
 };
 
+    int http_code_;
+    std::string vault_message_;
+    bool transient_;
 /**
  * @brief Abstract interface for encryption key management
  * 

@@ -79,6 +79,9 @@ public:
         int cache_capacity;          // Max cached keys (default: 1000)
         int request_timeout_ms;      // HTTP timeout (default: 5000)
         bool verify_ssl;             // SSL verification (default: true)
+    // Optional retry settings for transit calls
+    int transit_max_retries;
+    int transit_backoff_ms;
         
         Config()
             : kv_mount_path("themis")
@@ -88,6 +91,8 @@ public:
             , request_timeout_ms(5000)
             , verify_ssl(true)
             , transit_mount("transit")
+            , transit_max_retries(3)
+            , transit_backoff_ms(200)
         {}
     };
     
@@ -155,10 +160,11 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     
-    // HTTP helpers
-    std::string httpGet(const std::string& path);
-    std::string httpPost(const std::string& path, const std::string& body);
-    std::string httpList(const std::string& path);
+protected:
+    // HTTP helpers - made virtual/protected so tests can override http behaviour
+    virtual std::string httpGet(const std::string& path);
+    virtual std::string httpPost(const std::string& path, const std::string& body);
+    virtual std::string httpList(const std::string& path);
     
     // Vault API wrappers
     std::string readSecret(const std::string& key_id, uint32_t version = 0);
@@ -172,6 +178,9 @@ private:
     
     // Cache key generation
     std::string makeCacheKey(const std::string& key_id, uint32_t version) const;
+
+    // Testing: override HTTP behavior (url, method, body) -> response
+    void setTestRequestOverride(std::function<std::string(const std::string&, const std::string&, const std::string&)> fn);
 };
 
 } // namespace themis
