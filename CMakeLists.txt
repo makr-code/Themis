@@ -409,6 +409,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_encryption.cpp
     tests/test_hkdf_cache.cpp
     tests/test_field_encryption_batch.cpp
+    tests/test_pki_eidas.cpp
+    tests/test_wal_archiving.cpp
         tests/test_encryption_e2e.cpp
         tests/test_vault_key_provider.cpp
         tests/test_audit_logger.cpp
