@@ -156,6 +156,7 @@ set(THEMIS_CORE_SOURCES
     src/storage/rocksdb_wrapper.cpp
     src/storage/base_entity.cpp
     src/storage/key_schema.cpp
+    src/storage/backup_manager.cpp
     
     src/index/secondary_index.cpp
     src/index/graph_index.cpp
@@ -226,6 +227,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/normalizer.cpp
     src/security/pki_key_provider.cpp
     src/security/mock_signing_service.cpp
+    src/security/cms_signing.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
     # Geo scaffolding (headers + stubs; safe no-ops until used)
@@ -414,6 +416,7 @@ if(THEMIS_BUILD_TESTS)
     tests/test_wal_archiving.cpp
         tests/test_encryption_e2e.cpp
         tests/test_vault_key_provider.cpp
+    tests/test_wal_backup_manager.cpp
         tests/test_audit_logger.cpp
         tests/test_pii_detector.cpp
         tests/test_retention_manager.cpp
@@ -421,7 +424,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_retention_api.cpp
         tests/test_policy_yaml.cpp
         tests/test_pki_client.cpp
-    tests/test_signing_service.cpp
+        tests/test_signing_service.cpp
+        tests/test_cms_signing.cpp
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
         tests/test_http_pii_lazy_init.cpp
