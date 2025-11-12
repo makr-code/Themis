@@ -141,6 +141,12 @@ std::vector<TimeSeriesStore::DataPoint> TimeSeriesStore::query(
     return results;
 }
 
+std::vector<TimeSeriesStore::DataPoint> TimeSeriesStore::query(
+    std::string_view metric,
+    std::string_view entity) const {
+    return query(metric, entity, RangeQuery{});
+}
+
 TimeSeriesStore::Aggregation TimeSeriesStore::aggregate(
     std::string_view metric,
     std::string_view entity,
@@ -165,6 +171,12 @@ TimeSeriesStore::Aggregation TimeSeriesStore::aggregate(
     agg.avg = agg.sum / agg.count;
     
     return agg;
+}
+
+TimeSeriesStore::Aggregation TimeSeriesStore::aggregate(
+    std::string_view metric,
+    std::string_view entity) const {
+    return aggregate(metric, entity, RangeQuery{});
 }
 
 size_t TimeSeriesStore::deleteOldPoints(std::string_view metric,

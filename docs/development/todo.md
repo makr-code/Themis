@@ -426,6 +426,36 @@ Nach Analyse der aktuellen Fähigkeiten fehlen folgende kritische Features im Ve
 - [ ] Continuous Aggregates und Retention Policies
 - **Design-Beispiel:**
   ```yaml
+
+  ---
+
+  ## Development updates: Tests & JWT/JWKS (November 2025)
+
+  Kurze Zusammenfassung der jüngsten Test- und JWT-Arbeiten (für Entwickler):
+
+  - Integrationstest: `tests/test_jwt_integration.cpp`
+    - Startet einen kleinen In-Process HTTP-Server (Boost.Asio) und liefert JWKS über `/jwks.json`.
+    - Testet, dass `JWTValidator` JWKS per HTTP abruft und RS256-Tokens validieren kann.
+    - Enthält einen `MultiResponseHttpServer`-Helper, mit dem sequentielle Antworten (Rotation-Szenarien) simuliert werden können.
+
+  - Unit-Test (neu): `tests/test_jwt_rotation_unit.cpp`
+    - Simuliert JWKS-Rotation deterministisch ohne HTTP, nutzt `JWTValidator::setJWKSForTesting()`.
+    - Ablauf: cache mit JWKS ohne benötigtes `kid` -> parseAndValidate() schlägt fehl -> cache wird auf JWKS mit korrektem `kid` gesetzt -> parseAndValidate() besteht.
+    - Vorteil: schnellere, deterministische Tests für Rotation-Logik ohne Netzwerk.
+
+  Wie lokal ausführen (Windows PowerShell, aus Projekt-Root):
+
+  ```powershell
+  cmake --build build --target themis_tests --config Release
+  .\build\Release\themis_tests.exe --gtest_filter=JWTUnit.JWKSRotation_SetJWKSForTesting
+  ```
+
+  Hinweis: Die Integrationstests verwenden Boost.Asio und starten kurzlebige HTTP-Server; sie können in CI laufen, erfordern aber, dass die Tests keine festen Ports voraussetzen (dies ist bereits implementiert: Port 0 / bind ephemeral port).
+
+  Nächste Schritte (Tests/Doku)
+  - Add unit tests for `VCCPKIClient` REST (mock PKI endpoints). Status: TODO.
+  - Update `docs/auth/jwt.md` mit Hinweise zur JWKS-Caching-Policy, `kid`-rotation und Verhalten des `JWTValidator` (TTL, forced refetch on missing kid). Status: TODO.
+
   time_series_layer:
     engine: "TimeScaleDB-like"
     features:

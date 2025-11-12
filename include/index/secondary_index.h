@@ -8,6 +8,7 @@
 #include <functional>
 #include <utility>
 #include <unordered_set>
+#include <atomic>
 
 namespace themis {
 
@@ -72,8 +73,9 @@ public:
         bool normalize_umlauts = false; // de: ä->a, ö->o, ü->u, ß->ss
     };
     
-    Status createFulltextIndex(std::string_view table, std::string_view column, 
-                               const FulltextConfig& config = FulltextConfig{});
+    // Overload: use default FulltextConfig
+    Status createFulltextIndex(std::string_view table, std::string_view column);
+    Status createFulltextIndex(std::string_view table, std::string_view column, const FulltextConfig& config);
     Status dropFulltextIndex(std::string_view table, std::string_view column);
     bool hasFulltextIndex(std::string_view table, std::string_view column) const;
     

@@ -18,6 +18,10 @@ SemanticQueryCache::SemanticQueryCache(
     vim_.init("query_cache", config_.embedding_dim);
 }
 
+// Delegating constructor with default config
+SemanticQueryCache::SemanticQueryCache(RocksDBWrapper& db, VectorIndexManager& vim)
+    : SemanticQueryCache(db, vim, Config{}) {}
+
 // ===== Cache Operations =====
 
 SemanticQueryCache::Status SemanticQueryCache::put(

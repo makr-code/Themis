@@ -7,7 +7,6 @@
 #include "utils/audit_logger.h"
 #include "security/encryption.h"
 #include "utils/pki_client.h"
-#include "utils/lek_manager.h"
 
 namespace themis {
 namespace server {
@@ -45,8 +44,7 @@ class AuditApiHandler {
 public:
     AuditApiHandler(std::shared_ptr<themis::FieldEncryption> enc,
                     std::shared_ptr<themis::utils::VCCPKIClient> pki,
-                    const std::string& log_path,
-                    std::shared_ptr<themis::utils::LEKManager> lek_manager = nullptr);
+                    const std::string& log_path);
 
     // Query audit logs with filtering and pagination
     nlohmann::json queryAuditLogs(const AuditQueryFilter& filter);
@@ -58,7 +56,6 @@ private:
     std::shared_ptr<themis::FieldEncryption> enc_;
     std::shared_ptr<themis::utils::VCCPKIClient> pki_;
     std::string log_path_;
-    std::shared_ptr<themis::utils::LEKManager> lek_manager_;
 
     // Read and decrypt audit log entries from JSONL file
     std::vector<AuditLogEntry> readAuditLogs(const AuditQueryFilter& filter);

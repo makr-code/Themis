@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <optional>
 
 namespace themis {
 namespace utils {
@@ -37,6 +38,10 @@ public:
     bool verifyHash(const std::vector<uint8_t>& hash_bytes, const SignatureResult& sig) const;
 
     const PKIConfig& config() const { return cfg_; }
+
+    // Return certificate serial (hex) if a certificate path is configured and readable.
+    // Returns empty optional when no cert is available or parsing fails.
+    std::optional<std::string> getCertSerial() const;
 
 private:
     PKIConfig cfg_;

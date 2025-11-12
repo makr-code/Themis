@@ -106,7 +106,8 @@ public:
     };
 
 public:
-    SemanticQueryCache(RocksDBWrapper& db, VectorIndexManager& vim, const Config& config = Config());
+    SemanticQueryCache(RocksDBWrapper& db, VectorIndexManager& vim);
+    SemanticQueryCache(RocksDBWrapper& db, VectorIndexManager& vim, const Config& config);
     ~SemanticQueryCache() = default;
     
     // Cache operations

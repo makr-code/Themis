@@ -228,8 +228,39 @@ auto [status, edges] = graph.getEdgesInTimeRange(500, 1500);
 // temporary: 1000-2000 overlaps 500-1500
 ```
 
----
 
+## Aggregate numeric edge property across a time window
+
+You can now aggregate a numeric property (SUM, AVG, MIN, MAX, COUNT) across all edges that match a time window. The aggregation supports an optional edge type filter (`_type`).
+
+```cpp
+std::pair<Status, TemporalAggregationResult>
+aggregateEdgePropertyInTimeRange(
+  std::string_view property,                // field name on edge entity, e.g. "cost" or "_weight"
+  Aggregation agg,                          // COUNT, SUM, AVG, MIN, MAX
+  int64_t range_start_ms,
+  int64_t range_end_ms,
+  bool require_full_containment = false,
+  std::optional<std::string_view> edge_type = std::nullopt
+) const;
+```
+
+Behavior notes:
+- `COUNT` returns the number of matching edges (regardless of whether the property exists).
+- `SUM`/`AVG`/`MIN`/`MAX` consider only edges that have a numeric value for the requested property.
+- `edge_type` (optional) allows server-side filtering by `_type`.
+
+Example:
+
+```cpp
+// Sum cost of edges of type "A" overlapping [1000,2000]
+auto [st, res] = graph.aggregateEdgePropertyInTimeRange("cost", GraphIndexManager::Aggregation::SUM, 1000, 2000, false, std::string_view("A"));
+if (st.ok) {
+  std::cout << "count=" << res.count << " sum=" << res.value << "\n";
+}
+```
+
+Implementation detail: edge entities are stored under keys like `edge:<edgeId>`. To be robust across historical formats, the implementation also attempts `edge:<graphId>:<edgeId>` when reading entities and falls back to `edge:<edgeId>` if necessary. Helper functions `getEdgeType_()` and `getEdgeWeight_()` were hardened to try both formats.
 ## Filtering Semantics
 
 ### Overlap vs. Full Containment
@@ -474,6 +505,12 @@ while (iter.hasNext()) {
   - Implemented `getOutEdgesInTimeRange()` in `graph_index.cpp`
   - Created 8 comprehensive tests (all passing)
   - Documentation created
+
+- **2025-11-11:** Temporal aggregation property support
+  - Added `aggregateEdgePropertyInTimeRange()` supporting COUNT, SUM, AVG, MIN, MAX over a query time window
+  - Added unit tests `test_temporal_aggregation_property.cpp` (4 tests) and updated CMake
+  - Hardened entity read paths: `getEdgeType_()` and `getEdgeWeight_()` try both `edge:<graphId>:<edgeId>` and `edge:<edgeId>` formats to be backward-compatible
+  - All new tests passing
 
 ---
 

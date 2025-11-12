@@ -12,6 +12,15 @@
 
 The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Database System Based on LSM Tree
 
+## Recent changes (2025-11-11)
+
+- Temporal aggregation support: added `aggregateEdgePropertyInTimeRange()` to `GraphIndexManager`.
+  - Supports COUNT, SUM, AVG, MIN, MAX over a time window and optional `_type` filtering.
+  - Robust edge entity reads: code attempts both `edge:<graphId>:<edgeId>` and `edge:<edgeId>` keys for backward compatibility.
+  - Unit tests added: `tests/test_temporal_aggregation_property.cpp` (all passing).
+  - Documentation updated: `docs/temporal_time_range_queries.md` (changelog & examples).
+
+
 
 Part 1: The Canonical Storage Architecture: The “Base Entity” Foundation of ThemisDB
 

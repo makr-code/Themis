@@ -213,6 +213,10 @@ std::vector<LLMInteractionStore::Interaction> LLMInteractionStore::listInteracti
     return results;
 }
 
+std::vector<LLMInteractionStore::Interaction> LLMInteractionStore::listInteractions() const {
+    return listInteractions(ListOptions{});
+}
+
 LLMInteractionStore::Stats LLMInteractionStore::getStats() const {
     Stats stats{};
     

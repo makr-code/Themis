@@ -90,7 +90,8 @@ public:
      * @param options List options (pagination, filters)
      * @return Vector of interactions
      */
-    std::vector<Interaction> listInteractions(const ListOptions& options = {}) const;
+    std::vector<Interaction> listInteractions() const;
+    std::vector<Interaction> listInteractions(const ListOptions& options) const;
 
     /**
      * @brief Get store statistics

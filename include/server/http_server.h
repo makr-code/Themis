@@ -35,7 +35,6 @@
 #include "server/policy_engine.h"
 #include "server/ranger_adapter.h"
 #include "utils/pii_pseudonymizer.h"
-#include "utils/lek_manager.h"
 #include "security/encryption.h"
 
 namespace themis {
@@ -332,14 +331,6 @@ private:
     };
     AuthContext extractAuthContext(const http::request<http::string_body>& req) const;
 
-    // Decrypt encrypted fields in entity JSON based on encryption schema
-    // Returns modified json object with decrypted fields (or original if no schema/encryption)
-    nlohmann::json decryptEntityFields(
-        const std::string& table,
-        const nlohmann::json& entity_json,
-        const AuthContext& auth_ctx
-    ) const;
-
     std::string extractPathParam(const std::string& path, const std::string& prefix);
 
     // Lazy initialization for PIIPseudonymizer
@@ -393,8 +384,6 @@ private:
     
     // Audit Logger
     std::shared_ptr<themis::utils::AuditLogger> audit_logger_;
-    // LEK Manager for daily rotating audit log encryption keys
-    std::shared_ptr<themis::utils::LEKManager> lek_manager_;
     // Field encryption for PII mappings
     std::shared_ptr<themis::FieldEncryption> field_encryption_;
     // Key provider für hierarchische Schluesselverwaltung (DEK, Group-DEKs, Field-Keys)

@@ -5,6 +5,7 @@
 #include "storage/key_schema.h"
 #include "storage/base_entity.h"
 #include "utils/logger.h"
+#include "security/encryption.h"
 
 #include <queue>
 #include <unordered_set>
@@ -78,8 +79,94 @@ GraphIndexManager::Status GraphIndexManager::addEdge(const BaseEntity& edge, Roc
 	auto toOpt = edge.getFieldAsString("_to");
 	if (!eidOpt || !fromOpt || !toOpt) return Status::Error("addEdge(tx): Felder 'id', '_from', '_to' fehlen");
 	const std::string& eid = *eidOpt; const std::string& from = *fromOpt; const std::string& to = *toOpt;
+	// If FieldEncryption is configured, optionally encrypt fields listed in
+	// `encrypt_fields` (preferred) or fall back to legacy `_sensitive` boolean.
+	BaseEntity stored = edge; // make a mutable copy
+	try {
+		if (field_encryption_) {
+			std::vector<std::string> encryptList;
+
+			// Preferred: encrypt_fields as JSON-string or comma-separated list
+			auto encOpt = edge.getFieldAsString("encrypt_fields");
+			if (encOpt) {
+				try {
+					auto j = nlohmann::json::parse(*encOpt);
+					if (j.is_array()) {
+						for (const auto& v : j) if (v.is_string()) encryptList.push_back(v.get<std::string>());
+					}
+				} catch (...) {
+					// Fallback: comma-separated
+					std::string s = *encOpt;
+					size_t start = 0;
+					while (start < s.size()) {
+						auto pos = s.find(',', start);
+						std::string part = (pos == std::string::npos) ? s.substr(start) : s.substr(start, pos - start);
+						// trim
+						auto l = part.find_first_not_of(" \t\n\r");
+						auto r = part.find_last_not_of(" \t\n\r");
+						if (l != std::string::npos && r != std::string::npos) encryptList.push_back(part.substr(l, r - l + 1));
+						if (pos == std::string::npos) break;
+						start = pos + 1;
+					}
+				}
+			}
+
+			// Backwards compat: if no explicit list and _sensitive==true, encrypt weight+metadata
+			if (encryptList.empty()) {
+				auto sensitiveOpt = edge.getFieldAsBool("_sensitive");
+				if (sensitiveOpt && *sensitiveOpt) {
+					encryptList.push_back("_weight");
+					encryptList.push_back("metadata");
+				}
+			}
+
+			// Perform encryption for listed fields
+			for (const auto& fld : encryptList) {
+				if (!edge.hasField(fld)) continue;
+				if (fld == "_weight") {
+					// Prefer numeric weight
+					if (auto wOpt = edge.getFieldAsDouble("_weight"); wOpt) {
+						std::string wstr = std::to_string(*wOpt);
+						auto blob = field_encryption_->encrypt(wstr, "edges.weight");
+						stored.setField("_weight", std::string(blob.toBase64()));
+						continue;
+					}
+					// Fallback: string/int
+					if (auto wStr = edge.getFieldAsString("_weight"); wStr) {
+						auto blob = field_encryption_->encrypt(*wStr, "edges.weight");
+						stored.setField("_weight", std::string(blob.toBase64()));
+						continue;
+					}
+				} else if (fld == "metadata") {
+					if (auto metaOpt = edge.getFieldAsString("metadata"); metaOpt) {
+						auto blob = field_encryption_->encrypt(*metaOpt, "edges.metadata");
+						stored.setField("metadata", std::string(blob.toBase64()));
+						continue;
+					}
+				} else {
+					// Generic: try string field
+					if (auto sval = edge.getFieldAsString(fld); sval) {
+						auto blob = field_encryption_->encrypt(*sval, std::string("edges.") + fld);
+						stored.setField(fld, std::string(blob.toBase64()));
+						continue;
+					}
+					// Try binary blobs
+					if (auto bin = edge.getField(fld); bin && std::holds_alternative<std::vector<uint8_t>>(*bin)) {
+						auto& vec = std::get<std::vector<uint8_t>>(*bin);
+						auto blob = field_encryption_->encrypt(vec, std::string("edges.") + fld);
+						stored.setField(fld, std::string(blob.toBase64()));
+						continue;
+					}
+				}
+			}
+		}
+	} catch (const std::exception& e) {
+		THEMIS_ERROR("addEdge: encryption failed: {}", e.what());
+		return Status::Error(std::string("addEdge: encryption failed: ") + e.what());
+	}
+
 	// Edge speichern (Primärspeicher)
-	batch.put(KeySchema::makeGraphEdgeKey(eid), edge.serialize());
+	batch.put(KeySchema::makeGraphEdgeKey(eid), stored.serialize());
 	// Adjazenz-Indizes
 	batch.put(KeySchema::makeGraphOutdexKey(from, eid), toBytes(to));
 	batch.put(KeySchema::makeGraphIndexKey(to, eid), toBytes(from));
@@ -278,11 +365,19 @@ GraphIndexManager::bfs(std::string_view startPk, int maxDepth) const {
 
 		const std::string prefix = std::string("graph:out:");
 		db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val){
-			// Parse key to check if it belongs to this node
-			std::string graphId, fromPk, edgeId;
-			if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
+			// Robust parsing that supports both formats:
+			// - graph:out:<graphId>:<fromPk>:<edgeId>
+			// - graph:out:<fromPk>:<edgeId>
+			std::string keyStr(key);
+			size_t lastColon = keyStr.rfind(':');
+			if (lastColon == std::string::npos) return true;
+			const size_t prefixLen = std::string("graph:out:").size();
+			if (keyStr.size() <= prefixLen) return true;
+			std::string middle = keyStr.substr(prefixLen, lastColon - prefixLen);
+			size_t innerColon = middle.rfind(':');
+			std::string fromPk = (innerColon == std::string::npos) ? middle : middle.substr(innerColon + 1);
 			if (fromPk != node) return true;
-			
+
 			std::string neigh(val);
 			if (!visited.count(neigh)) {
 				visited.insert(neigh);
@@ -390,14 +485,17 @@ GraphIndexManager::Status GraphIndexManager::rebuildTopology() {
 	inEdges_.clear();
 
 	// Scan all outgoing edges: graph:out:<graph_id>:<fromPk>:<edgeId> -> toPk
-	db_.scanPrefix("graph:out:", [this](std::string_view key, std::string_view val) {
+	size_t out_scan_count = 0;
+	db_.scanPrefix("graph:out:", [this, &out_scan_count](std::string_view key, std::string_view val) {
 		std::string graphId, fromPk, edgeId;
 		if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
 		std::string toPk(val);
 		// Add to outEdges_
 		outEdges_[fromPk].push_back({edgeId, toPk, graphId});
+		++out_scan_count;
 		return true;
 	});
+	THEMIS_INFO("rebuildTopology: scanned {} outgoing edge keys", out_scan_count);
 
 	// Scan all incoming edges: graph:in:<graph_id>:<toPk>:<edgeId> -> fromPk
 	db_.scanPrefix("graph:in:", [this](std::string_view key, std::string_view val) {
@@ -414,9 +512,8 @@ GraphIndexManager::Status GraphIndexManager::rebuildTopology() {
 
 void GraphIndexManager::addEdgeToTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk) {
 	std::lock_guard<std::mutex> lock(topology_mutex_);
-	// Unknown graph id in current storage layout -> store empty graph id
-	outEdges_[fromPk].push_back({edgeId, toPk, std::string{}});
-	inEdges_[toPk].push_back({edgeId, fromPk, std::string{}});
+	outEdges_[fromPk].push_back({edgeId, toPk});
+	inEdges_[toPk].push_back({edgeId, fromPk});
 }
 
 void GraphIndexManager::removeEdgeFromTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk) {
@@ -464,47 +561,93 @@ size_t GraphIndexManager::getTopologyEdgeCount() const {
 // Shortest-Path-Algorithmen
 // ────────────────────────────────────────────────────────────────────────────
 
-double GraphIndexManager::getEdgeWeight_(std::string_view /*graphId*/, std::string_view edgeId) const {
-	const std::string edgeKey = std::string("edge:") + std::string(edgeId);
-	auto blob = db_.get(edgeKey);
-	if (!blob) return 1.0; // Default weight
-	
+double GraphIndexManager::getEdgeWeight_(std::string_view graphId, std::string_view edgeId) const {
+	// Try both storage formats: with graphId (edge:<graphId>:<edgeId>) and without (edge:<edgeId>)
+	const std::string edgeKeyWithGid = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
+	auto blob = db_.get(edgeKeyWithGid);
+	if (!blob.has_value()) {
+		const std::string edgeKey = std::string("edge:") + std::string(edgeId);
+		blob = db_.get(edgeKey);
+		if (!blob.has_value()) return 1.0; // Default weight
+	}
+
 	BaseEntity edge = BaseEntity::deserialize(std::string(edgeId), *blob);
-	auto weightOpt = edge.getFieldAsDouble("_weight");
-	return weightOpt.value_or(1.0);
+	// Prefer numeric representation
+	if (auto weightOpt = edge.getFieldAsDouble("_weight"); weightOpt) return *weightOpt;
+
+	// If stored as string it might be either a plain number or an encrypted blob
+	if (auto wstrOpt = edge.getFieldAsString("_weight"); wstrOpt) {
+		const std::string& wstr = *wstrOpt;
+		// Try to detect encrypted blob and decrypt when possible
+		try {
+			auto eb = EncryptedBlob::fromBase64(wstr);
+			if (field_encryption_) {
+				std::string dec = field_encryption_->decryptToString(eb);
+				try {
+					return std::stod(dec);
+				} catch (...) {
+					// fallthrough
+				}
+			}
+		} catch (...) {
+			// not an encrypted blob
+		}
+
+		// Fallback: attempt to parse as number
+		try {
+			return std::stod(wstr);
+		} catch (...) {
+			return 1.0;
+		}
+	}
+
+	return 1.0;
 }
 
-std::string GraphIndexManager::getEdgeType_(std::string_view /*graphId*/, std::string_view edgeId) const {
-	const std::string edgeKey = std::string("edge:") + std::string(edgeId);
-	auto blob = db_.get(edgeKey);
-	if (!blob) return ""; // No type
-	
+std::string GraphIndexManager::getEdgeType_(std::string_view graphId, std::string_view edgeId) const {
+	// Try both storage formats: with graphId (edge:<graphId>:<edgeId>) and without (edge:<edgeId>)
+	const std::string edgeKeyWithGid = std::string("edge:") + std::string(graphId) + ":" + std::string(edgeId);
+	auto blob = db_.get(edgeKeyWithGid);
+	if (!blob.has_value()) {
+		const std::string edgeKey = std::string("edge:") + std::string(edgeId);
+		blob = db_.get(edgeKey);
+		if (!blob.has_value()) return ""; // No type
+	}
+
 	BaseEntity edge = BaseEntity::deserialize(std::string(edgeId), *blob);
-	auto typeOpt = edge.getFieldAsString("_type");
-	return typeOpt.value_or("");
+	if (auto typeOpt = edge.getFieldAsString("_type"); typeOpt) {
+		const std::string& t = *typeOpt;
+		// Try decrypting if it's an encrypted blob
+		try {
+			auto eb = EncryptedBlob::fromBase64(t);
+			if (field_encryption_) {
+				return field_encryption_->decryptToString(eb);
+			}
+		} catch (...) {
+			// not an encrypted blob
+		}
+		return t;
+	}
+	return std::string();
 }
 
 bool GraphIndexManager::parseOutKey_(std::string_view key, std::string& graphId, std::string& fromPk, std::string& edgeId) {
-	// Supported formats:
-	//   Legacy (current storage): graph:out:<fromPk>:<edgeId>
-	//   Planned multi-graph:     graph:out:<graph_id>:<fromPk>:<edgeId>
+	// Expect: graph:out:<graph_id>:<fromPk>:<edgeId>
 	if (key.rfind("graph:out:", 0) != 0) return false;
 	std::string s(key.substr(10)); // after prefix
 	size_t first = s.find(':');
-	if (first == std::string::npos) {
-		// No colon -> invalid
-		return false;
-	}
+	if (first == std::string::npos) return false;
 	size_t last = s.rfind(':');
+	// Support two formats:
+	// - graph:out:<graphId>:<fromPk>:<edgeId>
+	// - graph:out:<fromPk>:<edgeId>  (legacy)
 	if (last == first) {
-		// Legacy format has exactly one colon: <fromPk>:<edgeId>
+		// legacy: no graphId
 		graphId.clear();
 		fromPk = s.substr(0, first);
 		edgeId = s.substr(first + 1);
 		return true;
 	}
-	// Multi-graph format
-	if (last == std::string::npos || last == first) return false; // sanity
 	graphId = s.substr(0, first);
 	fromPk = s.substr(first + 1, last - first - 1);
 	edgeId = s.substr(last + 1);
@@ -512,22 +655,19 @@ bool GraphIndexManager::parseOutKey_(std::string_view key, std::string& graphId,
 }
 
 bool GraphIndexManager::parseInKey_(std::string_view key, std::string& graphId, std::string& toPk, std::string& edgeId) {
-	// Supported formats:
-	//   Legacy: graph:in:<toPk>:<edgeId>
-	//   Multi-graph planned: graph:in:<graph_id>:<toPk>:<edgeId>
+	// Expect: graph:in:<graph_id>:<toPk>:<edgeId>
 	if (key.rfind("graph:in:", 0) != 0) return false;
 	std::string s(key.substr(9)); // after prefix
 	size_t first = s.find(':');
 	if (first == std::string::npos) return false;
 	size_t last = s.rfind(':');
+	// Support two formats: with graphId or legacy without
 	if (last == first) {
-		// Legacy
 		graphId.clear();
 		toPk = s.substr(0, first);
 		edgeId = s.substr(first + 1);
 		return true;
 	}
-	if (last == std::string::npos || last == first) return false;
 	graphId = s.substr(0, first);
 	toPk = s.substr(first + 1, last - first - 1);
 	edgeId = s.substr(last + 1);
@@ -590,15 +730,26 @@ GraphIndexManager::dijkstra(std::string_view startPk, std::string_view targetPk)
 			// Fallback: RocksDB scan (all graphs)
 			const std::string prefix = std::string("graph:out:");
 			db_.scanPrefix(prefix, [&](std::string_view key, std::string_view val) {
-				// Parse key to check if it belongs to this node
-				std::string graphId, fromPk, edgeId;
-				if (!parseOutKey_(key, graphId, fromPk, edgeId)) return true;
+				// Robust parse (support optional graphId segment)
+				std::string keyStr(key);
+				size_t lastColon = keyStr.rfind(':');
+				if (lastColon == std::string::npos) return true;
+				const size_t prefixLen = std::string("graph:out:").size();
+				if (keyStr.size() <= prefixLen) return true;
+				std::string middle = keyStr.substr(prefixLen, lastColon - prefixLen);
+				size_t innerColon = middle.rfind(':');
+				std::string fromPk = (innerColon == std::string::npos) ? middle : middle.substr(innerColon + 1);
 				if (fromPk != node) return true;
-				
+
+				std::string edgeId = keyStr.substr(lastColon + 1);
+				std::string graphId;
+				if (innerColon == std::string::npos) graphId.clear();
+				else graphId = middle.substr(0, innerColon);
+
 				std::string neighbor(val);
 				double weight = getEdgeWeight_(graphId, edgeId);
 				double newCost = dist[node] + weight;
-				
+
 				if (!dist.count(neighbor) || newCost < dist[neighbor]) {
 					dist[neighbor] = newCost;
 					prev[neighbor] = node;
@@ -866,8 +1017,94 @@ GraphIndexManager::Status GraphIndexManager::addEdge(const BaseEntity& edge, Roc
 	const std::string& from = *fromOpt; 
 	const std::string& to = *toOpt;
 	
+	// If FieldEncryption is configured, optionally encrypt fields listed in
+	// `encrypt_fields` (preferred) or fall back to legacy `_sensitive` boolean.
+	BaseEntity stored = edge; // mutable copy
+	try {
+		if (field_encryption_) {
+			std::vector<std::string> encryptList;
+
+			// Preferred: encrypt_fields as JSON-string or comma-separated list
+			auto encOpt = edge.getFieldAsString("encrypt_fields");
+			if (encOpt) {
+				try {
+					auto j = nlohmann::json::parse(*encOpt);
+					if (j.is_array()) {
+						for (const auto& v : j) if (v.is_string()) encryptList.push_back(v.get<std::string>());
+					}
+				} catch (...) {
+					// Fallback: comma-separated
+					std::string s = *encOpt;
+					size_t start = 0;
+					while (start < s.size()) {
+						auto pos = s.find(',', start);
+						std::string part = (pos == std::string::npos) ? s.substr(start) : s.substr(start, pos - start);
+						// trim
+						auto l = part.find_first_not_of(" \t\n\r");
+						auto r = part.find_last_not_of(" \t\n\r");
+						if (l != std::string::npos && r != std::string::npos) encryptList.push_back(part.substr(l, r - l + 1));
+						if (pos == std::string::npos) break;
+						start = pos + 1;
+					}
+				}
+			}
+
+			// Backwards compat: if no explicit list and _sensitive==true, encrypt weight+metadata
+			if (encryptList.empty()) {
+				auto sensitiveOpt = edge.getFieldAsBool("_sensitive");
+				if (sensitiveOpt && *sensitiveOpt) {
+					encryptList.push_back("_weight");
+					encryptList.push_back("metadata");
+				}
+			}
+
+			// Perform encryption for listed fields
+			for (const auto& fld : encryptList) {
+				if (!edge.hasField(fld)) continue;
+				if (fld == "_weight") {
+					// Prefer numeric weight
+					if (auto wOpt = edge.getFieldAsDouble("_weight"); wOpt) {
+						std::string wstr = std::to_string(*wOpt);
+						auto blob = field_encryption_->encrypt(wstr, "edges.weight");
+						stored.setField("_weight", std::string(blob.toBase64()));
+						continue;
+					}
+					// Fallback: string/int
+					if (auto wStr = edge.getFieldAsString("_weight"); wStr) {
+						auto blob = field_encryption_->encrypt(*wStr, "edges.weight");
+						stored.setField("_weight", std::string(blob.toBase64()));
+						continue;
+					}
+				} else if (fld == "metadata") {
+					if (auto metaOpt = edge.getFieldAsString("metadata"); metaOpt) {
+						auto blob = field_encryption_->encrypt(*metaOpt, "edges.metadata");
+						stored.setField("metadata", std::string(blob.toBase64()));
+						continue;
+					}
+				} else {
+					// Generic: try string field
+					if (auto sval = edge.getFieldAsString(fld); sval) {
+						auto blob = field_encryption_->encrypt(*sval, std::string("edges.") + fld);
+						stored.setField(fld, std::string(blob.toBase64()));
+						continue;
+					}
+					// Try binary blobs
+					if (auto bin = edge.getField(fld); bin && std::holds_alternative<std::vector<uint8_t>>(*bin)) {
+						auto& vec = std::get<std::vector<uint8_t>>(*bin);
+						auto blob = field_encryption_->encrypt(vec, std::string("edges.") + fld);
+						stored.setField(fld, std::string(blob.toBase64()));
+						continue;
+					}
+				}
+			}
+		}
+	} catch (const std::exception& e) {
+		THEMIS_ERROR("addEdge(mvcc): encryption failed: {}", e.what());
+		return Status::Error(std::string("addEdge(mvcc): encryption failed: ") + e.what());
+	}
+
 	// Edge speichern (Primärspeicher)
-	txn.put(KeySchema::makeGraphEdgeKey(eid), edge.serialize());
+	txn.put(KeySchema::makeGraphEdgeKey(eid), stored.serialize());
 	
 	// Adjazenz-Indizes
 	txn.put(KeySchema::makeGraphOutdexKey(from, eid), toBytes(to));
@@ -1144,6 +1381,117 @@ GraphIndexManager::getOutEdgesInTimeRange(std::string_view fromPk, int64_t range
 	});
 
 	return {Status::OK(), result};
+}
+
+// Aggregate a numeric edge property across edges in a time range
+std::pair<GraphIndexManager::Status, GraphIndexManager::TemporalAggregationResult>
+GraphIndexManager::aggregateEdgePropertyInTimeRange(std::string_view property, Aggregation agg, int64_t range_start_ms, int64_t range_end_ms, bool require_full_containment, std::optional<std::string_view> edge_type) const {
+	if (!db_.isOpen()) {
+		return {Status::Error("aggregateEdgePropertyInTimeRange: Datenbank ist nicht geöffnet"), {}};
+	}
+
+	TimeRangeFilter filter = TimeRangeFilter::between(range_start_ms, range_end_ms);
+	TemporalAggregationResult res;
+
+	double sum = 0.0;
+	size_t value_count = 0;
+	double minv = 0.0, maxv = 0.0;
+	bool have_minmax = false;
+
+	std::string prefix = "graph:out:";
+	db_.scanPrefix(prefix, [this, &filter, require_full_containment, &res, &sum, &value_count, &minv, &maxv, &have_minmax, &property, &edge_type, &agg](std::string_view key, std::string_view /*val*/) {
+		// Parse key: support both formats:
+		// - new: graph:out:<graph_id>:<fromPk>:<edgeId>
+		// - legacy: graph:out:<fromPk>:<edgeId>
+		std::string graphId, fromPk, edgeId;
+		if (!parseOutKey_(key, graphId, fromPk, edgeId)) {
+			// fallback to legacy parsing used elsewhere
+			std::string keyStr(key);
+			size_t firstColon = keyStr.find(':');
+			if (firstColon == std::string::npos) return true;
+			size_t secondColon = keyStr.find(':', firstColon + 1);
+			if (secondColon == std::string::npos) return true;
+			size_t thirdColon = keyStr.find(':', secondColon + 1);
+			if (thirdColon == std::string::npos) return true;
+
+			fromPk = keyStr.substr(secondColon + 1, thirdColon - secondColon - 1);
+			edgeId = keyStr.substr(thirdColon + 1);
+			graphId = "default";
+		}
+
+		// Load edge entity. Edges are stored as "edge:<edgeId>" (KeySchema::makeGraphEdgeKey).
+		// Older or other parts of the code sometimes expect "edge:<graphId>:<edgeId>",
+		// so attempt both forms to be robust.
+		std::string edgeKeyWithGid = std::string("edge:") + graphId + ":" + edgeId;
+		auto blob = db_.get(edgeKeyWithGid);
+		if (!blob.has_value()) {
+			// Fallback to edge without graph id
+			std::string edgeKey = std::string("edge:") + edgeId;
+			blob = db_.get(edgeKey);
+			if (!blob.has_value()) return true;
+		}
+
+		BaseEntity edge = BaseEntity::deserialize(edgeId, *blob);
+		std::optional<int64_t> valid_from = edge.getFieldAsInt("valid_from");
+		std::optional<int64_t> valid_to = edge.getFieldAsInt("valid_to");
+
+		bool match = require_full_containment ? filter.fullyContains(valid_from, valid_to) : filter.hasOverlap(valid_from, valid_to);
+		if (!match) return true;
+
+		// If edge_type provided, check _type
+		if (edge_type.has_value()) {
+			std::string t = getEdgeType_(graphId, edgeId);
+			if (t != std::string(*edge_type)) return true;
+		}
+
+		// COUNT aggregates count of matching edges (regardless of property availability)
+		if (agg == Aggregation::COUNT) {
+			res.count++;
+			return true;
+		}
+
+		// For numeric aggregations, read the numeric property
+		auto valOpt = edge.getFieldAsDouble(std::string(property));
+		if (!valOpt.has_value()) return true; // skip edges without numeric field
+
+		double v = *valOpt;
+		res.count++; // count of edges considered for numeric aggregation
+		value_count++;
+
+		switch (agg) {
+			case Aggregation::SUM:
+				sum += v;
+				break;
+			case Aggregation::AVG:
+				sum += v;
+				break;
+			case Aggregation::MIN:
+				if (!have_minmax || v < minv) minv = v, have_minmax = true;
+				break;
+			case Aggregation::MAX:
+				if (!have_minmax || v > maxv) maxv = v, have_minmax = true;
+				break;
+			default:
+				break;
+		}
+
+		return true;
+	});
+
+	// Finalize result
+	if (agg == Aggregation::SUM) {
+		res.value = sum;
+	} else if (agg == Aggregation::AVG) {
+		res.value = (value_count > 0) ? (sum / static_cast<double>(value_count)) : 0.0;
+	} else if (agg == Aggregation::MIN) {
+		res.value = have_minmax ? minv : 0.0;
+	} else if (agg == Aggregation::MAX) {
+		res.value = have_minmax ? maxv : 0.0;
+	} else if (agg == Aggregation::COUNT) {
+		res.value = 0.0;
+	}
+
+	return {Status::OK(), res};
 }
 
 std::pair<GraphIndexManager::Status, TemporalStats>

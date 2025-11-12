@@ -46,6 +46,10 @@ TSStore::TSStore(rocksdb::TransactionDB* db,
     }
 }
 
+// Delegating constructor: default config
+TSStore::TSStore(rocksdb::TransactionDB* db, rocksdb::ColumnFamilyHandle* cf)
+    : TSStore(db, cf, Config{}) {}
+
 std::string TSStore::makeKey(const std::string& metric, 
                                      const std::string& entity, 
                                      int64_t timestamp_ms) const {

@@ -27,6 +27,13 @@ SseConnectionManager::SseConnectionManager(
     );
 }
 
+// Delegating constructor with default config
+SseConnectionManager::SseConnectionManager(
+    std::shared_ptr<Changefeed> changefeed,
+    boost::asio::io_context& ioc
+)
+    : SseConnectionManager(std::move(changefeed), ioc, ConnectionConfig{}) {}
+
 SseConnectionManager::~SseConnectionManager() {
     shutdown();
 }

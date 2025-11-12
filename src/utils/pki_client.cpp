@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
 
 namespace themis {
 namespace utils {
@@ -148,6 +150,15 @@ static EVP_PKEY* load_public_key_and_serial(const PKIConfig& cfg, std::string& s
 
 VCCPKIClient::VCCPKIClient(PKIConfig cfg) : cfg_(std::move(cfg)) {}
 
+std::optional<std::string> VCCPKIClient::getCertSerial() const {
+    std::string serial;
+    EVP_PKEY* pub = load_public_key_and_serial(cfg_, serial);
+    if (!pub) return std::nullopt;
+    EVP_PKEY_free(pub);
+    if (serial.empty()) return std::nullopt;
+    return serial;
+}
+
 SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) const {
     SignatureResult res;
     res.signature_id = "sig_" + random_hex_id(8);
@@ -155,6 +166,66 @@ SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) c
 
     size_t expected_len = 0;
     int nid = nid_for_algorithm(res.algorithm, expected_len);
+
+    // If a PKI endpoint is configured, try REST signing first
+    if (!cfg_.endpoint.empty()) {
+        try {
+            nlohmann::json req;
+            req["hash_b64"] = base64_encode(hash_bytes);
+            req["service_id"] = cfg_.service_id;
+            req["algorithm"] = res.algorithm;
+
+            std::string url = cfg_.endpoint;
+            if (url.back() == '/') url.pop_back();
+            url += "/sign";
+
+            // CURL POST
+            CURL* curl = curl_easy_init();
+            if (curl) {
+                struct curl_slist* headers = nullptr;
+                headers = curl_slist_append(headers, "Content-Type: application/json");
+                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+                curl_easy_setopt(curl, CURLOPT_POST, 1L);
+                std::string body = req.dump();
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+                std::string resp_body;
+                auto write_cb = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+                    auto real_size = size * nmemb;
+                    std::string* out = static_cast<std::string*>(userdata);
+                    out->append(ptr, real_size);
+                    return real_size;
+                };
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp_body);
+
+                CURLcode rc = curl_easy_perform(curl);
+                curl_slist_free_all(headers);
+                curl_easy_cleanup(curl);
+
+                if (rc == CURLE_OK) {
+                    try {
+                        auto j = nlohmann::json::parse(resp_body);
+                        if (j.contains("signature_b64")) {
+                            res.signature_b64 = j.value("signature_b64", std::string());
+                            res.signature_id = j.value("signature_id", res.signature_id);
+                            res.cert_serial = j.value("cert_serial", std::string());
+                            res.ok = true;
+                            return res;
+                        }
+                    } catch (...) {
+                        // fallthrough to local fallback
+                    }
+                }
+            }
+        } catch (...) {
+            // ignore and fallback
+        }
+    }
 
     // Try real RSA signing if key is available and hash length matches
     if (!cfg_.key_path.empty() && (expected_len == 0 || hash_bytes.size() == expected_len)) {
@@ -199,6 +270,60 @@ bool VCCPKIClient::verifyHash(const std::vector<uint8_t>& hash_bytes, const Sign
 
     size_t expected_len = 0;
     int nid = nid_for_algorithm(sig.algorithm, expected_len);
+
+    // If a PKI endpoint is configured, try REST verify first
+    if (!cfg_.endpoint.empty()) {
+        try {
+            nlohmann::json req;
+            req["hash_b64"] = base64_encode(hash_bytes);
+            req["signature_b64"] = sig.signature_b64;
+
+            std::string url = cfg_.endpoint;
+            if (url.back() == '/') url.pop_back();
+            url += "/verify";
+
+            CURL* curl = curl_easy_init();
+            if (curl) {
+                struct curl_slist* headers = nullptr;
+                headers = curl_slist_append(headers, "Content-Type: application/json");
+                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+                curl_easy_setopt(curl, CURLOPT_POST, 1L);
+                std::string body = req.dump();
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+                std::string resp_body;
+                auto write_cb = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+                    auto real_size = size * nmemb;
+                    std::string* out = static_cast<std::string*>(userdata);
+                    out->append(ptr, real_size);
+                    return real_size;
+                };
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp_body);
+
+                CURLcode rc = curl_easy_perform(curl);
+                curl_slist_free_all(headers);
+                curl_easy_cleanup(curl);
+
+                if (rc == CURLE_OK) {
+                    try {
+                        auto j = nlohmann::json::parse(resp_body);
+                        if (j.contains("ok")) {
+                            return j.value("ok", false);
+                        }
+                    } catch (...) {
+                        // fallthrough to local fallback
+                    }
+                }
+            }
+        } catch (...) {
+            // ignore and fallback
+        }
+    }
 
     // Try real RSA verify if certificate is available and hash length matches
     if (!cfg_.cert_path.empty() && (expected_len == 0 || hash_bytes.size() == expected_len)) {

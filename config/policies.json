@@ -1,18 +1,62 @@
 [
   {
-    "id": "allow-metrics-readonly",
-    "name": "Metrics readonly",
-    "subjects": ["admin", "readonly", "*"],
+    "id": "admin-allow-all",
+    "name": "Admin: allow all operations",
+    "subjects": ["admin"],
     "actions": ["*"],
     "resources": ["/"],
     "effect": "allow"
   },
   {
-    "id": "allow-admin-policies-export",
-    "name": "Admin policies export",
-    "subjects": ["admin", "*"],
-    "actions": ["*"],
-    "resources": ["/"],
+    "id": "readonly-observe",
+    "name": "Readonly: safe read-only endpoints",
+    "subjects": ["readonly"],
+    "actions": [
+      "metrics.read",
+      "config.read",
+      "data.read",
+      "query",
+      "vector.search",
+      "cdc.read"
+    ],
+    "resources": [
+      "/metrics",
+      "/config",
+      "/entities/",
+      "/query",
+      "/vector/search",
+      "/changefeed",
+      "/changefeed/stream"
+    ],
     "effect": "allow"
+  },
+  {
+    "id": "analyst-vector-and-query",
+    "name": "Analyst: vector search and query",
+    "subjects": ["analyst", "analyst1", "analyst2"],
+    "actions": ["query", "vector.search", "data.read"],
+    "resources": ["/query", "/vector/search", "/entities/"],
+    "effect": "allow"
+  },
+  {
+    "id": "hr-allow-internal",
+    "name": "HR entities: allow from internal networks",
+    "subjects": ["*"],
+    "actions": ["read", "write", "delete"],
+    "resources": ["/entities/hr:"],
+    "allowed_ip_prefixes": [
+      "10.",
+      "192.168.",
+      "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31."
+    ],
+    "effect": "allow"
+  },
+  {
+    "id": "hr-deny-external",
+    "name": "HR entities: deny from other sources",
+    "subjects": ["*"],
+    "actions": ["*"],
+    "resources": ["/entities/hr:"],
+    "effect": "deny"
   }
 ]

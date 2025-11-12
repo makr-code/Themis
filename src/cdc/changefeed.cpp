@@ -208,6 +208,10 @@ std::vector<Changefeed::ChangeEvent> Changefeed::listEvents(const ListOptions& o
     return results;
 }
 
+std::vector<Changefeed::ChangeEvent> Changefeed::listEvents() const {
+    return listEvents(ListOptions{});
+}
+
 uint64_t Changefeed::getLatestSequence() const {
     std::string seq_value;
     rocksdb::ReadOptions read_opts;

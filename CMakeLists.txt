@@ -17,6 +17,7 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
+<<<<<<< Updated upstream
 # Make CURL optional: some environments (CI/dev) may not have dev package installed.
 # If found, create CURL::libcurl target; otherwise provide a fallback and continue.
 find_package(CURL CONFIG)
@@ -31,6 +32,10 @@ else()
         # noop
     endif()
 endif()
+=======
+# Prefer system or vcpkg-provided CURL; allow CMake's FindCURL module if package config is not available
+find_package(CURL REQUIRED)
+>>>>>>> Stashed changes
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
@@ -101,7 +106,23 @@ function(link_required target_name visibility dependency_target)
 endfunction()
 
 # Find required packages
-find_package(RocksDB CONFIG REQUIRED)
+find_package(RocksDB CONFIG)
+# If vcpkg-provided CMake config for RocksDB is not available, try to locate system
+# library and headers and create an imported target so the rest of the CMake script
+# can link against RocksDB::rocksdb transparently.
+if(NOT TARGET RocksDB::rocksdb)
+    find_library(ROCKSDB_LIB rocksdb)
+    find_path(ROCKSDB_INCLUDE_DIR rocksdb/db.h)
+    if(ROCKSDB_LIB AND ROCKSDB_INCLUDE_DIR)
+        add_library(RocksDB::rocksdb UNKNOWN IMPORTED)
+        set_target_properties(RocksDB::rocksdb PROPERTIES
+            IMPORTED_LOCATION "${ROCKSDB_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${ROCKSDB_INCLUDE_DIR}")
+        message(STATUS "Using system RocksDB library at ${ROCKSDB_LIB} and include ${ROCKSDB_INCLUDE_DIR}")
+    else()
+        message(FATAL_ERROR "RocksDB not found. Install via vcpkg or system package (librocksdb-dev).")
+    endif()
+endif()
 find_package(simdjson CONFIG REQUIRED)
 find_package(TBB CONFIG REQUIRED)
 find_package(Arrow CONFIG REQUIRED)
@@ -235,13 +256,21 @@ set(THEMIS_CORE_SOURCES
 
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})
+# Defensive selection of Arrow linking target: prefer shared, fall back to static.
+if(TARGET Arrow::arrow_shared)
+    set(THEMIS_ARROW_TARGET Arrow::arrow_shared)
+elseif(TARGET Arrow::arrow_static)
+    set(THEMIS_ARROW_TARGET Arrow::arrow_static)
+else()
+    set(THEMIS_ARROW_TARGET "")
+endif()
 
 target_link_libraries(themis_core
     PUBLIC
         RocksDB::rocksdb
         simdjson::simdjson
         TBB::tbb
-        $<IF:$<BOOL:${ARROW_BUILD_STATIC}>,Arrow::arrow_static,Arrow::arrow_shared>
+        ${THEMIS_ARROW_TARGET}
         fmt::fmt
         spdlog::spdlog
         Boost::system
@@ -394,6 +423,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_cursor.cpp
         tests/test_temporal_graph.cpp
         tests/test_temporal_aggregation.cpp
+    tests/test_temporal_aggregation_property.cpp
         tests/test_recursive_path_query.cpp
         tests/test_timerange_query.cpp
         tests/test_property_graph.cpp
@@ -425,13 +455,12 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_policies_export.cpp
         tests/test_pii_soft_delete.cpp
         tests/test_http_pii_lazy_init.cpp
-        tests/test_http_pii_manager_new.cpp
-        tests/test_jwt_validator.cpp
+    tests/test_http_pii_manager_new.cpp
+    tests/test_jwt_validator.cpp
+    tests/test_jwt_integration.cpp
+    tests/test_jwt_rotation_unit.cpp
+    tests/test_pki_client_rest.cpp
         tests/test_group_dek.cpp
-        tests/test_user_key_derivation.cpp
-        tests/test_graph_edge_encryption.cpp
-        tests/test_graph_bfs_fix.cpp
-        tests/test_schema_encryption.cpp
     )
     
     target_link_libraries(themis_tests

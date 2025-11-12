@@ -58,6 +58,25 @@
 #include "server/http_server.h"
 #include "server/keys_api_handler.h"
 #include "server/classification_api_handler.h"
+#if !defined(_WIN32)
+#include <time.h>
+#endif
+
+// Portable wrappers for tm <-> time_t conversions
+static inline time_t portable_mkgmtime_impl(std::tm const* tmin) {
+#ifdef _WIN32
+    return _mkgmtime(const_cast<std::tm*>(tmin));
+#else
+    return timegm(const_cast<std::tm*>(tmin));
+#endif
+}
+static inline void portable_gmtime_r_impl(const time_t* t, std::tm* out) {
+#ifdef _WIN32
+    gmtime_s(out, t);
+#else
+    gmtime_r(t, out);
+#endif
+}
 #include "server/reports_api_handler.h"
 #include "server/auth_middleware.h"
 #include "server/ranger_adapter.h"
@@ -255,6 +274,10 @@ HttpServer::HttpServer(
             storage_, vector_index_, graph_index_, secondary_index_, field_encryption_);
         text_processor_ = std::make_unique<themis::content::TextProcessor>();
         content_manager_->registerProcessor(std::unique_ptr<themis::content::IContentProcessor>(text_processor_.release()));
+        // Provide FieldEncryption to GraphIndexManager so edges can be encrypted on write
+        if (graph_index_) {
+            graph_index_->setFieldEncryption(field_encryption_);
+        }
     } catch (const std::exception& e) {
         THEMIS_ERROR("Failed to init ContentManager: {}", e.what());
     }
@@ -296,23 +319,17 @@ HttpServer::HttpServer(
 
         auto pki_client = std::make_shared<themis::utils::VCCPKIClient>(pki_cfg);
 
-        // Initialize LEKManager for daily rotating audit log encryption keys
-        lek_manager_ = std::make_shared<themis::utils::LEKManager>(
-            storage_, pki_client, key_provider_);
-        THEMIS_INFO("LEKManager initialized");
-
         // Minimal AuditLogger setup
         themis::utils::AuditLoggerConfig audit_cfg;
         audit_cfg.log_path = "data/logs/audit.jsonl";
         audit_cfg.enabled = true;
-        audit_cfg.use_lek = true; // Enable LEK-based encryption
         audit_logger_ = std::make_shared<themis::utils::AuditLogger>(
-            field_encryption_, pki_client, audit_cfg, lek_manager_);
-        THEMIS_INFO("Audit Logger initialized (path: {}, use_lek: {})", audit_cfg.log_path, audit_cfg.use_lek);
+            field_encryption_, pki_client, audit_cfg);
+        THEMIS_INFO("Audit Logger initialized (path: {})", audit_cfg.log_path);
 
         // Audit API Handler reads/decrypts/filters audit logs
         audit_api_ = std::make_unique<themis::server::AuditApiHandler>(
-            field_encryption_, pki_client, audit_cfg.log_path, lek_manager_);
+            field_encryption_, pki_client, audit_cfg.log_path);
         THEMIS_INFO("Audit API Handler initialized");
     } catch (const std::exception& e) {
         THEMIS_WARN("Failed to initialize Audit components: {}", e.what());
@@ -1363,12 +1380,8 @@ namespace {
                 }
             }
         }
-        // Build UTC epoch seconds from tm (interpreted as UTC)
-#if defined(_WIN32)
-        time_t secs = _mkgmtime(&tm);
-#else
-        time_t secs = timegm(&tm);
-#endif
+    // Build UTC epoch seconds from tm (interpreted as UTC)
+    time_t secs = portable_mkgmtime_impl(&tm);
         if (secs == static_cast<time_t>(-1)) return 0;
         // Adjust for timezone offset: local time part represents wall time in given TZ
         int offset_secs = tz_sign * (tz_h * 3600 + tz_m * 60);
@@ -2161,12 +2174,6 @@ std::optional<http::response<http::string_body>> HttpServer::requireAccess(
     // If auth is disabled and no policy engine configured, allow
     bool auth_enabled = (auth_ && auth_->isEnabled());
     bool policy_enabled = (policy_engine_ != nullptr);
-    // Test override: disable policy via env flag
-    if (const char* dp = std::getenv("THEMIS_DISABLE_POLICY")) {
-        if (std::string(dp) == "1" || std::string(dp) == "true") {
-            policy_enabled = false;
-        }
-    }
     if (!auth_enabled && !policy_enabled) return std::nullopt;
 
     // Normalize resource path (strip query string) if empty passed
@@ -2297,169 +2304,6 @@ HttpServer::AuthContext HttpServer::extractAuthContext(const http::request<http:
     
     return ctx;
 }
-
-nlohmann::json HttpServer::decryptEntityFields(
-    const std::string& table,
-    const nlohmann::json& entity_json,
-    const AuthContext& auth_ctx
-) const {
-    // Return copy of original if no encryption needed
-    nlohmann::json result = entity_json;
-    // Extra instrumentation to debug missing decryption during tests
-    THEMIS_INFO("[decryptEntityFields] enter table='{}' user='{}' has_fields={} keys:{}", 
-        table, auth_ctx.user_id, result.is_object() ? result.size() : 0, 
-        (result.contains("_key")?result["_key"].dump():"none"));
-    // Marker: will set _decryption_attempt after loop if any field configured
-    bool anyConfigured = false;
-    bool debugDecrypt = (std::getenv("THEMIS_DECRYPT_DEBUG") != nullptr);
-    
-    try {
-        // Load encryption schema
-        auto schema_bytes = storage_->get("config:encryption_schema");
-        if (!schema_bytes) {
-            THEMIS_INFO("No encryption schema found");
-            return result; // No schema -> no decryption
-        }
-        
-        std::string schema_json(schema_bytes->begin(), schema_bytes->end());
-        auto schema = nlohmann::json::parse(schema_json);
-        
-        // Check if table has encryption configured
-        if (!schema.contains("collections") || !schema["collections"].contains(table)) {
-            THEMIS_INFO("Table '{}' not found in encryption schema", table);
-            return result; // Table not in schema
-        }
-        
-        auto coll = schema["collections"][table];
-        if (!coll.contains("encryption") || !coll["encryption"].value("enabled", false)) {
-            THEMIS_INFO("Encryption not enabled for table '{}'", table);
-            return result; // Encryption not enabled for this table
-        }
-        
-        THEMIS_INFO("Encryption enabled for table '{}', context_type={}", table, coll["encryption"].value("context_type", "user"));
-        
-        // Extract encryption configuration
-        std::string context_type = coll["encryption"].value("context_type", "user");
-        std::vector<std::string> fields;
-        if (coll["encryption"].contains("fields")) {
-            for (auto& f : coll["encryption"]["fields"]) {
-                if (f.is_string()) {
-                    fields.push_back(f.get<std::string>());
-                }
-            }
-        }
-        
-    THEMIS_INFO("[decryptEntityFields] schema context_type='{}' fields_count={}", context_type, fields.size());
-    if (!fields.empty()) anyConfigured = true;
-        
-        // Get PKI provider for group-based encryption
-        auto pki = std::dynamic_pointer_cast<themis::security::PKIKeyProvider>(key_provider_);
-        
-        // User context for key derivation
-        std::string user_ctx = auth_ctx.user_id.empty() ? "anonymous" : auth_ctx.user_id;
-        
-        // Decrypt each configured field
-        for (const auto& field_name : fields) {
-            // Check if field is encrypted (has _enc flag and _encrypted metadata)
-            if (!result.contains(field_name + "_enc") || !result.contains(field_name + "_encrypted")) {
-                continue; // Field not encrypted in this entity
-            }
-            
-            bool encFlag = false;
-            try {
-                encFlag = result[field_name + "_enc"].get<bool>();
-            } catch (...) {
-                encFlag = false;
-            }
-            
-            if (!encFlag) {
-                continue; // Field not marked as encrypted
-            }
-            
-            try {
-                // Parse encryption metadata from Base64
-                auto enc_meta_str = result[field_name + "_encrypted"].get<std::string>();
-                auto blob = themis::EncryptedBlob::fromBase64(enc_meta_str);
-                THEMIS_INFO("[decryptEntityFields] decrypt field='{}' enc_meta_size={}", field_name, enc_meta_str.size());
-                
-                // Derive decryption key based on context type
-                std::vector<uint8_t> raw_key;
-                
-                if (context_type == "group" && pki && result.contains(field_name + "_group")) {
-                    // Group-based encryption
-                    std::string group_name;
-                    try {
-                        group_name = result[field_name + "_group"].get<std::string>();
-                    } catch (...) {
-                        group_name.clear();
-                    }
-                    
-                    if (!group_name.empty()) {
-                        auto gdek = pki->getGroupDEK(group_name);
-                        std::vector<uint8_t> salt; // empty salt for groups
-                        std::string info = "field:" + field_name;
-                        raw_key = themis::utils::HKDFHelper::derive(gdek, salt, info, 32);
-                    }
-                }
-                
-                if (raw_key.empty()) {
-                    // User-based or anonymous encryption
-                    auto dek = key_provider_->getKey("dek");
-                    std::vector<uint8_t> salt(user_ctx.begin(), user_ctx.end());
-                    std::string info = "field:" + field_name;
-                    raw_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
-                }
-                
-                // Decrypt the field
-                // mark attempt for debugging in tests
-                if (debugDecrypt) { try { result[field_name + std::string("__debug")] = "attempt"; } catch (...) {}
-                }
-                auto plain_bytes = field_encryption_->decryptWithKey(blob, raw_key);
-                THEMIS_INFO("[decryptEntityFields] field='{}' decrypted_bytes={} user_ctx='{}'", field_name, plain_bytes.size(), user_ctx);
-                std::string plain_str(plain_bytes.begin(), plain_bytes.end());
-                
-                // Try to parse as JSON (for structured types)
-                if (!plain_str.empty() && (plain_str[0] == '[' || plain_str[0] == '{')) {
-                    try {
-                        auto parsed = nlohmann::json::parse(plain_str);
-                        result[field_name] = parsed; // Restore as JSON structure
-                    } catch (...) {
-                        result[field_name] = plain_str; // Keep as string if JSON parse fails
-                    }
-                } else {
-                    result[field_name] = plain_str; // Plain string value
-                }
-                if (debugDecrypt) { try { result[field_name + std::string("__debug_plain")] = result[field_name]; } catch (...) {}
-                }
-                
-                // Remove encryption metadata fields
-                result.erase(field_name + "_enc");
-                result.erase(field_name + "_encrypted");
-                if (result.contains(field_name + "_group")) {
-                    result.erase(field_name + "_group");
-                }
-                
-            } catch (const std::exception& e) {
-                // Decryption failed for this field - log and continue
-                THEMIS_WARN("[decryptEntityFields] failed field='{}' table='{}' error='{}'", field_name, table, e.what());
-                if (debugDecrypt) { try { result[field_name + std::string("__debug_error")] = e.what(); } catch (...) {}
-                }
-                // Keep encrypted field in result (fallback to encrypted state)
-            }
-        }
-        if (anyConfigured && debugDecrypt) {
-            // Add marker only when debug env variable set
-            try { result["_decryption_attempt"] = true; } catch (...) {}
-        }
-        
-    } catch (const std::exception& e) {
-        // Schema loading or parsing failed - log and return original
-        THEMIS_WARN("[decryptEntityFields] exception table='{}' error='{}'", table, e.what());
-    }
-    
-    return result;
-}
-
 http::response<http::string_body> HttpServer::handlePiiRevealByUuid(
     const http::request<http::string_body>& req
 ) {
@@ -3684,7 +3528,8 @@ http::response<http::string_body> HttpServer::handleGetEntity(
                             if (!encFlag) continue;
                             try {
                                 auto enc_meta_str = entity_json[f + "_encrypted"].get<std::string>();
-                                auto blob = themis::EncryptedBlob::fromBase64(enc_meta_str);
+                                auto enc_meta = nlohmann::json::parse(enc_meta_str);
+                                auto blob = themis::EncryptedBlob::fromJson(enc_meta);
                                 std::vector<uint8_t> raw_key;
                                 if (context_type == "group" && pki && entity_json.contains(f + "_group")) {
                                     // Gruppen-Kontext (MVP: erste Gruppe / einzelner String)
@@ -3894,8 +3739,8 @@ http::response<http::string_body> HttpServer::handlePutEntity(
                                 try {
                                     std::string plain_str(plain_bytes.begin(), plain_bytes.end());
                                     auto blob = field_encryption_->encryptWithKey(plain_str, key_id, 1, raw_key);
-                                    // Store encrypted blob as Base64 to avoid UTF-8 encoding issues
-                                    entity.setField(f + "_encrypted", blob.toBase64());
+                                    auto j = blob.toJson();
+                                    entity.setField(f + "_encrypted", j.dump());
                                     entity.setField(f + "_enc", true);
                                     // Klartext entfernen
                                     entity.setField(f, std::monostate{});
@@ -4255,7 +4100,8 @@ http::response<http::string_body> HttpServer::handleQuery(
                             if (!encFlag) continue;
                             try {
                                 auto enc_meta_str = obj[f + "_encrypted"].get<std::string>();
-                                auto blob = themis::EncryptedBlob::fromBase64(enc_meta_str);
+                                auto enc_meta = nlohmann::json::parse(enc_meta_str);
+                                auto blob = themis::EncryptedBlob::fromJson(enc_meta);
                                 std::vector<uint8_t> raw_key;
                                 if (context_type == "group" && pki && obj.contains(f + "_group")) {
                                     std::string group_name; try { group_name = obj[f + "_group"].get<std::string>(); } catch (...) { group_name.clear(); }
@@ -4635,6 +4481,21 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                     }
                     return false;
                 };
+                // Portable conversions between tm and time_t (UTC)
+                auto portable_mkgmtime = [&](const std::tm* tmin)->time_t {
+#ifdef _WIN32
+                    return _mkgmtime(const_cast<std::tm*>(tmin));
+#else
+                    return timegm(const_cast<std::tm*>(tmin));
+#endif
+                };
+                auto portable_gmtime_r = [&](const time_t* t, std::tm* out)->void {
+#ifdef _WIN32
+                    gmtime_s(out, t);
+#else
+                    gmtime_r(t, out);
+#endif
+                };
                 auto tmToDateStr = [&](const std::tm& tm)->std::string{
                     char buf[32]; std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday); return std::string(buf);
                 };
@@ -4658,19 +4519,19 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                     std::tm tm{}; if (!parseIso(dateJ.get<std::string>(), tm)) return false;
                     long long amt = amountJ.get<long long>(); if (name == "date_sub") amt = -amt;
                     if (unit == "day") {
-                        time_t t = _mkgmtime(&tm); if (t == -1) return false;
+                        time_t t = portable_mkgmtime(&tm); if (t == -1) return false;
                         t += static_cast<time_t>(amt * 86400);
-                        std::tm outTm{}; gmtime_s(&outTm, &t);
+                        std::tm outTm{}; portable_gmtime_r(&t, &outTm);
                         out = tmToDateStr(outTm); return true;
                     } else if (unit == "month") {
                         tm.tm_mon += static_cast<int>(amt);
-                        time_t t = _mkgmtime(&tm); if (t == -1) return false;
-                        std::tm outTm{}; gmtime_s(&outTm, &t);
+                        time_t t = portable_mkgmtime(&tm); if (t == -1) return false;
+                        std::tm outTm{}; portable_gmtime_r(&t, &outTm);
                         out = tmToDateStr(outTm); return true;
                     } else if (unit == "year") {
                         tm.tm_year += static_cast<int>(amt);
-                        time_t t = _mkgmtime(&tm); if (t == -1) return false;
-                        std::tm outTm{}; gmtime_s(&outTm, &t);
+                        time_t t = portable_mkgmtime(&tm); if (t == -1) return false;
+                        std::tm outTm{}; portable_gmtime_r(&t, &outTm);
                         out = tmToDateStr(outTm); return true;
                     } else {
                         return false;
@@ -4678,7 +4539,7 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                 }
                 if (name == "now") {
                     // Gibt YYYY-MM-DD zur�ck (UTC)
-                    std::time_t t = std::time(nullptr); std::tm tm{}; gmtime_s(&tm, &t);
+                    std::time_t t = std::time(nullptr); std::tm tm{}; portable_gmtime_r(&t, &tm);
                     out = tmToDateStr(tm); return true;
                 }
                 return false; // unbekannte Funktion
@@ -6514,23 +6375,9 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             }
         }
 
-        // Auto-decrypt encrypted fields based on schema (GDPR Art. 20 compliance)
-        // Extract authentication context for key derivation
-        auto auth_ctx = extractAuthContext(req);
-        
         json entities = json::array();
         if (simpleReturnLoopVar) {
-            for (const auto& e : sliced) {
-                auto entity_json = json::parse(e.toJson());
-                // Attempt decryption for this entity
-                try {
-                    entity_json = decryptEntityFields(table, entity_json, auth_ctx);
-                } catch (const std::exception& ex) {
-                    // Log decryption failure but continue with encrypted data
-                    THEMIS_WARN("Failed to decrypt entity in query result for table '{}': {}", table, ex.what());
-                }
-                entities.push_back(std::move(entity_json));
-            }
+            for (const auto& e : sliced) entities.push_back(e.toJson());
         } else {
             for (const auto& e : sliced) {
                 // Build LET environment per row
@@ -6541,31 +6388,12 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                     env[ln.variable] = std::move(val);
                 }
                 // Evaluate RETURN expression; if missing, default to loop var entity
-                nlohmann::json out_entity;
                 if (parse_result.query->return_node && parse_result.query->return_node->expression) {
-                    out_entity = evalExpr(parse_result.query->return_node->expression, e, env);
+                    auto out = evalExpr(parse_result.query->return_node->expression, e, env);
+                    entities.push_back(std::move(out));
                 } else {
-                    out_entity = json::parse(e.toJson());
+                    entities.push_back(e.toJson());
                 }
-                
-                // Attempt decryption if entity is an object with _key
-                if (out_entity.is_object()) {
-                    std::string table_name = table; // default to query table
-                    if (out_entity.contains("_key") && out_entity["_key"].is_string()) {
-                        std::string key = out_entity["_key"].get<std::string>();
-                        auto pos = key.find(':');
-                        if (pos != std::string::npos && pos > 0) {
-                            table_name = key.substr(0, pos);
-                        }
-                    }
-                    try {
-                        out_entity = decryptEntityFields(table_name, out_entity, auth_ctx);
-                    } catch (const std::exception& ex) {
-                        THEMIS_WARN("Failed to decrypt entity in query result for table '{}': {}", table_name, ex.what());
-                    }
-                }
-                
-                entities.push_back(std::move(out_entity));
             }
         }
         
@@ -7371,9 +7199,7 @@ http::response<http::string_body> HttpServer::handleGetContent(
     try {
         auto id = extractPathParam(std::string(req.target()), "/content/");
         if (id.empty()) return makeErrorResponse(http::status::bad_request, "Missing content id", req);
-    auto auth_ctx_meta = extractAuthContext(req);
-    std::string user_ctx_meta = auth_ctx_meta.user_id;
-    auto meta = content_manager_->getContentMeta(id, user_ctx_meta);
+        auto meta = content_manager_->getContentMeta(id);
         if (!meta) return makeErrorResponse(http::status::not_found, "Content not found", req);
         return makeResponse(http::status::ok, meta->toJson().dump(), req);
     } catch (const std::exception& e) {
@@ -7395,7 +7221,7 @@ http::response<http::string_body> HttpServer::handleGetContentBlob(
     std::string user_ctx = auth_ctx.user_id;
     auto blob = content_manager_->getContentBlob(id, user_ctx);
         if (!blob) return makeErrorResponse(http::status::not_found, "Blob not found", req);
-    auto meta = content_manager_->getContentMeta(id, user_ctx);
+        auto meta = content_manager_->getContentMeta(id);
         std::string mime = (meta ? meta->mime_type : std::string("application/octet-stream"));
 
         http::response<http::string_body> res{http::status::ok, req.version()};
@@ -9074,13 +8900,20 @@ http::response<http::string_body> HttpServer::handleTimeSeriesConfigGet(
     }
     
     try {
-        const auto& config = timeseries_->getConfig();
-        
-        json response = {
-            {"compression", config.compression == TSStore::CompressionType::Gorilla ? "gorilla" : "none"},
-            {"chunk_size_hours", config.chunk_size_hours}
-        };
-        
+        // Prefer persisted config if present so settings survive restarts
+        auto stored = storage_->get("config:timeseries");
+        json response;
+        if (stored) {
+            std::string s(stored->begin(), stored->end());
+            response = json::parse(s);
+        } else {
+            const auto& config = timeseries_->getConfig();
+            response = {
+                {"compression", config.compression == TSStore::CompressionType::Gorilla ? "gorilla" : "none"},
+                {"chunk_size_hours", config.chunk_size_hours}
+            };
+        }
+
         span.setStatus(true);
         return makeResponse(http::status::ok, response.dump(), req);
         
@@ -9102,41 +8935,73 @@ http::response<http::string_body> HttpServer::handleTimeSeriesConfigPut(
     
     try {
         json body = json::parse(req.body());
-        
-        TSStore::Config new_config = timeseries_->getConfig(); // Start with current config
-        
+        // Load current persisted config if present, otherwise use in-memory defaults
+        json persisted;
+        auto v = storage_->get("config:timeseries");
+        if (v) {
+            std::string s(v->begin(), v->end());
+            persisted = json::parse(s);
+        } else {
+            const auto& cur = timeseries_->getConfig();
+            persisted = {
+                {"compression", cur.compression == TSStore::CompressionType::Gorilla ? "gorilla" : "none"},
+                {"chunk_size_hours", cur.chunk_size_hours}
+            };
+        }
+
+        // Apply updates from request body into persisted JSON
         if (body.contains("compression")) {
+            if (!body["compression"].is_string()) {
+                span.setStatus(false, "invalid_compression_type");
+                return makeErrorResponse(http::status::bad_request, "compression must be a string", req);
+            }
             std::string compression_str = body["compression"];
-            if (compression_str == "gorilla") {
-                new_config.compression = TSStore::CompressionType::Gorilla;
-            } else if (compression_str == "none") {
-                new_config.compression = TSStore::CompressionType::None;
-            } else {
+            if (compression_str != "gorilla" && compression_str != "none") {
                 span.setStatus(false, "invalid_compression");
                 return makeErrorResponse(http::status::bad_request, 
                     "Invalid compression type. Must be 'gorilla' or 'none'", req);
             }
+            persisted["compression"] = compression_str;
         }
-        
+
         if (body.contains("chunk_size_hours")) {
+            if (!body["chunk_size_hours"].is_number_integer()) {
+                span.setStatus(false, "invalid_chunk_size_type");
+                return makeErrorResponse(http::status::bad_request, "chunk_size_hours must be an integer", req);
+            }
             int chunk_size = body["chunk_size_hours"];
             if (chunk_size <= 0 || chunk_size > 168) { // Max 1 week
                 span.setStatus(false, "invalid_chunk_size");
                 return makeErrorResponse(http::status::bad_request, 
                     "chunk_size_hours must be between 1 and 168 (1 week)", req);
             }
-            new_config.chunk_size_hours = chunk_size;
+            persisted["chunk_size_hours"] = chunk_size;
         }
-        
+
+        // Persist to storage
+        std::string config_str = persisted.dump();
+        std::vector<uint8_t> bytes(config_str.begin(), config_str.end());
+        bool ok = storage_->put("config:timeseries", bytes);
+        if (!ok) {
+            span.setStatus(false, "storage_error");
+            return makeErrorResponse(http::status::internal_server_error, "Failed to store timeseries config", req);
+        }
+
+        // Apply to in-memory TSStore (affects new data points only)
+        TSStore::Config new_config = timeseries_->getConfig();
+        if (persisted.contains("compression")) {
+            std::string compression_str = persisted["compression"];
+            new_config.compression = (compression_str == "gorilla") ? TSStore::CompressionType::Gorilla : TSStore::CompressionType::None;
+        }
+        if (persisted.contains("chunk_size_hours")) {
+            new_config.chunk_size_hours = persisted["chunk_size_hours"];
+        }
         timeseries_->setConfig(new_config);
-        
-        json response = {
-            {"status", "ok"},
-            {"compression", new_config.compression == TSStore::CompressionType::Gorilla ? "gorilla" : "none"},
-            {"chunk_size_hours", new_config.chunk_size_hours},
-            {"note", "Configuration updated. Changes apply to new data points only."}
-        };
-        
+
+        json response = persisted;
+        response["status"] = "ok";
+        response["note"] = "Configuration updated. Changes apply to new data points only.";
+
         span.setStatus(true);
         return makeResponse(http::status::ok, response.dump(), req);
         

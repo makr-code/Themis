@@ -49,8 +49,12 @@ public:
 
     explicit SseConnectionManager(
         std::shared_ptr<Changefeed> changefeed,
+        boost::asio::io_context& ioc
+    );
+    explicit SseConnectionManager(
+        std::shared_ptr<Changefeed> changefeed,
         boost::asio::io_context& ioc,
-        const ConnectionConfig& config = {}
+        const ConnectionConfig& config
     );
 
     ~SseConnectionManager();

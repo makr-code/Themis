@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <functional>
+#include <memory>
 
 namespace themis {
 
@@ -109,6 +110,29 @@ public:
         bool require_full_containment = false
     ) const;
 
+    // ===== Temporal Aggregations =====
+    enum class Aggregation { COUNT, SUM, AVG, MIN, MAX };
+
+    struct TemporalAggregationResult {
+        size_t count = 0;
+        double value = 0.0; // SUM for SUM, AVG for AVG, MIN/MAX as appropriate
+    };
+
+    /// Aggregate a numeric edge property across edges matching the time range.
+    /// - property: the numeric field name on the Edge entity (e.g. "_weight" or "cost")
+    /// - agg: aggregation type (COUNT, SUM, AVG, MIN, MAX)
+    /// - range_start_ms / range_end_ms: time window
+    /// - require_full_containment: if true only include fully contained edges
+    /// - optional edge_type: if provided, only consider edges with matching _type
+    std::pair<Status, TemporalAggregationResult> aggregateEdgePropertyInTimeRange(
+        std::string_view property,
+        Aggregation agg,
+        int64_t range_start_ms,
+        int64_t range_end_ms,
+        bool require_full_containment = false,
+        std::optional<std::string_view> edge_type = std::nullopt
+    ) const;
+
     // Temporal aggregations over time ranges
     std::pair<Status, TemporalStats> getTemporalStats(
         int64_t range_start_ms,
@@ -157,6 +181,9 @@ public:
     size_t getTopologyNodeCount() const;
     size_t getTopologyEdgeCount() const;
 
+    // Optional: provide FieldEncryption for encrypting sensitive edge fields
+    void setFieldEncryption(std::shared_ptr<class FieldEncryption> fe) { field_encryption_ = fe; }
+
 private:
     RocksDBWrapper& db_;
 
@@ -182,6 +209,9 @@ private:
     static bool parseInKey_(std::string_view key, std::string& graphId, std::string& toPk, std::string& edgeId);
     
     static std::vector<uint8_t> toBytes(std::string_view sv);
+
+    // Optional FieldEncryption instance (not owned)
+    std::shared_ptr<class FieldEncryption> field_encryption_;
 };
 
 } // namespace themis

@@ -472,6 +472,11 @@ SecondaryIndexManager::Status SecondaryIndexManager::createFulltextIndex(
 	return Status::OK();
 }
 
+// Overload that uses default config
+SecondaryIndexManager::Status SecondaryIndexManager::createFulltextIndex(std::string_view table, std::string_view column) {
+	return createFulltextIndex(table, column, FulltextConfig{});
+}
+
 SecondaryIndexManager::Status SecondaryIndexManager::dropFulltextIndex(std::string_view table, std::string_view column) {
 	if (table.empty() || column.empty()) return Status::Error("dropFulltextIndex: table/column darf nicht leer sein");
 	std::string metaKey = makeFulltextIndexMetaKey(table, column);

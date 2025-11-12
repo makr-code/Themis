@@ -43,6 +43,7 @@ struct RSAFixture {
     ~RSAFixture(){ if(pkey) EVP_PKEY_free(pkey); if(bn) BN_free(bn); /* rsa freed by pkey */ }
 };
 
+// Helper: sign using EVP_DigestSign
 static std::string sign_RS256(EVP_PKEY* pkey, const std::string& header_payload){ 
     EVP_MD_CTX* mctx = EVP_MD_CTX_new(); 
     if(!mctx) throw std::runtime_error("EVP_MD_CTX_new failed"); 
@@ -103,3 +104,17 @@ TEST(JWTValidatorTest, TamperedPayloadSignatureFails) {
     // Tampering should cause either parse error or signature validation failure
     EXPECT_THROW(validator.parseAndValidate(token), std::exception); 
 }
+
+TEST(JWTValidatorTest, MissingKidThrows) {
+    RSAFixture fix; auto jwks = make_jwks(fix.rsa);
+    JWTValidator validator(JWTValidatorConfig{"", "issuerX", "audX", std::chrono::seconds(600), std::chrono::seconds(60)});
+    validator.setJWKSForTesting(jwks);
+    // Build a token with header that lacks kid
+    nlohmann::json header = {{"alg","RS256"},{"typ","JWT"}};
+    nlohmann::json payload = {{"sub","uX"},{"iss","issuerX"},{"aud","audX"},{"exp", std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()+120}};
+    std::string header_str = header.dump(); std::string payload_str = payload.dump();
+    std::string unsigned_token = b64url(std::vector<uint8_t>(header_str.begin(), header_str.end())) + "." + b64url(std::vector<uint8_t>(payload_str.begin(), payload_str.end()));
+    std::string token = unsigned_token + "." + sign_RS256(fix.pkey, unsigned_token);
+    EXPECT_THROW(validator.parseAndValidate(token), std::runtime_error);
+}
+

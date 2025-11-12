@@ -1,0 +1,24 @@
+Docker version: 28.5.1, build e180ab8
+
+Client:
+ - Version: 28.5.1
+ - Context: desktop-linux
+ - Debug Mode: false
+
+Server:
+ - Server Version: 28.5.1
+ - Containers: 0 (Running: 0)
+ - Images: 0
+ - Storage Driver: overlay2
+ - OS: Docker Desktop (WSL2)
+ - CPUs: 20
+ - Total Memory: 31.31GiB
+ - Name: docker-desktop
+ - Docker Root Dir: /var/lib/docker
+
+Notes:
+ - Docker Desktop is running under WSL2 on this machine.
+ - No local image named 'themisdb/themis' was present when checked.
+ - There are docker-compose files and a Dockerfile in the repository root.
+
+Source: output of `docker --version` and `docker info` executed on 2025-11-11 in the repository environment.

@@ -91,7 +91,8 @@ public:
      * @param options List options (pagination, filters, long-poll)
      * @return Vector of change events
      */
-    std::vector<ChangeEvent> listEvents(const ListOptions& options = {}) const;
+    std::vector<ChangeEvent> listEvents() const;
+    std::vector<ChangeEvent> listEvents(const ListOptions& options) const;
 
     /**
      * @brief Get the latest sequence number

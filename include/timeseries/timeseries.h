@@ -93,8 +93,10 @@ public:
      * @return Vector of data points
      */
     std::vector<DataPoint> query(std::string_view metric,
+                                  std::string_view entity) const;
+    std::vector<DataPoint> query(std::string_view metric,
                                   std::string_view entity,
-                                  const RangeQuery& query = {}) const;
+                                  const RangeQuery& query) const;
     
     /**
      * @brief Aggregate data points in time range
@@ -104,8 +106,10 @@ public:
      * @return Aggregation result
      */
     Aggregation aggregate(std::string_view metric,
+                         std::string_view entity) const;
+    Aggregation aggregate(std::string_view metric,
                          std::string_view entity,
-                         const RangeQuery& query = {}) const;
+                         const RangeQuery& query) const;
     
     /**
      * @brief Delete old data points (retention policy)
