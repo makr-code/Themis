@@ -441,6 +441,57 @@ std::vector<KeyMetadata> VaultKeyProvider::listKeys() {
     return result;
 }
 
+SigningResult VaultKeyProvider::sign(const std::string& key_id, const std::vector<uint8_t>& data) {
+    // Build path for transit sign: /v1/<transit_mount>/sign/<key_id>
+    std::string mount = impl_->config.kv_mount_path; // fallback
+    try {
+        // prefer explicit transit_mount when configured
+        mount = impl_->config.transit_mount.empty() ? std::string("transit") : impl_->config.transit_mount;
+    } catch (...) {
+        mount = "transit";
+    }
+
+    std::string path = "/v1/" + mount + "/sign/" + key_id;
+
+    // Prepare JSON payload
+    nlohmann::json payload;
+    payload["input"] = base64_encode(data);
+
+    // Perform HTTP POST
+    std::string response = httpPost(path, payload.dump());
+
+    // Parse response and extract signature
+    try {
+        nlohmann::json j = nlohmann::json::parse(response);
+        std::string sig_b64;
+        if (j.contains("data") && j["data"].contains("signature")) {
+            sig_b64 = j["data"]["signature"].get<std::string>();
+        } else if (j.contains("data") && j["data"].contains("signatures") && j["data"]["signatures"].is_array()) {
+            sig_b64 = j["data"]["signatures"][0].get<std::string>();
+        } else if (j.contains("data") && j["data"].contains("signed")) {
+            sig_b64 = j["data"]["signed"].get<std::string>();
+        }
+
+        // Vault transit can return strings like "vault:v1:BASE64" - strip prefix if present
+        if (!sig_b64.empty()) {
+            if (sig_b64.rfind("vault:", 0) == 0) {
+                size_t pos = sig_b64.find(':', 6);
+                if (pos != std::string::npos && pos + 1 < sig_b64.size()) {
+                    sig_b64 = sig_b64.substr(pos + 1);
+                }
+            }
+            SigningResult res;
+            res.signature = base64_decode(sig_b64);
+            res.algorithm = "VAULT+TRANSIT";
+            return res;
+        }
+    } catch (...) {
+        // fallthrough to error
+    }
+
+    throw KeyOperationException("Vault transit sign failed or returned unexpected payload");
+}
+
 KeyMetadata VaultKeyProvider::getKeyMetadata(const std::string& key_id, uint32_t version) {
     std::string response = readSecretMetadata(key_id);
     KeyMetadata meta = parseMetadataFromVaultResponse(response);

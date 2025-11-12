@@ -1,6 +1,7 @@
 #pragma once
 
 #include "key_provider.h"
+#include "security/signing_provider.h"
 #include <curl/curl.h>
 #include <chrono>
 #include <memory>
@@ -62,7 +63,7 @@ namespace themis {
  * - 404 Not Found: KeyNotFoundException
  * - 5xx errors: KeyOperationException with transient flag
  */
-class VaultKeyProvider : public KeyProvider {
+class VaultKeyProvider : public KeyProvider, public SigningProvider {
 public:
     /**
      * @brief Configuration for Vault connection
@@ -70,7 +71,9 @@ public:
     struct Config {
         std::string vault_addr;      // e.g., "http://localhost:8200"
         std::string vault_token;     // Authentication token
-        std::string kv_mount_path;   // KV secrets engine mount (default: "themis")
+    std::string kv_mount_path;   // KV secrets engine mount (default: "themis")
+    // Transit mount for signing (optional)
+    std::string transit_mount;   // Transit mount path (default: "transit")
         std::string kv_version;      // "v1" or "v2" (default: "v2")
         int cache_ttl_seconds;       // Cache TTL (default: 3600)
         int cache_capacity;          // Max cached keys (default: 1000)
@@ -84,6 +87,7 @@ public:
             , cache_capacity(1000)
             , request_timeout_ms(5000)
             , verify_ssl(true)
+            , transit_mount("transit")
         {}
     };
     
@@ -122,6 +126,9 @@ public:
         const std::string& key_id,
         const std::vector<uint8_t>& key_bytes,
         const KeyMetadata& metadata = KeyMetadata()) override;
+
+    // SigningProvider interface: perform a sign operation via Vault Transit
+    SigningResult sign(const std::string& key_id, const std::vector<uint8_t>& data) override;
     
     /**
      * @brief Clear all cached keys
