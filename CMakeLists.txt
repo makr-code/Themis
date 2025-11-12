@@ -17,7 +17,7 @@ endif()
 
 # Dependencies
 find_package(OpenSSL REQUIRED)
-<<<<<<< Updated upstream
+
 # Make CURL optional: some environments (CI/dev) may not have dev package installed.
 # If found, create CURL::libcurl target; otherwise provide a fallback and continue.
 find_package(CURL CONFIG)
@@ -26,16 +26,7 @@ if(NOT CURL_FOUND)
 endif()
 if(NOT CURL_FOUND)
     message(WARNING "CURL package not found; building without libcurl. Some features may be disabled.")
-else()
-    # If the imported target is available, use it; otherwise try the generic CMake variable
-    if(NOT TARGET CURL::libcurl AND TARGET CURL::libcurl)
-        # noop
-    endif()
 endif()
-=======
-# Prefer system or vcpkg-provided CURL; allow CMake's FindCURL module if package config is not available
-find_package(CURL REQUIRED)
->>>>>>> Stashed changes
 
 # Build options
 option(THEMIS_BUILD_TESTS "Build unit tests" ON)
