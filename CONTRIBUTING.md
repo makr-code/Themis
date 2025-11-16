@@ -65,6 +65,21 @@ cd build
 ctest --output-on-failure
 ```
 
+**Running tests under Windows / WSL (developer tips)**
+
+- If you build under WSL the default build output used by repository helper scripts is `build-wsl/` (e.g. `build-wsl/themis_tests` and `build-wsl/themis_server`). Helper scripts (such as `.tools/vault_dev_run.ps1`) rely on this layout.
+- To run the GoogleTest binary directly in WSL and export JUnit XML to the Windows host:
+
+```powershell
+# from PowerShell (host):
+wsl bash -lc "cd /mnt/c/VCC/themis; ./build-wsl/themis_tests --gtest_output=xml:/mnt/c/Temp/themis_tests.xml"
+```
+
+- Vault integration tests expect a reachable Vault at `VAULT_ADDR` and a valid token in `VAULT_TOKEN`. The repository includes a small helper `.tools/vault_dev_run.ps1` which:
+   - starts a local Vault dev container, enables KV v2 at mount `themis/`, writes a 32‑byte base64 key to `themis/keys/test_key`, and runs the Vault tests from WSL (writing XML output to `C:\Temp`).
+   - Preconditions: Docker available locally and a WSL installation with repo mounted under `/mnt/c/VCC/themis`.
+
+
 ### Install Code Quality Tools
 
 **Linux (Ubuntu/Debian):**

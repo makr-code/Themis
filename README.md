@@ -12,6 +12,17 @@
 
 The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Database System Based on LSM Tree
 
+## Developer Quickstart
+
+- **Server defaults:** The API server binary `themis_server` uses the following defaults unless overridden by `--config` or CLI flags:
+  - host: `0.0.0.0`
+  - port: `8765`
+  - database path: `./data/themis_server`
+- **Config files:** The server will auto‑load a config from `./config.yaml`, `./config/config.yaml`, `./config.json` or `/etc/vccdb/config.*` unless `--config` is provided.
+- **WSL / local builds:** Development builds on Windows/WSL commonly use the `build-wsl` directory as the build output. Some helper scripts (for example `.tools/vault_dev_run.ps1`) assume the test binary is available at `build-wsl/themis_tests` or the server binary at `build-wsl/themis_server`.
+- **Notes on container/runtime:** `Dockerfile.runtime` uses `/usr/local/bin/themis_server --config /etc/themis/config.json` as entrypoint and also exposes ports `8080` and `18765` in the image — these are image-level ports and may be mapped to the server's configured port (default `8765`) at runtime; when running the binary directly prefer to use the `--port` flag or a config file to guarantee port choice.
+
+
 ## Recent changes (2025-11-11)
 
 - Temporal aggregation support: added `aggregateEdgePropertyInTimeRange()` to `GraphIndexManager`.
