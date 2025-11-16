@@ -102,6 +102,13 @@ _Hinweis:_ Dieser Abschnitt wurde eingefügt, damit offene Aufgaben direkt am Do
 
 ---
 
+> Verification – 16. November 2025
+> - Ergebnis einer Quellcode‑Überprüfung gegen die Dokumentation:
+>   - Implementiert im Code: FULLTEXT/BM25 (AQL), VectorIndex/HNSW, SemanticCache, HKDFCache, TSStore + Gorilla Codec, ContentManager ZSTD‑Integration.
+>   - Teilweise oder nur dokumentiert: FieldEncryption batch API (`encryptEntityBatch`) und PKI/eIDAS‑signing (Design vorhanden, Code nicht eindeutig im Repo), CDC/Changefeed HTTP Endpoints (Dokumentiert, Implementierung nicht gefunden).
+>   - Empfehlung: Priorisiere CDC/Changefeed (MVP) als nächsten Arbeitsschritt; anschließend FieldEncryption batch + PKIKeyProvider für Compliance.
+
+
 ## Kurzstatus – Offene Schwerpunkte (Nächste 1–2 Sprints)
 
 Wichtiger Hinweis (Release-Fokus): Das Geo-Modul (Speicher, Indizes, AQL ST_*) wird auf nach den Core-Release verschoben. Alle Geo-bezogenen Arbeiten bleiben geplant, werden jedoch erst nach GA wieder aufgenommen. Die Release-Ziele konzentrieren sich auf Kern-Datenbankfunktionen und höhere Funktionen (Search, Vector, TS, Security, Ops).
