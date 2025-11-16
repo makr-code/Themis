@@ -9,7 +9,7 @@ WORKDIR /opt/themis
 
 # The build context should contain linux/<triplet>/ with the binaries
 # Copy server binary if present
-COPY linux/${TRIPLET}/themis_server /usr/local/bin/themis_server
+COPY build-wsl/themis_server /usr/local/bin/themis_server
 RUN chmod +x /usr/local/bin/themis_server || true
 
 # Copy config folder if provided in release context
