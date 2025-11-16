@@ -2,7 +2,10 @@
 # Usage: docker build -f Dockerfile.runtime --build-arg TRIPLET=<triplet> -t myrepo/themis:<tag>-linux-<triplet> <release_dir>
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 curl jq && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+	apt-get upgrade -y && \
+	apt-get install -y --no-install-recommends ca-certificates libssl3 curl jq && \
+	rm -rf /var/lib/apt/lists/*
 
 ARG TRIPLET=x64-linux
 WORKDIR /opt/themis
