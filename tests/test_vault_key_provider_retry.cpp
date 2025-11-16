@@ -17,7 +17,7 @@ TEST(VaultKeyProviderRetry, RetriesAndSucceeds) {
     // Prepare base64 signature payload: vault:v1:BASE64
     const std::string raw_sig = "deadbeef";
     // simple base64 encode of raw_sig (manual)
-    const std::string b64 = "ZGVhZGJlZWY=\n"; // base64("deadbeef") with newline
+    const std::string b64 = "ZGVhZGJlZWY="; // base64("deadbeef") without trailing newline
     // Build Vault response
     std::string vault_resp = std::string("{\"data\":{\"signature\":\"vault:v1:") + b64 + "\"}}";
 

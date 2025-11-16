@@ -1,0 +1,6 @@
+ - id: allow-admin-pii
+  name: admin darf PII Aktionen
+  subjects: ["admin"]
+  actions: ["pii.read", "pii.write", "pii.delete", "pii.export"]
+  resources: ["/pii"]
+  effect: allow

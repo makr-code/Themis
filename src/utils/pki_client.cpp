@@ -12,6 +12,7 @@
 #include <cstring>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
+#include <iostream>
 
 namespace themis {
 namespace utils {
@@ -194,18 +195,38 @@ SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) c
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
                 std::string resp_body;
-                auto write_cb = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
-                    auto real_size = size * nmemb;
-                    std::string* out = static_cast<std::string*>(userdata);
-                    out->append(ptr, real_size);
-                    return real_size;
-                };
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+                    +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+                        auto real_size = size * nmemb;
+                        std::string* out = static_cast<std::string*>(userdata);
+                        out->append(ptr, real_size);
+                        return real_size;
+                    });
                 curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp_body);
 
                 CURLcode rc = curl_easy_perform(curl);
+                long http_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                size_t resp_len = resp_body.size();
                 curl_slist_free_all(headers);
                 curl_easy_cleanup(curl);
+
+                // Always print diagnostics when debug enabled; also print minimal info on failure
+                const char* dbg = std::getenv("THEMIS_DEBUG_PKI");
+                if (dbg && dbg[0] == '1') {
+                    std::cerr << "PKI REST /sign: curl rc=" << rc << " http_code=" << http_code << " resp_len=" << resp_len << "\n";
+                    std::cerr << "PKI REST /sign response body: '" << resp_body << "'\n";
+                    // print a short hex prefix for binary-safety
+                    std::ostringstream hexs;
+                    const size_t maxhex = std::min<size_t>(resp_body.size(), 64);
+                    for (size_t i = 0; i < maxhex; ++i) {
+                        unsigned char c = static_cast<unsigned char>(resp_body[i]);
+                        hexs << std::hex << (int)c << " ";
+                    }
+                    std::cerr << "PKI REST /sign body hex (first " << maxhex << " bytes): " << hexs.str() << "\n";
+                } else if (rc != CURLE_OK) {
+                    std::cerr << "PKI REST /sign: curl rc=" << rc << " (" << curl_easy_strerror(rc) << ") http_code=" << http_code << " resp_len=" << resp_len << "\n";
+                }
 
                 if (rc == CURLE_OK) {
                     try {
@@ -216,10 +237,19 @@ SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) c
                             res.cert_serial = j.value("cert_serial", std::string());
                             res.ok = true;
                             return res;
+                        } else {
+                            // Unexpected response shape — log body for investigation
+                            std::cerr << "PKI REST /sign: JSON did not contain 'signature_b64'. body='" << resp_body << "'\n";
                         }
+                    } catch (const std::exception& e) {
+                        std::cerr << "PKI REST parse exception: " << e.what() << " body='" << resp_body << "'\n";
+                        // fallthrough to local fallback
                     } catch (...) {
+                        std::cerr << "PKI REST parse unknown error, body='" << resp_body << "'\n";
                         // fallthrough to local fallback
                     }
+                } else {
+                    std::cerr << "PKI REST /sign: curl error: " << curl_easy_strerror(rc) << " resp='" << resp_body << "'\n";
                 }
             }
         } catch (...) {
@@ -231,15 +261,19 @@ SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) c
     if (!cfg_.key_path.empty() && (expected_len == 0 || hash_bytes.size() == expected_len)) {
         EVP_PKEY* pkey = load_private_key(cfg_);
         if (pkey) {
-            RSA* rsa = EVP_PKEY_get1_RSA(pkey);
-            if (rsa) {
-                std::vector<uint8_t> sig(RSA_size(rsa));
-                unsigned int siglen = 0;
-                int ok = RSA_sign(nid, hash_bytes.data(), (unsigned int)hash_bytes.size(), sig.data(), &siglen, rsa);
-                RSA_free(rsa);
-                if (ok == 1) {
-                    sig.resize(siglen);
-                    res.signature_b64 = base64_encode(sig);
+            // Use EVP_PKEY signing (preferred) instead of deprecated RSA_sign API.
+            int max_sig_len = EVP_PKEY_size(pkey);
+            if (max_sig_len > 0) {
+                std::vector<uint8_t> sig(static_cast<size_t>(max_sig_len));
+                size_t outlen = sig.size();
+                EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(pkey, nullptr);
+                if (ctx) {
+                    if (EVP_PKEY_sign_init(ctx) == 1) {
+                        // Use PKCS#1 v1.5 padding for compatibility with RSA_sign
+                        EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_PADDING);
+                        if (EVP_PKEY_sign(ctx, sig.data(), &outlen, hash_bytes.data(), hash_bytes.size()) == 1) {
+                            sig.resize(outlen);
+                            res.signature_b64 = base64_encode(sig);
                     // Try to set cert serial if available
                     std::string serial;
                     EVP_PKEY* pub = load_public_key_and_serial(cfg_, serial);
@@ -250,11 +284,13 @@ SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) c
                         res.cert_serial = "LOCAL-KEY";
                     }
                     res.ok = true;
-                    EVP_PKEY_free(pkey);
-                    return res;
+                        }
+                    }
+                    EVP_PKEY_CTX_free(ctx);
                 }
             }
             EVP_PKEY_free(pkey);
+            if (res.ok) return res;
         }
     }
 
@@ -296,28 +332,54 @@ bool VCCPKIClient::verifyHash(const std::vector<uint8_t>& hash_bytes, const Sign
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
                 std::string resp_body;
-                auto write_cb = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
-                    auto real_size = size * nmemb;
-                    std::string* out = static_cast<std::string*>(userdata);
-                    out->append(ptr, real_size);
-                    return real_size;
-                };
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+                    +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+                        auto real_size = size * nmemb;
+                        std::string* out = static_cast<std::string*>(userdata);
+                        out->append(ptr, real_size);
+                        return real_size;
+                    });
                 curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp_body);
 
                 CURLcode rc = curl_easy_perform(curl);
+                long http_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                size_t resp_len = resp_body.size();
                 curl_slist_free_all(headers);
                 curl_easy_cleanup(curl);
+
+                const char* dbg = std::getenv("THEMIS_DEBUG_PKI");
+                if (dbg && dbg[0] == '1') {
+                    std::cerr << "PKI REST /verify: curl rc=" << rc << " http_code=" << http_code << " resp_len=" << resp_len << "\n";
+                    std::cerr << "PKI REST /verify response body: '" << resp_body << "'\n";
+                    std::ostringstream hexs;
+                    const size_t maxhex = std::min<size_t>(resp_body.size(), 64);
+                    for (size_t i = 0; i < maxhex; ++i) {
+                        unsigned char c = static_cast<unsigned char>(resp_body[i]);
+                        hexs << std::hex << (int)c << " ";
+                    }
+                    std::cerr << "PKI REST /verify body hex (first " << maxhex << " bytes): " << hexs.str() << "\n";
+                } else if (rc != CURLE_OK) {
+                    std::cerr << "PKI REST /verify: curl rc=" << rc << " (" << curl_easy_strerror(rc) << ") http_code=" << http_code << " resp_len=" << resp_len << "\n";
+                }
 
                 if (rc == CURLE_OK) {
                     try {
                         auto j = nlohmann::json::parse(resp_body);
                         if (j.contains("ok")) {
                             return j.value("ok", false);
+                        } else {
+                            std::cerr << "PKI REST /verify: JSON did not contain 'ok'. body='" << resp_body << "'\n";
                         }
+                    } catch (const std::exception& e) {
+                        std::cerr << "PKI REST parse exception: " << e.what() << " body='" << resp_body << "'\n";
+                        // fallthrough to local fallback
                     } catch (...) {
+                        std::cerr << "PKI REST parse unknown error, body='" << resp_body << "'\n";
                         // fallthrough to local fallback
                     }
+                } else {
+                    std::cerr << "PKI REST /verify: curl error: " << curl_easy_strerror(rc) << " resp='" << resp_body << "'\n";
                 }
             }
         } catch (...) {
@@ -330,13 +392,20 @@ bool VCCPKIClient::verifyHash(const std::vector<uint8_t>& hash_bytes, const Sign
         std::string serial;
         EVP_PKEY* pub = load_public_key_and_serial(cfg_, serial);
         if (pub) {
-            RSA* rsa = EVP_PKEY_get1_RSA(pub);
-            if (rsa) {
-                auto sig_bytes = base64_decode(sig.signature_b64);
-                int ok = RSA_verify(nid, hash_bytes.data(), (unsigned int)hash_bytes.size(), sig_bytes.data(), (unsigned int)sig_bytes.size(), rsa);
-                RSA_free(rsa);
-                EVP_PKEY_free(pub);
-                return ok == 1;
+            // Use EVP_PKEY verification instead of deprecated RSA_verify
+            int max_sig_len = EVP_PKEY_size(pub);
+            auto sig_bytes = base64_decode(sig.signature_b64);
+            EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(pub, nullptr);
+            if (ctx) {
+                if (EVP_PKEY_verify_init(ctx) == 1) {
+                    EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_PADDING);
+                    size_t siglen = sig_bytes.size();
+                    int ok = EVP_PKEY_verify(ctx, sig_bytes.data(), siglen, hash_bytes.data(), hash_bytes.size());
+                    EVP_PKEY_CTX_free(ctx);
+                    EVP_PKEY_free(pub);
+                    return ok == 1;
+                }
+                EVP_PKEY_CTX_free(ctx);
             }
             EVP_PKEY_free(pub);
         }

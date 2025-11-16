@@ -1,0 +1,103 @@
+# HELP process_uptime_seconds Process uptime in seconds
+# TYPE process_uptime_seconds gauge
+process_uptime_seconds 49
+# HELP vccdb_requests_total Total HTTP requests handled
+# TYPE vccdb_requests_total counter
+vccdb_requests_total 38
+# HELP vccdb_errors_total Total HTTP errors returned
+# TYPE vccdb_errors_total counter
+vccdb_errors_total 1
+# HELP vccdb_qps Queries per second (approx)
+# TYPE vccdb_qps gauge
+vccdb_qps 0.775510
+# HELP vccdb_policy_eval_total Total policy evaluations
+# TYPE vccdb_policy_eval_total counter
+vccdb_policy_eval_total 0
+# HELP vccdb_policy_allow_total Allow decisions by policy engine
+# TYPE vccdb_policy_allow_total counter
+vccdb_policy_allow_total 0
+# HELP vccdb_policy_deny_total Deny decisions by policy engine
+# TYPE vccdb_policy_deny_total counter
+vccdb_policy_deny_total 0
+# HELP rocksdb_block_cache_usage_bytes RocksDB block cache usage in bytes
+# TYPE rocksdb_block_cache_usage_bytes gauge
+rocksdb_block_cache_usage_bytes 88
+# HELP rocksdb_block_cache_capacity_bytes RocksDB block cache capacity in bytes
+# TYPE rocksdb_block_cache_capacity_bytes gauge
+rocksdb_block_cache_capacity_bytes 268435456
+# HELP rocksdb_estimate_num_keys Estimated number of keys in DB
+# TYPE rocksdb_estimate_num_keys gauge
+rocksdb_estimate_num_keys 5
+# HELP rocksdb_pending_compaction_bytes Estimated pending compaction bytes
+# TYPE rocksdb_pending_compaction_bytes gauge
+rocksdb_pending_compaction_bytes 0
+# HELP rocksdb_memtable_size_bytes Current memtable size in bytes
+# TYPE rocksdb_memtable_size_bytes gauge
+rocksdb_memtable_size_bytes 2048
+rocksdb_files_level{level="L0"} 0
+rocksdb_files_level{level="L1"} 0
+rocksdb_files_level{level="L2"} 0
+rocksdb_files_level{level="L3"} 0
+rocksdb_files_level{level="L4"} 0
+rocksdb_files_level{level="L5"} 0
+rocksdb_files_level{level="L6"} 0
+vccdb_latency_bucket_microseconds{le="100"} 13
+vccdb_latency_bucket_microseconds{le="500"} 21
+vccdb_latency_bucket_microseconds{le="1000"} 30
+vccdb_latency_bucket_microseconds{le="5000"} 32
+vccdb_latency_bucket_microseconds{le="10000"} 37
+vccdb_latency_bucket_microseconds{le="50000"} 37
+vccdb_latency_bucket_microseconds{le="100000"} 37
+vccdb_latency_bucket_microseconds{le="500000"} 37
+vccdb_latency_bucket_microseconds{le="1000000"} 37
+vccdb_latency_bucket_microseconds{le="5000000"} 37
+vccdb_latency_bucket_microseconds{le="+Inf"} 37
+# HELP vccdb_latency_sum_microseconds Total request latency in microseconds
+# TYPE vccdb_latency_sum_microseconds counter
+vccdb_latency_sum_microseconds 48744
+# HELP vccdb_latency_count Total recorded requests for latency histogram
+# TYPE vccdb_latency_count counter
+vccdb_latency_count 37
+# HELP vccdb_index_rebuilds_total Total number of index rebuilds performed
+# TYPE vccdb_index_rebuilds_total counter
+vccdb_index_rebuilds_total 0
+# HELP vccdb_index_rebuild_duration_milliseconds_total Total duration of all index rebuilds in milliseconds
+# TYPE vccdb_index_rebuild_duration_milliseconds_total counter
+vccdb_index_rebuild_duration_milliseconds_total 0
+# HELP vccdb_index_rebuild_entities_total Total number of entities processed during index rebuilds
+# TYPE vccdb_index_rebuild_entities_total counter
+vccdb_index_rebuild_entities_total 0
+# HELP vccdb_cursor_anchor_hits_total Total number of cursor anchor usages in ORDER BY pagination
+# TYPE vccdb_cursor_anchor_hits_total counter
+vccdb_cursor_anchor_hits_total 0
+# HELP vccdb_range_scan_steps_total Total index scan steps performed during range scans
+# TYPE vccdb_range_scan_steps_total counter
+vccdb_range_scan_steps_total 0
+# HELP vccdb_page_fetch_time_ms_bucket Cursor page fetch time histogram buckets (ms)
+# TYPE vccdb_page_fetch_time_ms_bucket histogram
+vccdb_page_fetch_time_ms_bucket{le="1"} 0
+vccdb_page_fetch_time_ms_bucket{le="5"} 0
+vccdb_page_fetch_time_ms_bucket{le="10"} 0
+vccdb_page_fetch_time_ms_bucket{le="25"} 0
+vccdb_page_fetch_time_ms_bucket{le="50"} 0
+vccdb_page_fetch_time_ms_bucket{le="100"} 0
+vccdb_page_fetch_time_ms_bucket{le="250"} 0
+vccdb_page_fetch_time_ms_bucket{le="500"} 0
+vccdb_page_fetch_time_ms_bucket{le="1000"} 0
+vccdb_page_fetch_time_ms_bucket{le="5000"} 0
+vccdb_page_fetch_time_ms_bucket{le="+Inf"} 0
+# HELP vccdb_page_fetch_time_ms_sum Total cursor page fetch time in milliseconds
+# TYPE vccdb_page_fetch_time_ms_sum counter
+vccdb_page_fetch_time_ms_sum 0
+# HELP vccdb_page_fetch_time_ms_count Total number of cursor pages fetched
+# TYPE vccdb_page_fetch_time_ms_count counter
+vccdb_page_fetch_time_ms_count 0
+# HELP vccdb_vector_index_vectors_total Total number of vectors in the index
+# TYPE vccdb_vector_index_vectors_total gauge
+vccdb_vector_index_vectors_total 0
+# HELP vccdb_vector_index_dimension Dimension of vectors in the index
+# TYPE vccdb_vector_index_dimension gauge
+vccdb_vector_index_dimension 0
+# HELP vccdb_vector_index_hnsw_enabled HNSW index enabled (1=yes, 0=no)
+# TYPE vccdb_vector_index_hnsw_enabled gauge
+vccdb_vector_index_hnsw_enabled 0

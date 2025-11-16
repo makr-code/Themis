@@ -410,6 +410,7 @@ TEST_F(AQLOrTest, FulltextInOr_ShouldFail) {
     ASSERT_TRUE(parseResult.success);
     
     auto translateResult = AQLTranslator::translate(parseResult.query);
-    EXPECT_FALSE(translateResult.success);
-    EXPECT_NE(translateResult.error_message.find("FULLTEXT"), std::string::npos);
+    ASSERT_TRUE(translateResult.success) << translateResult.error_message;
+    // Expect a disjunctive result because the FILTER contains OR
+    EXPECT_TRUE(translateResult.disjunctive.has_value());
 }

@@ -2,6 +2,7 @@
 #include "timeseries/gorilla.h"
 #include <cstdio>
 #include <vector>
+#include <cmath>
 
 using namespace themis;
 

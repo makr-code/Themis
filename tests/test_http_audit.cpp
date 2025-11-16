@@ -6,6 +6,9 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "server/http_server.h"
 #include "storage/rocksdb_wrapper.h"
@@ -179,7 +182,11 @@ TEST_F(AuditHttpApiTest, UrlDecodingAndIso8601RangeAndRateLimit) {
 
     // Rate limit: use a unique Authorization bearer to isolate the bucket
     // Send repeated requests until 429 appears, assert it happens within a reasonable bound (<= 6)
+#ifdef _WIN32
     std::string bearer = std::string("rate-limit-test-") + std::to_string(::GetCurrentProcessId());
+#else
+    std::string bearer = std::string("rate-limit-test-") + std::to_string(getpid());
+#endif
     http::response<http::string_body> last;
     int ok_count = 0;
     const int max_attempts = 10;

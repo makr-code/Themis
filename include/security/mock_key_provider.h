@@ -31,7 +31,7 @@ namespace themis {
  * 
  * NOT for production use - keys stored in process memory only!
  */
-class MockKeyProvider : public KeyProvider {
+class MockKeyProvider : public virtual KeyProvider {
 public:
     MockKeyProvider();
     ~MockKeyProvider() override = default;

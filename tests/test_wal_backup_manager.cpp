@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <fstream>
 #include "storage/backup_manager.h"
 #include <filesystem>
 

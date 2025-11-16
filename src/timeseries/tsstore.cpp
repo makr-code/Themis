@@ -47,6 +47,7 @@ TSStore::TSStore(rocksdb::TransactionDB* db,
 }
 
 // Delegating constructor: default config
+// Delegating constructor: default config (matches header convenience ctor)
 TSStore::TSStore(rocksdb::TransactionDB* db, rocksdb::ColumnFamilyHandle* cf)
     : TSStore(db, cf, Config{}) {}
 

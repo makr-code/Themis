@@ -9,6 +9,10 @@ namespace themis {
 CMSSigningService::CMSSigningService(std::shared_ptr<X509> cert, std::shared_ptr<EVP_PKEY> pkey)
     : cert_(std::move(cert)), pkey_(std::move(pkey)) {}
 
+CMSSigningService::CMSSigningService(X509* cert, EVP_PKEY* pkey)
+        : cert_(cert ? std::shared_ptr<X509>(cert, X509_free) : nullptr),
+            pkey_(pkey ? std::shared_ptr<EVP_PKEY>(pkey, EVP_PKEY_free) : nullptr) {}
+
 CMSSigningService::~CMSSigningService() = default;
 
 SigningResult CMSSigningService::sign(const std::vector<uint8_t>& data, const std::string& /*key_id*/) {

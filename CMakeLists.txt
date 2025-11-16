@@ -46,7 +46,7 @@ option(THEMIS_ENTERPRISE "Enable enterprise capabilities bundle" OFF)
 
 # Compiler warnings and optimizations
 if(MSVC)
-    add_compile_options(/W4 /utf-8 /wd4701)
+    add_compile_options(/W4 /utf-8 /wd4701 /bigobj)
     # Suppress unreachable code warnings from external headers (e.g., nlohmann/json)
     add_compile_options(/wd4702)
     if(THEMIS_STRICT_BUILD)
@@ -163,6 +163,13 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# Copy runtime config files into the build directory so tests and local runs
+# can find `config/*` when executed from ${CMAKE_BINARY_DIR} (common when
+# running tests via CTest/gtest_discover_tests). This is safe and cheap.
+if(EXISTS "${CMAKE_SOURCE_DIR}/config")
+    file(COPY "${CMAKE_SOURCE_DIR}/config" DESTINATION "${CMAKE_BINARY_DIR}")
+endif()
+
 # Core library sources
 set(THEMIS_CORE_SOURCES
     src/storage/rocksdb_wrapper.cpp
@@ -181,7 +188,7 @@ set(THEMIS_CORE_SOURCES
     src/security/mock_key_provider.cpp
     src/security/vault_key_provider.cpp
     src/security/key_cache.cpp
-        src/security/keyprovider_signing.cpp
+    src/security/keyprovider_signing.cpp
     src/security/vault_signing_provider.cpp
     src/security/field_encryption.cpp
     src/security/encrypted_field.cpp
@@ -198,6 +205,7 @@ set(THEMIS_CORE_SOURCES
     src/server/http_server.cpp
     src/server/sse_connection_manager.cpp
     src/server/audit_api_handler.cpp
+    src/server/pki_api_handler.cpp
     src/server/saga_api_handler.cpp
     src/server/pii_api_handler.cpp
     src/server/retention_api_handler.cpp
@@ -235,6 +243,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/pii_detector.cpp
     src/utils/retention_manager.cpp
     src/utils/hkdf_helper.cpp
+    src/utils/hkdf_cache.cpp
     src/utils/saga_logger.cpp
     src/utils/lek_manager.cpp
     src/utils/stemmer.cpp

@@ -5,7 +5,9 @@
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/rsa.h>
+#ifdef _WIN32
 #include <openssl/applink.c>
+#endif
 
 #include <filesystem>
 #include <fstream>

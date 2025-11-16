@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <fstream>
 #include <filesystem>
 
 namespace beast = boost::beast;
@@ -86,6 +87,8 @@ protected:
 
 TEST_F(MetricsApiTest, MetricsEndpoint_ExposesBasicCounters) {
     auto res = server_->get("/metrics");
+    // Debug: save metrics body as seen by the test for diagnosis
+    try { std::ofstream _dbg("C:\\Temp\\metrics_from_test.txt"); _dbg << res.body(); } catch(...) {}
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
     // basic counters and gauges
@@ -104,6 +107,7 @@ TEST_F(MetricsApiTest, LatencyHistogram_ExportsBucketsAndSumCount) {
         ASSERT_EQ(h.result(), http::status::ok);
     }
     auto res = server_->get("/metrics");
+    try { std::ofstream _dbg("C:\\Temp\\metrics_from_test.txt"); _dbg << res.body(); } catch(...) {}
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
     // buckets
@@ -118,6 +122,7 @@ TEST_F(MetricsApiTest, LatencyHistogram_ExportsBucketsAndSumCount) {
 
 TEST_F(MetricsApiTest, RocksDBMetrics_ExposePendingCompaction) {
     auto res = server_->get("/metrics");
+    try { std::ofstream _dbg("C:\\Temp\\metrics_from_test.txt"); _dbg << res.body(); } catch(...) {}
     ASSERT_EQ(res.result(), http::status::ok);
     auto body = res.body();
     EXPECT_NE(body.find("rocksdb_pending_compaction_bytes"), std::string::npos);

@@ -19,10 +19,13 @@ TEST(FieldEncryptionBatch, RoundtripEncryptDecrypt) {
     };
 
     auto out = enc.encryptEntityBatch(items, "user_pii");
+    std::cerr << "debug: out.size=" << out.size() << " items.size=" << items.size() << std::endl;
     ASSERT_EQ(out.size(), items.size());
 
     for (size_t i = 0; i < out.size(); ++i) {
-        auto decrypted = enc.decrypt(out[i]);
+        // Debug: print encrypted blob JSON to inspect IV/tag/ciphertext
+        std::cerr << out[i].toJson().dump() << std::endl;
+        auto decrypted = enc.decryptToString(out[i]);
         EXPECT_EQ(decrypted, items[i].second);
     }
 }

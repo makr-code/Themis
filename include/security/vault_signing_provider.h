@@ -23,6 +23,38 @@ public:
     ~VaultSigningProvider() override;
 
     SigningResult sign(const std::string& key_id, const std::vector<uint8_t>& data) override;
+
+    // KeyProvider interface - this signing-only provider does not manage
+    // encryption keys. Implementations of these are left as runtime
+    // errors for the prototype to allow tests to instantiate the provider
+    // when only signing is required.
+    std::vector<uint8_t> getKey(const std::string& key_id) override {
+        throw KeyOperationException("VaultSigningProvider: getKey not implemented");
+    }
+    std::vector<uint8_t> getKey(const std::string& key_id, uint32_t version) override {
+        throw KeyOperationException("VaultSigningProvider: getKey(version) not implemented");
+    }
+    uint32_t rotateKey(const std::string& key_id) override {
+        throw KeyOperationException("VaultSigningProvider: rotateKey not implemented");
+    }
+    std::vector<KeyMetadata> listKeys() override {
+        throw KeyOperationException("VaultSigningProvider: listKeys not implemented");
+    }
+    KeyMetadata getKeyMetadata(const std::string& key_id, uint32_t version = 0) override {
+        throw KeyOperationException("VaultSigningProvider: getKeyMetadata not implemented");
+    }
+    void deleteKey(const std::string& key_id, uint32_t version) override {
+        throw KeyOperationException("VaultSigningProvider: deleteKey not implemented");
+    }
+    bool hasKey(const std::string& key_id, uint32_t version = 0) override {
+        throw KeyOperationException("VaultSigningProvider: hasKey not implemented");
+    }
+    uint32_t createKeyFromBytes(
+        const std::string& key_id,
+        const std::vector<uint8_t>& key_bytes,
+        const KeyMetadata& metadata = KeyMetadata()) override {
+        throw KeyOperationException("VaultSigningProvider: createKeyFromBytes not implemented");
+    }
 };
 
 } // namespace themis

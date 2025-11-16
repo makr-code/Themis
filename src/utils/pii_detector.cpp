@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <fstream>
 #include <yaml-cpp/yaml.h>
+#include <filesystem>
 #include <spdlog/spdlog.h>
 
 namespace themis {
@@ -171,7 +172,31 @@ nlohmann::json PIIDetector::getEngineMetadata() const {
 
 bool PIIDetector::loadFromYaml(const std::string& path) {
     try {
-        YAML::Node config = YAML::LoadFile(path);
+        // If the provided path doesn't point to an existing file, and is
+        // relative, try walking up a few parent directories to find a
+        // repository-level `config/` directory (useful when running tests
+        // from the `build/` directory).
+        std::string resolved = path;
+        if (!std::filesystem::exists(resolved)) {
+            if (!std::filesystem::path(resolved).is_absolute()) {
+                std::filesystem::path cur = std::filesystem::current_path();
+                bool found = false;
+                // Try up to 4 levels up
+                for (int i = 0; i < 4; ++i) {
+                    std::filesystem::path candidate = cur;
+                    for (int j = 0; j < i; ++j) candidate = candidate.parent_path();
+                    candidate /= resolved;
+                    if (std::filesystem::exists(candidate)) {
+                        resolved = candidate.string();
+                        found = true;
+                        break;
+                    }
+                }
+                (void)found; // keep current behavior if not found
+            }
+        }
+
+        YAML::Node config = YAML::LoadFile(resolved);
         
         // Load global settings
         if (config["global_settings"]) {

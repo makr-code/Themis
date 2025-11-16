@@ -1,27 +1,51 @@
-# Ignore local Jaeger zip artifacts (too large for git)
-tools/jaeger/*.zip
+# --- Repository-wide ignores (best-practice) ------------------------------
 
-// Build output
-build/
-out/
-bin/
-lib/
+# Build directories (CMake, Ninja, MSVC, other build outputs)
+/build/
+/build-*/
+/out/
+/bin/
+/lib/
+*/CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
 
-// Dependencies
+# vcpkg (local installs)
 vcpkg_installed/
 .vcpkg/
+vcpkg/
+packages/
+downloads/
+buildtrees/
 
-// IDE files
-.vs/
+# IDE / editor
+.idea/
 .vscode/
-*.user
+.vs/
 *.suo
+*.user
 *.sln
-*.vcxproj
+*.vcxproj*
 *.vcxproj.filters
-tools/jaeger/
 
-// Compilation
+# JetBrains project files
+/.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary / swap files
+*~
+*.swp
+*.swo
+*.tmp
+*.temp
+
+# Compiled object files / libraries / executables
 *.o
 *.obj
 *.a
@@ -32,55 +56,60 @@ tools/jaeger/
 *.pdb
 *.ilk
 
-// CMake
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-CTestTestfile.cmake
-Makefile
-*.cmake
-!CMakeLists.txt
-
-// Data files
-data/
-*.db
-*.sst
-*.log
-
-// Logs
+# Logs and runtime files
 logs/
 *.log
+server.pid
+server.err
 
-// Temporary files
-*.tmp
-*.temp
-*.swp
-*.swo
-*~
-
-// OS specific
-.DS_Store
-Thumbs.db
-
-// Documentation build
+# Documentation build output
 docs/_build/
 docs/html/
 docs/latex/
 
-// Code coverage
+# Test / coverage / profiling
+.pytest_cache/
+coverage/
 *.gcov
 *.gcda
 *.gcno
-coverage/
-
-// Profiling
 *.prof
 perf.data*
 
-# Rust / Cargo build artifacts
-clients/rust/target/
-target/
-**/target/
+# Python virtualenvs / packaging
+venv/
+.venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+__pycache__/
+*.py[cod]
 
-# Cargo lock / metadata (optional)
-**/Cargo.lock
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Docker / containers
+docker-compose.override.yml
+
+# RocksDB / DB artifacts and local test data
+*.db
+*.sst
+rocksdb/
+
+# Jaeger artifacts
+tools/jaeger/*.zip
+tools/jaeger/
+
+# Rust / Cargo (if present)
+**/target/
+target/
+
+# Allow CMakeLists (explicitly)
+!CMakeLists.txt
+
+# End of .gitignore

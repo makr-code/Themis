@@ -183,36 +183,50 @@ BaseEntity::FieldMap BaseEntity::parseJson() const {
     try {
         // Use simdjson on-demand API for maximum speed
         simdjson::padded_string padded(reinterpret_cast<const char*>(blob_.data()), blob_.size());
-        simdjson::ondemand::document doc = g_parser.iterate(padded);
-        simdjson::ondemand::object obj = doc.get_object();
-        
+
+        // Obtain a document and object from the parser (store intermediate values as named variables
+        // to satisfy the ondemand API requirements that some getters expect lvalue receivers).
+        auto doc = g_parser.iterate(padded);
+        auto obj = doc.get_object();
+
         for (auto field : obj) {
-            std::string_view key = field.unescaped_key();
+            auto key_res = field.unescaped_key();
+            if (key_res.error()) continue;
+            std::string_view key = key_res.value();
             std::string key_str(key);
-            
-            simdjson::ondemand::value val = field.value();
-            
+
+            auto val_res = field.value();
+            if (val_res.error()) continue;
+            auto val = val_res.value();
+
             // Determine type and convert
-            switch (val.type()) {
+            auto type_res = val.type();
+            if (type_res.error()) continue;
+            auto type = type_res.value();
+
+            switch (type) {
                 case simdjson::ondemand::json_type::null:
                     fields[key_str] = std::monostate{};
                     break;
-                    
-                case simdjson::ondemand::json_type::boolean:
-                    fields[key_str] = bool(val.get_bool());
+
+                case simdjson::ondemand::json_type::boolean: {
+                    auto bres = val.get_bool();
+                    if (!bres.error()) fields[key_str] = bool(bres.value());
                     break;
-                    
+                }
+
                 case simdjson::ondemand::json_type::number: {
                     // Try int first, then double
-                    int64_t int_val;
-                    if (val.get_int64().get(int_val) == simdjson::SUCCESS) {
-                        fields[key_str] = int_val;
+                    auto ires = val.get_int64();
+                    if (!ires.error()) {
+                        fields[key_str] = ires.value();
                     } else {
-                        fields[key_str] = double(val.get_double());
+                        auto dres = val.get_double();
+                        if (!dres.error()) fields[key_str] = double(dres.value());
                     }
                     break;
                 }
-                    
+
                 case simdjson::ondemand::json_type::string: {
                     auto sv_res = val.get_string();
                     if (!sv_res.error()) {
@@ -220,30 +234,32 @@ BaseEntity::FieldMap BaseEntity::parseJson() const {
                     }
                     break;
                 }
-                    
+
                 case simdjson::ondemand::json_type::array: {
                     // Check if it's a float vector (for embeddings)
-                    simdjson::ondemand::array arr = val.get_array();
+                    auto arr_res = val.get_array();
+                    if (arr_res.error()) break;
+                    auto arr = arr_res.value();
                     std::vector<float> vec;
                     bool is_float_vec = true;
-                    
+
                     for (auto elem : arr) {
-                        double d;
-                        if (elem.get_double().get(d) == simdjson::SUCCESS) {
-                            vec.push_back(static_cast<float>(d));
+                        auto dres = elem.get_double();
+                        if (!dres.error()) {
+                            vec.push_back(static_cast<float>(dres.value()));
                         } else {
                             is_float_vec = false;
                             break;
                         }
                     }
-                    
+
                     if (is_float_vec && !vec.empty()) {
                         fields[key_str] = vec;
                     }
                     // Note: nested objects/arrays not fully supported yet
                     break;
                 }
-                    
+
                 default:
                     // Skip objects and other complex types for now
                     break;

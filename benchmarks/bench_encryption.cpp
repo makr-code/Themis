@@ -253,8 +253,7 @@ static void BM_SchemaEncrypt_SingleField(benchmark::State& state) {
         auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
         
         // Encryption
-        std::vector<uint8_t> plain_bytes(plaintext.begin(), plaintext.end());
-        auto blob = c.enc->encryptWithKey(plain_bytes, "field:" + field_name, 1, field_key);
+    auto blob = c.enc->encryptWithKey(plaintext, "field:" + field_name, 1, field_key);
         benchmark::DoNotOptimize(blob);
     }
     state.SetItemsProcessed(state.iterations());
@@ -274,8 +273,7 @@ static void BM_SchemaDecrypt_SingleField(benchmark::State& state) {
     std::vector<uint8_t> salt(user_id.begin(), user_id.end());
     std::string info = "field:" + field_name;
     auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
-    std::vector<uint8_t> plain_bytes(plaintext.begin(), plaintext.end());
-    auto blob = c.enc->encryptWithKey(plain_bytes, "field:" + field_name, 1, field_key);
+    auto blob = c.enc->encryptWithKey(plaintext, "field:" + field_name, 1, field_key);
     
     for (auto _ : state) {
         // HKDF derivation (same as encrypt)
@@ -312,8 +310,7 @@ static void BM_SchemaEncrypt_MultiField_Entity(benchmark::State& state) {
             std::vector<uint8_t> salt(user_id.begin(), user_id.end());
             std::string info = "field:" + fields[i];
             auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
-            std::vector<uint8_t> plain_bytes(plaintexts[i].begin(), plaintexts[i].end());
-            blobs.push_back(c.enc->encryptWithKey(plain_bytes, "field:" + fields[i], 1, field_key));
+            blobs.push_back(c.enc->encryptWithKey(plaintexts[i], "field:" + fields[i], 1, field_key));
         }
         
         benchmark::DoNotOptimize(blobs);
@@ -338,13 +335,12 @@ static void BM_VectorFloat_Encryption(benchmark::State& state) {
     nlohmann::json j_arr = nlohmann::json::array();
     for (float val : embedding) j_arr.push_back(val);
     std::string json_str = j_arr.dump();
-    std::vector<uint8_t> plain_bytes(json_str.begin(), json_str.end());
     
     for (auto _ : state) {
         std::vector<uint8_t> salt(user_id.begin(), user_id.end());
         std::string info = "field:" + field_name;
         auto field_key = themis::utils::HKDFHelper::derive(dek, salt, info, 32);
-        auto blob = c.enc->encryptWithKey(plain_bytes, "field:" + field_name, 1, field_key);
+        auto blob = c.enc->encryptWithKey(json_str, "field:" + field_name, 1, field_key);
         benchmark::DoNotOptimize(blob);
     }
     state.SetItemsProcessed(state.iterations());

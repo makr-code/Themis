@@ -1,0 +1,142 @@
+# OpenTelemetry C++
+
+OpenTelemetry C++ is a comprehensive telemetry SDK providing APIs and
+implementations for traces, metrics, and logs. It supports both CMake and Bazel
+build systems and runs on Linux, macOS, and Windows with modern C++ compilers
+(C++14/17/20).
+
+Always reference these instructions first and fallback to search or bash
+commands only when you encounter unexpected information that does not match the
+info here.
+
+## Working Effectively
+
+### Bootstrap, Build, and Test the Repository
+
+**CRITICAL: NEVER CANCEL builds or long-running commands. Set appropriate
+timeouts.**
+
+#### CMake Build (Recommended for Development)
+
+```bash
+# Install basic dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y build-essential cmake git pkg-config
+
+# Configure CMake build
+mkdir -p build && cd build
+cmake ..
+# Takes ~12 seconds. Always completes quickly.
+
+# Build the project
+make -j$(nproc)
+# Takes ~3 minutes. NEVER CANCEL. Set timeout to 15+ minutes.
+
+# Run all tests
+ctest --output-on-failure
+# Takes ~24 seconds. Set timeout to 5+ minutes.
+```
+
+#### CI Build (Full Validation)
+
+```bash
+# Run the full CI validation (includes additional exporters)
+./ci/do_ci.sh cmake.test
+# Takes ~5.2 minutes. NEVER CANCEL. Set timeout to 20+ minutes.
+```
+````markdown
+# ThemisDB — Lokale Build- und Test‑Anleitung
+
+Diese Datei beschreibt kurz das lokale Build‑Setup für dieses Repository (`ThemisDB`) und ersetzt generische Instruktionen. Sie fokussiert auf die beiden in diesem Repo verwendeten Build‑Verzeichnisse:
+
+- `build-msvc`  : Windows (Visual Studio / MSVC)
+- `build-wsl`   : WSL / Linux (Ninja)
+
+Wichtig: benutze für jede Plattform ein eigenes Build‑Verzeichnis. Niemals CMake‑Caches zwischen Windows und WSL mischen.
+
+## Voraussetzungen
+
+- Windows: Visual Studio 2022 (mit C++ workload) und `VsDevCmd.bat` verfügbar
+- WSL: eine aktuelle Ubuntu-Distribution mit `cmake`, `ninja-build`, `build-essential`
+- `external/vcpkg` (in-repo) sollte gebootstrapped sein oder nutze system‑weites vcpkg
+
+## vcpkg (einmalig)
+
+Windows PowerShell (in VS Developer Prompt):
+```powershell
+# Bootstrap (falls noch nicht geschehen)
+.\external\vcpkg\bootstrap-vcpkg.bat
+
+# Installiere alle in vcpkg.json geforderten Pakete für Windows (dauert lange)
+.\external\vcpkg\vcpkg.exe install --triplet x64-windows --recurse
+```
+
+WSL / Linux (bash):
+```bash
+# Falls in-repo vcpkg verfügbar ist
+./external/vcpkg/vcpkg install --triplet x64-linux --recurse
+```
+
+## WSL / Linux Build (empfohlen für schnelle Iteration)
+
+```bash
+# Sauber starten
+rm -rf build-wsl
+mkdir -p build-wsl
+
+# Konfiguration: benutze Ninja und das in-repo vcpkg Toolchain
+cmake -S . -B build-wsl -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=external/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+# Build
+cmake --build build-wsl --config Debug -j$(nproc)
+
+# Tests (seriell, verbose für Debugging)
+ctest -C Debug --output-on-failure -j1 --test-dir build-wsl
+```
+
+Hinweis: Falls Tests auf Locked RocksDB/DB‑Ordner stoßen, entferne temporäre Testdaten in `data/` oder im Build‑Verzeichnis (z. B. alte `themis_gtest_env`-Ordner).
+
+## Windows Build (Visual Studio / MSVC)
+
+Wichtig: Führe diese Befehle in einer Visual‑Studio‑Developer‑PowerShell (oder nachdem `VsDevCmd.bat` ausgeführt wurde), damit `cl.exe` verfügbar ist.
+
+PowerShell (innerhalb Developer Prompt):
+```powershell
+# Sauber starten
+Remove-Item -Recurse -Force .\build-msvc -ErrorAction SilentlyContinue
+
+# Configure mit Visual Studio Generator und vcpkg Toolchain
+cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=external/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+# Build the tests target
+cmake --build build-msvc --config Debug --target themis_tests
+
+# Run tests (seriell)
+cd build-msvc
+ctest -C Debug --output-on-failure -j1
+```
+
+Falls CMake `OpenSSL` nicht findet, stelle sicher, dass du das vcpkg Toolchain-File an den CMake-Aufruf übergibst (siehe oben) oder setze `-DOPENSSL_ROOT_DIR="<pfad zu vcpkg_installed>"` (typisch: `C:\VCC\themis\external\vcpkg\installed\x64-windows`).
+
+## Wichtige Hinweise
+
+- Nutze immer getrennte Build‑Verzeichnisse (`build-msvc` vs `build-wsl`). Lösche alte CMake‑Caches vor dem Plattformwechsel: `Remove-Item -Recurse -Force build` (Windows) / `rm -rf build` (WSL).
+- Verwende das in-repo `external/vcpkg` consistently — entweder bootstrapped `external/vcpkg` oder ein globales vcpkg, aber mische nicht beides ohne Anpassung.
+- Beim Debugging von hängenden Tests: starte die betroffene Testdatei einzeln (`ctest -R TestName -V` oder `./themis_tests --gtest_filter=...`) und sammle Backtraces (WSL: `gdb`, Windows: WinDbg / Visual Studio Debugger).
+
+## Troubleshooting (häufige Probleme)
+
+- "Could NOT find OpenSSL": CMake wurde ohne vcpkg‑toolchain aufgerufen oder `vcpkg`-Pakete fehlen. Re-run CMake with `-DCMAKE_TOOLCHAIN_FILE=external/vcpkg/scripts/buildsystems/vcpkg.cmake` and a clean build dir.
+- STALE RocksDB LOCK / Test‑DB locked: entferne temporäre DB‑Ordner in `data/` oder in `build-*` vor Testläufen.
+- CMake-Cache verwechselt Pfade (WSL vs Windows): löschen Sie das Build‑Verzeichnis komplett und konfigurieren neu.
+
+## Beispiel-Fehleranalyse (kurz)
+
+- Wenn ein SSE‑Test blockiert, prüfe Locks/Deadlocks in `src/server/sse_connection_manager.cpp` (wir hatten z. B. ein Problem, bei dem `registerConnection()` den `connections_mutex_` hielt und dann `backgroundPollTask()` startete — Fix: Hintergrund-Task außerhalb des Mutex starten).
+
+## Nächste Schritte
+
+- Nachdem Du die Dokumentation angewendet hast, führe lokal `cmake` in der passenden Umgebung aus (Windows: VS Dev Prompt, WSL: Bash) und poste die Configure‑Ausgabe, falls noch Fehler auftreten.
+
+````
+make example_simple

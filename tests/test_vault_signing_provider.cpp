@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include "security/vault_signing_provider.h"
 
 using namespace themis;
@@ -9,7 +10,11 @@ TEST(VaultSigningProviderTest, MockFallbackProducesDeterministicSignature) {
 
     std::vector<uint8_t> data = {1,2,3,4,5};
     // Ensure env THEIMIS_VAULT_ADDR not set for deterministic mock path
+#if defined(_WIN32)
+    _putenv_s("THEMIS_VAULT_ADDR", "");
+#else
     unsetenv("THEMIS_VAULT_ADDR");
+#endif
 
     SigningResult res = provider.sign("test-key", data);
     EXPECT_EQ(res.algorithm, "MOCK+SHA256");

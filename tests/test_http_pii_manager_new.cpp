@@ -3,6 +3,7 @@
 #include <boost/beast.hpp>
 #include <nlohmann/json.hpp>
 #include <filesystem>
+#include <fstream>
 #include <thread>
 #include <chrono>
 #include <optional>
@@ -58,6 +59,23 @@ protected:
 #else
         setenv("THEMIS_TOKEN_ADMIN", "admin-token-pii-tests", 1);
 #endif
+    // Diagnostic: print getenv value to verify env visible to server
+    {
+        const char* v = std::getenv("THEMIS_TOKEN_ADMIN");
+        if (v) std::cerr << "[TEST-DEBUG] THEMIS_TOKEN_ADMIN='" << v << "'\n"; else std::cerr << "[TEST-DEBUG] THEMIS_TOKEN_ADMIN=<null>\n";
+    }
+        // Use an explicit test policies file via env to avoid touching repo config
+        try {
+            // Derive test policy path relative to this source file so absolute path is correct
+            std::filesystem::path src = std::filesystem::path(__FILE__).parent_path();
+            auto p = (src / "config" / "policies.test.yaml").lexically_normal();
+            std::cerr << "[TEST-DEBUG] THEMIS_POLICIES_PATH='" << p.string() << "'\n";
+    #ifdef _WIN32
+            _putenv_s("THEMIS_POLICIES_PATH", p.string().c_str());
+    #else
+            setenv("THEMIS_POLICIES_PATH", p.string().c_str(), 1);
+    #endif
+        } catch(...) {}
         const std::string db_path = "data/themis_pii_manager_test";
         if (std::filesystem::exists(db_path)) std::filesystem::remove_all(db_path);
         themis::RocksDBWrapper::Config cfg; cfg.db_path = db_path; cfg.memtable_size_mb = 32; cfg.block_cache_size_mb = 64;
@@ -82,6 +100,19 @@ protected:
         if (storage_) storage_->close();
         const std::string db_path = "data/themis_pii_manager_test";
         if (std::filesystem::exists(db_path)) std::filesystem::remove_all(db_path);
+        // Restore any backed-up policies file
+        try {
+            std::filesystem::path cfgdir = std::filesystem::path("config");
+            std::filesystem::path policies = cfgdir / "policies.yaml";
+            std::filesystem::path bak = cfgdir / "policies.yaml.bak";
+            if (std::filesystem::exists(bak)) {
+                if (std::filesystem::exists(policies)) std::filesystem::remove(policies);
+                std::filesystem::rename(bak, policies);
+            } else {
+                // no backup: remove the test policies file we created
+                if (std::filesystem::exists(policies)) std::filesystem::remove(policies);
+            }
+        } catch (...) {}
     }
 
     std::unique_ptr<themis::server::HttpServer> server_;
@@ -139,6 +170,8 @@ TEST_F(HttpPiiManagerTest, DeleteMapping) {
     auto c = http_request(http::verb::post, "127.0.0.1", 18111, "/pii", json{{"original_uuid","7777"},{"pseudonym","pp"}}, {{"Authorization","Bearer admin-token-pii-tests"}});
     ASSERT_EQ(c.result(), http::status::created);
     auto del = http_request(http::verb::delete_, "127.0.0.1", 18111, "/pii/7777?mode=hard", std::nullopt, {{"Authorization","Bearer admin-token-pii-tests"}});
+    // Diagnostic: print response status and body to capture auth deny reason
+    std::cerr << "[TEST-DEBUG] DELETE status=" << static_cast<int>(del.result_int()) << " body=" << del.body() << "\n";
     ASSERT_EQ(del.result(), http::status::ok);
     auto again = http_request(http::verb::get, "127.0.0.1", 18111, "/pii/7777", std::nullopt, {{"Authorization","Bearer admin-token-pii-tests"}});
     ASSERT_EQ(again.result(), http::status::not_found);

@@ -42,27 +42,39 @@ uint64_t SseConnectionManager::registerConnection(
     uint64_t from_seq,
     const std::string& key_prefix
 ) {
-    std::lock_guard<std::mutex> lock(connections_mutex_);
-    
-    auto conn = std::make_shared<Connection>();
-    conn->id = next_conn_id_++;
-    conn->current_sequence = from_seq;
-    conn->key_prefix = key_prefix;
-    conn->last_activity = std::chrono::steady_clock::now();
-    conn->last_heartbeat = std::chrono::steady_clock::now();
-    
-    connections_[conn->id] = conn;
-    
-    THEMIS_INFO("SSE connection registered: id={}, from_seq={}, prefix='{}'",
-        conn->id, from_seq, key_prefix);
-    
-    // Start background polling if first connection
-    if (connections_.size() == 1 && !running_) {
-        running_ = true;
+    uint64_t conn_id = 0;
+    bool start_background = false;
+
+    {
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+
+        auto conn = std::make_shared<Connection>();
+        conn->id = next_conn_id_++;
+        conn->current_sequence = from_seq;
+        conn->key_prefix = key_prefix;
+        conn->last_activity = std::chrono::steady_clock::now();
+        conn->last_heartbeat = std::chrono::steady_clock::now();
+
+        connections_[conn->id] = conn;
+        conn_id = conn->id;
+
+        THEMIS_INFO("SSE connection registered: id={}, from_seq={}, prefix='{}'",
+            conn->id, from_seq, key_prefix);
+
+        // Mark to start background polling if first connection
+        if (connections_.size() == 1 && !running_) {
+            running_ = true;
+            start_background = true;
+        }
+    }
+
+    // Start background polling outside of the connections mutex to avoid
+    // self-deadlock (backgroundPollTask acquires the same mutex).
+    if (start_background) {
         backgroundPollTask();
     }
-    
-    return conn->id;
+
+    return conn_id;
 }
 
 void SseConnectionManager::unregisterConnection(uint64_t conn_id) {

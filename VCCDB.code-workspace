@@ -2,15 +2,6 @@
 	"folders": [
 		{
 			"path": "."
-		},
-		{
-			"path": "../PKI"
-		},
-		{
-			"path": "../user"
-		},
-		{
-			"path": "../URN"
 		}
 	],
 	"settings": {

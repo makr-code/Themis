@@ -5,6 +5,7 @@
 #include <curl/curl.h>
 #include <chrono>
 #include <memory>
+#include <functional>
 
 namespace themis {
 
@@ -63,7 +64,7 @@ namespace themis {
  * - 404 Not Found: KeyNotFoundException
  * - 5xx errors: KeyOperationException with transient flag
  */
-class VaultKeyProvider : public KeyProvider, public SigningProvider {
+class VaultKeyProvider : public SigningProvider {
 public:
     /**
      * @brief Configuration for Vault connection
@@ -179,8 +180,12 @@ protected:
     // Cache key generation
     std::string makeCacheKey(const std::string& key_id, uint32_t version) const;
 
+public:
     // Testing: override HTTP behavior (url, method, body) -> response
+    // Tests need to override HTTP behavior; expose this as public for test harnesses.
     void setTestRequestOverride(std::function<std::string(const std::string&, const std::string&, const std::string&)> fn);
+
+protected:
 };
 
 } // namespace themis

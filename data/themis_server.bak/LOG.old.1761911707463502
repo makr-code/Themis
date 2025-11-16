@@ -1,0 +1,1618 @@
+2025/10/31-12:54:57.967741 73c8 RocksDB version: 10.4.2
+2025/10/31-12:54:57.967855 73c8 Git sha 0
+2025/10/31-12:54:57.967899 73c8 Compile date 2025-10-27 15:09:02
+2025/10/31-12:54:57.967935 73c8 DB SUMMARY
+2025/10/31-12:54:57.967970 73c8 Host name (Env):  DESKTOP-712S8LO
+2025/10/31-12:54:57.968000 73c8 DB Session ID:  DRW9XR453NDA52T71XGW
+2025/10/31-12:54:57.990793 73c8 CURRENT file:  CURRENT
+2025/10/31-12:54:57.990850 73c8 IDENTITY file:  IDENTITY
+2025/10/31-12:54:57.990965 73c8 MANIFEST file:  MANIFEST-002575 size: 620 Bytes
+2025/10/31-12:54:57.991005 73c8 SST files in C:\VCC\themis\data\themis_server dir, Total Num: 4, files: 002478.sst 002487.sst 002560.sst 002567.sst 
+2025/10/31-12:54:57.991044 73c8 Write Ahead Log file in C:\VCC\themis\data\themis_server: 000004.log size: 0 ; 000010.log size: 0 ; 000016.log size: 0 ; 000022.log size: 0 ; 000028.log size: 0 ; 000034.log size: 0 ; 000040.log size: 0 ; 000046.log size: 0 ; 000052.log size: 0 ; 000058.log size: 0 ; 000064.log size: 0 ; 000070.log size: 0 ; 000076.log size: 0 ; 000082.log size: 0 ; 000088.log size: 0 ; 000094.log size: 0 ; 000100.log size: 0 ; 000106.log size: 42 ; 000113.log size: 90 ; 000120.log size: 0 ; 000126.log size: 86 ; 000133.log size: 0 ; 000139.log size: 0 ; 000145.log size: 0 ; 000151.log size: 0 ; 000157.log size: 0 ; 000163.log size: 0 ; 000169.log size: 0 ; 000175.log size: 0 ; 000181.log size: 0 ; 000187.log size: 0 ; 000193.log size: 42 ; 000200.log size: 90 ; 000208.log size: 0 ; 000214.log size: 86 ; 000221.log size: 0 ; 000229.log size: 0 ; 000235.log size: 0 ; 000241.log size: 0 ; 000247.log size: 0 ; 000253.log size: 0 ; 000259.log size: 0 ; 000265.log size: 0 ; 000271.log size: 0 ; 000277.log size: 0 ; 000283.log size: 42 ; 000290.log size: 90 ; 000297.log size: 0 ; 000306.log size: 86 ; 000313.log size: 0 ; 000320.log size: 0 ; 000326.log size: 0 ; 000332.log size: 0 ; 000338.log size: 0 ; 000344.log size: 0 ; 000350.log size: 0 ; 000356.log size: 0 ; 000362.log size: 0 ; 000368.log size: 0 ; 000374.log size: 42 ; 000381.log size: 90 ; 000388.log size: 0 ; 000397.log size: 86 ; 000404.log size: 0 ; 000411.log size: 0 ; 000417.log size: 0 ; 000423.log size: 0 ; 000429.log size: 0 ; 000435.log size: 0 ; 000441.log size: 0 ; 000447.log size: 0 ; 000453.log size: 0 ; 000459.log size: 0 ; 000465.log size: 42 ; 000472.log size: 90 ; 000482.log size: 0 ; 000491.log size: 86 ; 000498.log size: 0 ; 000504.log size: 0 ; 000510.log size: 0 ; 000516.log size: 0 ; 000522.log size: 0 ; 000528.log size: 0 ; 000534.log size: 0 ; 000540.log size: 0 ; 000546.log size: 0 ; 000552.log size: 0 ; 000558.log size: 42 ; 000565.log size: 90 ; 000572.log size: 0 ; 000578.log size: 86 ; 000585.log size: 0 ; 000592.log size: 0 ; 000598.log size: 0 ; 000604.log size: 0 ; 000610.log size: 0 ; 000616.log size: 0 ; 000622.log size: 0 ; 000628.log size: 0 ; 000634.log size: 0 ; 000640.log size: 0 ; 000646.log size: 42 ; 000653.log size: 90 ; 000663.log size: 0 ; 000669.log size: 86 ; 000676.log size: 0 ; 000683.log size: 0 ; 000689.log size: 0 ; 000695.log size: 0 ; 000701.log size: 0 ; 000707.log size: 0 ; 000713.log size: 0 ; 000719.log size: 0 ; 000725.log size: 0 ; 000731.log size: 0 ; 000737.log size: 42 ; 000744.log size: 90 ; 000751.log size: 0 ; 000759.log size: 86 ; 000766.log size: 0 ; 000773.log size: 0 ; 000779.log size: 0 ; 000785.log size: 0 ; 000791.log size: 0 ; 000797.log size: 0 ; 000803.log size: 0 ; 000809.log size: 0 ; 000815.log size: 0 ; 000821.log size: 0 ; 000827.log size: 42 ; 000834.log size: 90 ; 000844.log size: 0 ; 000852.log size: 86 ; 000859.log size: 0 ; 000865.log size: 0 ; 000871.log size: 0 ; 000877.log size: 0 ; 000883.log size: 0 ; 000889.log size: 0 ; 000895.log size: 0 ; 000901.log size: 0 ; 000907.log size: 0 ; 000913.log size: 0 ; 000919.log size: 42 ; 000926.log size: 90 ; 000933.log size: 0 ; 000939.log size: 86 ; 000946.log size: 0 ; 000953.log size: 0 ; 000959.log size: 0 ; 000965.log size: 0 ; 000971.log size: 0 ; 000977.log size: 0 ; 000983.log size: 0 ; 000989.log size: 0 ; 000995.log size: 0 ; 001001.log size: 0 ; 001007.log size: 42 ; 001014.log size: 90 ; 001023.log size: 0 ; 001029.log size: 86 ; 001036.log size: 0 ; 001043.log size: 0 ; 001049.log size: 0 ; 001055.log size: 0 ; 001061.log size: 0 ; 001067.log size: 0 ; 001073.log size: 0 ; 001079.log size: 0 ; 001085.log size: 0 ; 001091.log size: 0 ; 001097.log size: 42 ; 001104.log size: 90 ; 001111.log size: 0 ; 001119.log size: 86 ; 001126.log size: 0 ; 001133.log size: 0 ; 001139.log size: 0 ; 001145.log size: 0 ; 001151.log size: 0 ; 001157.log size: 0 ; 001163.log size: 0 ; 001169.log size: 0 ; 001175.log size: 0 ; 001181.log size: 0 ; 001187.log size: 0 ; 001193.log size: 42 ; 001200.log size: 90 ; 001209.log size: 0 ; 001217.log size: 86 ; 001224.log size: 0 ; 001230.log size: 0 ; 001236.log size: 0 ; 001242.log size: 0 ; 001248.log size: 0 ; 001254.log size: 0 ; 001260.log size: 0 ; 001266.log size: 0 ; 001272.log size: 0 ; 001278.log size: 0 ; 001284.log size: 42 ; 001291.log size: 90 ; 001298.log size: 0 ; 001304.log size: 86 ; 001311.log size: 0 ; 001318.log size: 0 ; 001324.log size: 0 ; 001330.log size: 0 ; 001336.log size: 0 ; 001342.log size: 0 ; 001348.log size: 0 ; 001354.log size: 0 ; 001360.log size: 0 ; 001366.log size: 0 ; 001372.log size: 42 ; 001379.log size: 90 ; 001388.log size: 0 ; 001394.log size: 86 ; 001401.log size: 0 ; 001408.log size: 0 ; 001414.log size: 0 ; 001420.log size: 0 ; 001426.log size: 0 ; 001432.log size: 0 ; 001438.log size: 0 ; 001444.log size: 0 ; 001450.log size: 0 ; 001456.log size: 0 ; 001462.log size: 42 ; 001469.log size: 90 ; 001476.log size: 0 ; 001484.log size: 86 ; 001491.log size: 0 ; 001498.log size: 0 ; 001504.log size: 0 ; 001510.log size: 0 ; 001516.log size: 244 ; 001523.log size: 876 ; 001532.log size: 0 ; 001538.log size: 0 ; 001544.log size: 0 ; 001550.log size: 0 ; 001556.log size: 0 ; 001562.log size: 0 ; 001568.log size: 0 ; 001574.log size: 0 ; 001580.log size: 0 ; 001586.log size: 0 ; 001592.log size: 0 ; 001598.log size: 0 ; 001604.log size: 0 ; 001610.log size: 0 ; 001616.log size: 0 ; 001622.log size: 0 ; 001628.log size: 0 ; 001634.log size: 0 ; 001640.log size: 0 ; 001646.log size: 0 ; 001652.log size: 0 ; 001658.log size: 0 ; 001664.log size: 0 ; 001670.log size: 0 ; 001676.log size: 42 ; 001683.log size: 90 ; 001690.log size: 0 ; 001696.log size: 86 ; 001703.log size: 0 ; 001711.log size: 0 ; 001717.log size: 0 ; 001723.log size: 0 ; 001729.log size: 0 ; 001735.log size: 0 ; 001741.log size: 0 ; 001747.log size: 0 ; 001753.log size: 0 ; 001759.log size: 0 ; 001765.log size: 0 ; 001771.log size: 42 ; 001778.log size: 90 ; 001785.log size: 0 ; 001791.log size: 86 ; 001798.log size: 0 ; 001804.log size: 0 ; 001810.log size: 0 ; 001816.log size: 0 ; 001822.log size: 0 ; 001828.log size: 0 ; 001834.log size: 0 ; 001840.log size: 0 ; 001846.log size: 0 ; 001852.log size: 0 ; 001858.log size: 0 ; 001864.log size: 0 ; 001870.log size: 0 ; 001876.log size: 0 ; 001882.log size: 0 ; 001888.log size: 0 ; 001894.log size: 0 ; 001900.log size: 0 ; 001906.log size: 0 ; 001912.log size: 42 ; 001919.log size: 90 ; 001929.log size: 0 ; 001935.log size: 86 ; 001942.log size: 0 ; 001948.log size: 0 ; 001954.log size: 0 ; 001960.log size: 0 ; 001966.log size: 0 ; 001972.log size: 0 ; 001978.log size: 0 ; 001984.log size: 167 ; 001991.log size: 0 ; 001997.log size: 0 ; 002003.log size: 0 ; 002009.log size: 0 ; 002015.log size: 0 ; 002021.log size: 0 ; 002027.log size: 42 ; 002034.log size: 90 ; 002043.log size: 0 ; 002051.log size: 86 ; 002058.log size: 0 ; 002064.log size: 0 ; 002070.log size: 0 ; 002076.log size: 0 ; 002082.log size: 0 ; 002088.log size: 0 ; 002094.log size: 0 ; 002100.log size: 839 ; 002107.log size: 1133 ; 002114.log size: 775 ; 002121.log size: 0 ; 002129.log size: 0 ; 002135.log size: 0 ; 002141.log size: 0 ; 002147.log size: 0 ; 002153.log size: 0 ; 002159.log size: 0 ; 002165.log size: 448 ; 002172.log size: 0 ; 002178.log size: 0 ; 002184.log size: 0 ; 002190.log size: 0 ; 002196.log size: 3322 ; 002203.log size: 0 ; 002209.log size: 0 ; 002215.log size: 0 ; 002221.log size: 0 ; 002227.log size: 0 ; 002233.log size: 0 ; 002239.log size: 0 ; 002245.log size: 42 ; 002252.log size: 90 ; 002259.log size: 0 ; 002267.log size: 86 ; 002274.log size: 0 ; 002282.log size: 0 ; 002288.log size: 0 ; 002294.log size: 0 ; 002300.log size: 1338 ; 002307.log size: 1445 ; 002314.log size: 2001 ; 002321.log size: 0 ; 002327.log size: 0 ; 002333.log size: 0 ; 002339.log size: 0 ; 002345.log size: 0 ; 002351.log size: 0 ; 002357.log size: 0 ; 002363.log size: 42 ; 002370.log size: 90 ; 002380.log size: 0 ; 002386.log size: 86 ; 002393.log size: 0 ; 002399.log size: 0 ; 002405.log size: 0 ; 002411.log size: 0 ; 002417.log size: 0 ; 002423.log size: 0 ; 002429.log size: 0 ; 002435.log size: 0 ; 002441.log size: 0 ; 002447.log size: 0 ; 002453.log size: 0 ; 002459.log size: 42 ; 002466.log size: 90 ; 002473.log size: 0 ; 002481.log size: 86 ; 002488.log size: 0 ; 002494.log size: 0 ; 002500.log size: 0 ; 002506.log size: 0 ; 002512.log size: 0 ; 002518.log size: 0 ; 002524.log size: 0 ; 002530.log size: 0 ; 002536.log size: 0 ; 002542.log size: 0 ; 002548.log size: 0 ; 002554.log size: 42 ; 002561.log size: 90 ; 002568.log size: 0 ; 002574.log size: 86 ; 
+2025/10/31-12:54:57.991280 73c8                         Options.error_if_exists: 0
+2025/10/31-12:54:57.991301 73c8                       Options.create_if_missing: 1
+2025/10/31-12:54:57.991314 73c8                         Options.paranoid_checks: 1
+2025/10/31-12:54:57.991326 73c8             Options.flush_verify_memtable_count: 1
+2025/10/31-12:54:57.991338 73c8          Options.compaction_verify_record_count: 1
+2025/10/31-12:54:57.991349 73c8                               Options.track_and_verify_wals_in_manifest: 0
+2025/10/31-12:54:57.991362 73c8                               Options.track_and_verify_wals: 0
+2025/10/31-12:54:57.991373 73c8        Options.verify_sst_unique_id_in_manifest: 1
+2025/10/31-12:54:57.991385 73c8                                     Options.env: 000001E4503051B0
+2025/10/31-12:54:57.991396 73c8                                      Options.fs: WinFS
+2025/10/31-12:54:57.991407 73c8                                Options.info_log: 000001E450294B40
+2025/10/31-12:54:57.991418 73c8                Options.max_file_opening_threads: 16
+2025/10/31-12:54:57.991430 73c8                              Options.statistics: 000001E4502526F0
+2025/10/31-12:54:57.991441 73c8                              Options.statistics stats level: 1
+2025/10/31-12:54:57.991454 73c8                               Options.use_fsync: 0
+2025/10/31-12:54:57.991485 73c8                       Options.max_log_file_size: 0
+2025/10/31-12:54:57.991497 73c8                  Options.max_manifest_file_size: 1073741824
+2025/10/31-12:54:57.991507 73c8                   Options.log_file_time_to_roll: 0
+2025/10/31-12:54:57.991518 73c8                       Options.keep_log_file_num: 1000
+2025/10/31-12:54:57.991529 73c8                    Options.recycle_log_file_num: 0
+2025/10/31-12:54:57.991540 73c8                         Options.allow_fallocate: 1
+2025/10/31-12:54:57.991551 73c8                        Options.allow_mmap_reads: 0
+2025/10/31-12:54:57.991563 73c8                       Options.allow_mmap_writes: 0
+2025/10/31-12:54:57.991574 73c8                        Options.use_direct_reads: 0
+2025/10/31-12:54:57.991585 73c8                        Options.use_direct_io_for_flush_and_compaction: 0
+2025/10/31-12:54:57.991596 73c8          Options.create_missing_column_families: 0
+2025/10/31-12:54:57.991607 73c8                              Options.db_log_dir: 
+2025/10/31-12:54:57.991618 73c8                                 Options.wal_dir: 
+2025/10/31-12:54:57.991629 73c8                Options.table_cache_numshardbits: 6
+2025/10/31-12:54:57.991639 73c8                         Options.WAL_ttl_seconds: 0
+2025/10/31-12:54:57.991651 73c8                       Options.WAL_size_limit_MB: 0
+2025/10/31-12:54:57.991663 73c8                        Options.max_write_batch_group_size_bytes: 1048576
+2025/10/31-12:54:57.991674 73c8             Options.manifest_preallocation_size: 4194304
+2025/10/31-12:54:57.991685 73c8                     Options.is_fd_close_on_exec: 1
+2025/10/31-12:54:57.991730 73c8                   Options.advise_random_on_open: 1
+2025/10/31-12:54:57.991746 73c8                    Options.db_write_buffer_size: 0
+2025/10/31-12:54:57.991757 73c8                    Options.write_buffer_manager: 000001E450304DF0
+2025/10/31-12:54:57.991768 73c8                      Options.use_adaptive_mutex: 0
+2025/10/31-12:54:57.991780 73c8                            Options.rate_limiter: 0000000000000000
+2025/10/31-12:54:57.991797 73c8     Options.sst_file_manager.rate_bytes_per_sec: 0
+2025/10/31-12:54:57.991810 73c8                       Options.wal_recovery_mode: 2
+2025/10/31-12:54:57.991822 73c8                  Options.enable_thread_tracking: 0
+2025/10/31-12:54:57.991832 73c8                  Options.enable_pipelined_write: 0
+2025/10/31-12:54:57.991843 73c8                  Options.unordered_write: 0
+2025/10/31-12:54:57.991853 73c8         Options.allow_concurrent_memtable_write: 1
+2025/10/31-12:54:57.991865 73c8      Options.enable_write_thread_adaptive_yield: 1
+2025/10/31-12:54:57.991877 73c8             Options.write_thread_max_yield_usec: 100
+2025/10/31-12:54:57.991888 73c8            Options.write_thread_slow_yield_usec: 3
+2025/10/31-12:54:57.991899 73c8                               Options.row_cache: None
+2025/10/31-12:54:57.991910 73c8                              Options.wal_filter: None
+2025/10/31-12:54:57.991921 73c8             Options.avoid_flush_during_recovery: 0
+2025/10/31-12:54:57.991932 73c8             Options.allow_ingest_behind: 0
+2025/10/31-12:54:57.991943 73c8             Options.two_write_queues: 0
+2025/10/31-12:54:57.991955 73c8             Options.manual_wal_flush: 0
+2025/10/31-12:54:57.991967 73c8             Options.wal_compression: 0
+2025/10/31-12:54:57.991978 73c8             Options.background_close_inactive_wals: 0
+2025/10/31-12:54:57.991989 73c8             Options.atomic_flush: 0
+2025/10/31-12:54:57.991999 73c8             Options.avoid_unnecessary_blocking_io: 0
+2025/10/31-12:54:57.992010 73c8             Options.prefix_seek_opt_in_only: 0
+2025/10/31-12:54:57.992021 73c8                 Options.persist_stats_to_disk: 0
+2025/10/31-12:54:57.992032 73c8                 Options.write_dbid_to_manifest: 1
+2025/10/31-12:54:57.992044 73c8                 Options.write_identity_file: 1
+2025/10/31-12:54:57.992055 73c8                 Options.log_readahead_size: 0
+2025/10/31-12:54:57.992067 73c8                 Options.file_checksum_gen_factory: Unknown
+2025/10/31-12:54:57.992078 73c8                 Options.best_efforts_recovery: 0
+2025/10/31-12:54:57.992089 73c8                Options.max_bgerror_resume_count: 2147483647
+2025/10/31-12:54:57.992100 73c8            Options.bgerror_resume_retry_interval: 1000000
+2025/10/31-12:54:57.992111 73c8             Options.allow_data_in_errors: 0
+2025/10/31-12:54:57.992122 73c8             Options.db_host_id: __hostname__
+2025/10/31-12:54:57.992133 73c8             Options.enforce_single_del_contracts: true
+2025/10/31-12:54:57.992145 73c8             Options.metadata_write_temperature: kUnknown
+2025/10/31-12:54:57.992157 73c8             Options.wal_write_temperature: kUnknown
+2025/10/31-12:54:57.992168 73c8             Options.max_background_jobs: 4
+2025/10/31-12:54:57.992179 73c8             Options.max_background_compactions: -1
+2025/10/31-12:54:57.992190 73c8             Options.max_subcompactions: 1
+2025/10/31-12:54:57.992200 73c8             Options.avoid_flush_during_shutdown: 0
+2025/10/31-12:54:57.992211 73c8           Options.writable_file_max_buffer_size: 1048576
+2025/10/31-12:54:57.992223 73c8             Options.delayed_write_rate : 16777216
+2025/10/31-12:54:57.992234 73c8             Options.max_total_wal_size: 0
+2025/10/31-12:54:57.992246 73c8             Options.delete_obsolete_files_period_micros: 21600000000
+2025/10/31-12:54:57.992256 73c8                   Options.stats_dump_period_sec: 600
+2025/10/31-12:54:57.992267 73c8                 Options.stats_persist_period_sec: 600
+2025/10/31-12:54:57.992278 73c8                 Options.stats_history_buffer_size: 1048576
+2025/10/31-12:54:57.992324 73c8                          Options.max_open_files: -1
+2025/10/31-12:54:57.992339 73c8                          Options.bytes_per_sync: 0
+2025/10/31-12:54:57.992352 73c8                      Options.wal_bytes_per_sync: 0
+2025/10/31-12:54:57.992364 73c8                   Options.strict_bytes_per_sync: 0
+2025/10/31-12:54:57.992374 73c8       Options.compaction_readahead_size: 2097152
+2025/10/31-12:54:57.992385 73c8                  Options.max_background_flushes: -1
+2025/10/31-12:54:57.992395 73c8 Options.daily_offpeak_time_utc: 
+2025/10/31-12:54:57.992410 73c8 Compression algorithms supported:
+2025/10/31-12:54:57.992422 73c8 	kZSTD supported: 1
+2025/10/31-12:54:57.992434 73c8 	kCustomCompressionA3 supported: 0
+2025/10/31-12:54:57.992446 73c8 	kSnappyCompression supported: 0
+2025/10/31-12:54:57.992458 73c8 	kCustomCompressionA5 supported: 0
+2025/10/31-12:54:57.992469 73c8 	kBZip2Compression supported: 0
+2025/10/31-12:54:57.992480 73c8 	kZlibCompression supported: 1
+2025/10/31-12:54:57.992490 73c8 	kLZ4Compression supported: 1
+2025/10/31-12:54:57.992501 73c8 	kXpressCompression supported: 0
+2025/10/31-12:54:57.992512 73c8 	kCustomCompressionA7 supported: 0
+2025/10/31-12:54:57.992524 73c8 	kLZ4HCCompression supported: 1
+2025/10/31-12:54:57.992536 73c8 	kCustomCompressionB2 supported: 0
+2025/10/31-12:54:57.992548 73c8 	kCustomCompression9C supported: 0
+2025/10/31-12:54:57.992559 73c8 	kCustomCompression80 supported: 0
+2025/10/31-12:54:57.992569 73c8 	kCustomCompressionB3 supported: 0
+2025/10/31-12:54:57.992580 73c8 	kCustomCompression9B supported: 0
+2025/10/31-12:54:57.992591 73c8 	kCustomCompression81 supported: 0
+2025/10/31-12:54:57.992601 73c8 	kCustomCompressionB0 supported: 0
+2025/10/31-12:54:57.992613 73c8 	kCustomCompression9A supported: 0
+2025/10/31-12:54:57.992624 73c8 	kCustomCompression82 supported: 0
+2025/10/31-12:54:57.992634 73c8 	kCustomCompressionB1 supported: 0
+2025/10/31-12:54:57.992646 73c8 	kCustomCompression83 supported: 0
+2025/10/31-12:54:57.992657 73c8 	kCustomCompressionB6 supported: 0
+2025/10/31-12:54:57.992667 73c8 	kCustomCompression84 supported: 0
+2025/10/31-12:54:57.992678 73c8 	kCustomCompressionB7 supported: 0
+2025/10/31-12:54:57.992688 73c8 	kCustomCompression9F supported: 0
+2025/10/31-12:54:57.992700 73c8 	kCustomCompression85 supported: 0
+2025/10/31-12:54:57.992711 73c8 	kCustomCompressionB4 supported: 0
+2025/10/31-12:54:57.992722 73c8 	kCustomCompression9E supported: 0
+2025/10/31-12:54:57.992733 73c8 	kCustomCompression86 supported: 0
+2025/10/31-12:54:57.992744 73c8 	kCustomCompressionB5 supported: 0
+2025/10/31-12:54:57.992754 73c8 	kCustomCompression9D supported: 0
+2025/10/31-12:54:57.992765 73c8 	kCustomCompression87 supported: 0
+2025/10/31-12:54:57.992776 73c8 	kCustomCompression88 supported: 0
+2025/10/31-12:54:57.992787 73c8 	kCustomCompression89 supported: 0
+2025/10/31-12:54:57.992799 73c8 	kCustomCompression92 supported: 0
+2025/10/31-12:54:57.992810 73c8 	kCustomCompression8A supported: 0
+2025/10/31-12:54:57.992821 73c8 	kCustomCompression91 supported: 0
+2025/10/31-12:54:57.992832 73c8 	kCustomCompression8B supported: 0
+2025/10/31-12:54:57.992842 73c8 	kCustomCompression90 supported: 0
+2025/10/31-12:54:57.992853 73c8 	kCustomCompression8C supported: 0
+2025/10/31-12:54:57.992864 73c8 	kCustomCompression97 supported: 0
+2025/10/31-12:54:57.992876 73c8 	kCustomCompression8D supported: 0
+2025/10/31-12:54:57.992887 73c8 	kCustomCompression96 supported: 0
+2025/10/31-12:54:57.992898 73c8 	kCustomCompression8E supported: 0
+2025/10/31-12:54:57.992909 73c8 	kCustomCompression95 supported: 0
+2025/10/31-12:54:57.992919 73c8 	kCustomCompression8F supported: 0
+2025/10/31-12:54:57.992938 73c8 	kCustomCompression93 supported: 0
+2025/10/31-12:54:57.992950 73c8 	kCustomCompression94 supported: 0
+2025/10/31-12:54:57.992963 73c8 	kCustomCompression98 supported: 0
+2025/10/31-12:54:57.992974 73c8 	kCustomCompression99 supported: 0
+2025/10/31-12:54:57.992985 73c8 	kCustomCompressionA0 supported: 0
+2025/10/31-12:54:57.992996 73c8 	kCustomCompressionA1 supported: 0
+2025/10/31-12:54:57.993008 73c8 	kCustomCompressionA2 supported: 0
+2025/10/31-12:54:57.993021 73c8 	kCustomCompressionA4 supported: 0
+2025/10/31-12:54:57.993034 73c8 	kCustomCompressionA6 supported: 0
+2025/10/31-12:54:57.993045 73c8 	kCustomCompressionA8 supported: 0
+2025/10/31-12:54:57.993057 73c8 	kCustomCompressionA9 supported: 0
+2025/10/31-12:54:57.993068 73c8 	kCustomCompressionAA supported: 0
+2025/10/31-12:54:57.993079 73c8 	kCustomCompressionAB supported: 0
+2025/10/31-12:54:57.993089 73c8 	kCustomCompressionAC supported: 0
+2025/10/31-12:54:57.993100 73c8 	kCustomCompressionAD supported: 0
+2025/10/31-12:54:57.993111 73c8 	kCustomCompressionAE supported: 0
+2025/10/31-12:54:57.993122 73c8 	kCustomCompressionAF supported: 0
+2025/10/31-12:54:57.993132 73c8 	kCustomCompressionB8 supported: 0
+2025/10/31-12:54:57.993144 73c8 	kCustomCompressionB9 supported: 0
+2025/10/31-12:54:57.993174 73c8 	kCustomCompressionBA supported: 0
+2025/10/31-12:54:57.993185 73c8 	kCustomCompressionBB supported: 0
+2025/10/31-12:54:57.993196 73c8 	kCustomCompressionBC supported: 0
+2025/10/31-12:54:57.993208 73c8 	kCustomCompressionBD supported: 0
+2025/10/31-12:54:57.993220 73c8 	kCustomCompressionBE supported: 0
+2025/10/31-12:54:57.993232 73c8 	kCustomCompressionBF supported: 0
+2025/10/31-12:54:57.993243 73c8 	kCustomCompressionC0 supported: 0
+2025/10/31-12:54:57.993255 73c8 	kCustomCompressionC1 supported: 0
+2025/10/31-12:54:57.993267 73c8 	kCustomCompressionC2 supported: 0
+2025/10/31-12:54:57.993277 73c8 	kCustomCompressionC3 supported: 0
+2025/10/31-12:54:57.993289 73c8 	kCustomCompressionC4 supported: 0
+2025/10/31-12:54:57.993300 73c8 	kCustomCompressionC5 supported: 0
+2025/10/31-12:54:57.993311 73c8 	kCustomCompressionC6 supported: 0
+2025/10/31-12:54:57.993322 73c8 	kCustomCompressionC7 supported: 0
+2025/10/31-12:54:57.993333 73c8 	kCustomCompressionC8 supported: 0
+2025/10/31-12:54:57.993346 73c8 	kCustomCompressionC9 supported: 0
+2025/10/31-12:54:57.993357 73c8 	kCustomCompressionCA supported: 0
+2025/10/31-12:54:57.993369 73c8 	kCustomCompressionCB supported: 0
+2025/10/31-12:54:57.993379 73c8 	kCustomCompressionCC supported: 0
+2025/10/31-12:54:57.993391 73c8 	kCustomCompressionCD supported: 0
+2025/10/31-12:54:57.993402 73c8 	kCustomCompressionCE supported: 0
+2025/10/31-12:54:57.993413 73c8 	kCustomCompressionCF supported: 0
+2025/10/31-12:54:57.993424 73c8 	kCustomCompressionD0 supported: 0
+2025/10/31-12:54:57.993437 73c8 	kCustomCompressionD1 supported: 0
+2025/10/31-12:54:57.993448 73c8 	kCustomCompressionD2 supported: 0
+2025/10/31-12:54:57.993460 73c8 	kCustomCompressionD3 supported: 0
+2025/10/31-12:54:57.993472 73c8 	kCustomCompressionD4 supported: 0
+2025/10/31-12:54:57.993484 73c8 	kCustomCompressionD5 supported: 0
+2025/10/31-12:54:57.993495 73c8 	kCustomCompressionD6 supported: 0
+2025/10/31-12:54:57.993506 73c8 	kCustomCompressionD7 supported: 0
+2025/10/31-12:54:57.993517 73c8 	kCustomCompressionD8 supported: 0
+2025/10/31-12:54:57.993529 73c8 	kCustomCompressionD9 supported: 0
+2025/10/31-12:54:57.993542 73c8 	kCustomCompressionDA supported: 0
+2025/10/31-12:54:57.993554 73c8 	kCustomCompressionDB supported: 0
+2025/10/31-12:54:57.993565 73c8 	kCustomCompressionDC supported: 0
+2025/10/31-12:54:57.993576 73c8 	kCustomCompressionDD supported: 0
+2025/10/31-12:54:57.993588 73c8 	kCustomCompressionDE supported: 0
+2025/10/31-12:54:57.993600 73c8 	kCustomCompressionDF supported: 0
+2025/10/31-12:54:57.993611 73c8 	kCustomCompressionE0 supported: 0
+2025/10/31-12:54:57.993623 73c8 	kCustomCompressionE1 supported: 0
+2025/10/31-12:54:57.993655 73c8 	kCustomCompressionE2 supported: 0
+2025/10/31-12:54:57.993666 73c8 	kCustomCompressionE3 supported: 0
+2025/10/31-12:54:57.993677 73c8 	kCustomCompressionE4 supported: 0
+2025/10/31-12:54:57.993689 73c8 	kCustomCompressionE5 supported: 0
+2025/10/31-12:54:57.993700 73c8 	kCustomCompressionE6 supported: 0
+2025/10/31-12:54:57.993712 73c8 	kCustomCompressionE7 supported: 0
+2025/10/31-12:54:57.993723 73c8 	kCustomCompressionE8 supported: 0
+2025/10/31-12:54:57.993736 73c8 	kCustomCompressionE9 supported: 0
+2025/10/31-12:54:57.993748 73c8 	kCustomCompressionEA supported: 0
+2025/10/31-12:54:57.993764 73c8 	kCustomCompressionEB supported: 0
+2025/10/31-12:54:57.993778 73c8 	kCustomCompressionEC supported: 0
+2025/10/31-12:54:57.993790 73c8 	kCustomCompressionED supported: 0
+2025/10/31-12:54:57.993801 73c8 	kCustomCompressionEE supported: 0
+2025/10/31-12:54:57.993813 73c8 	kCustomCompressionEF supported: 0
+2025/10/31-12:54:57.993825 73c8 	kCustomCompressionF0 supported: 0
+2025/10/31-12:54:57.993838 73c8 	kCustomCompressionF1 supported: 0
+2025/10/31-12:54:57.993851 73c8 	kCustomCompressionF2 supported: 0
+2025/10/31-12:54:57.993863 73c8 	kCustomCompressionF3 supported: 0
+2025/10/31-12:54:57.993875 73c8 	kCustomCompressionF4 supported: 0
+2025/10/31-12:54:57.993887 73c8 	kCustomCompressionF5 supported: 0
+2025/10/31-12:54:57.993901 73c8 	kCustomCompressionF6 supported: 0
+2025/10/31-12:54:57.993912 73c8 	kCustomCompressionF7 supported: 0
+2025/10/31-12:54:57.993924 73c8 	kCustomCompressionF8 supported: 0
+2025/10/31-12:54:57.993936 73c8 	kCustomCompressionF9 supported: 0
+2025/10/31-12:54:57.993948 73c8 	kCustomCompressionFA supported: 0
+2025/10/31-12:54:57.993959 73c8 	kCustomCompressionFB supported: 0
+2025/10/31-12:54:57.993971 73c8 	kCustomCompressionFC supported: 0
+2025/10/31-12:54:57.993982 73c8 	kCustomCompressionFD supported: 0
+2025/10/31-12:54:57.993993 73c8 	kCustomCompressionFE supported: 0
+2025/10/31-12:54:57.994027 73c8 Fast CRC32 supported: Not supported on x86
+2025/10/31-12:54:57.994041 73c8 DMutex implementation: std::mutex
+2025/10/31-12:54:57.994052 73c8 Jemalloc supported: 0
+2025/10/31-12:54:57.995181 73c8 [db\version_set.cc:6116] Recovering from manifest file: C:\VCC\themis\data\themis_server/MANIFEST-002575
+2025/10/31-12:54:57.996460 73c8 [db\column_family.cc:692] --------------- Options for column family [default]:
+2025/10/31-12:54:57.996486 73c8               Options.comparator: leveldb.BytewiseComparator
+2025/10/31-12:54:57.996499 73c8           Options.merge_operator: None
+2025/10/31-12:54:57.996510 73c8        Options.compaction_filter: None
+2025/10/31-12:54:57.996520 73c8        Options.compaction_filter_factory: None
+2025/10/31-12:54:57.996530 73c8  Options.sst_partitioner_factory: None
+2025/10/31-12:54:57.996541 73c8         Options.memtable_factory: SkipListFactory
+2025/10/31-12:54:57.996553 73c8            Options.table_factory: BlockBasedTable
+2025/10/31-12:54:57.996603 73c8            table_factory options:   flush_block_policy_factory: FlushBlockBySizePolicyFactory (000001E4502FE0B0)
+  cache_index_and_filter_blocks: 1
+  cache_index_and_filter_blocks_with_high_priority: 1
+  pin_l0_filter_and_index_blocks_in_cache: 1
+  pin_top_level_index_and_filter: 1
+  index_type: 0
+  data_block_index_type: 0
+  index_shortening: 1
+  data_block_hash_table_util_ratio: 0.750000
+  checksum: 4
+  no_block_cache: 0
+  block_cache: 000001E45031DF50
+  block_cache_name: LRUCache
+  block_cache_options:
+    capacity : 1073741824
+    num_shard_bits : 6
+    strict_capacity_limit : 0
+    memory_allocator : None
+    high_pri_pool_ratio: 0.500
+    low_pri_pool_ratio: 0.000
+  persistent_cache: 0000000000000000
+  block_size: 4096
+  block_size_deviation: 10
+  block_restart_interval: 16
+  index_block_restart_interval: 1
+  metadata_block_size: 4096
+  partition_filters: 0
+  use_delta_encoding: 1
+  filter_policy: bloomfilter
+  whole_key_filtering: 1
+  verify_compression: 0
+  read_amp_bytes_per_bit: 0
+  format_version: 6
+  enable_index_compression: 1
+  block_align: 0
+  max_auto_readahead_size: 262144
+  prepopulate_block_cache: 0
+  initial_auto_readahead_size: 8192
+  num_file_reads_for_auto_readahead: 2
+2025/10/31-12:54:57.996618 73c8        Options.write_buffer_size: 268435456
+2025/10/31-12:54:57.996630 73c8  Options.max_write_buffer_number: 3
+2025/10/31-12:54:57.996641 73c8          Options.compression: LZ4
+2025/10/31-12:54:57.996655 73c8                  Options.bottommost_compression: ZSTD
+2025/10/31-12:54:57.996667 73c8       Options.prefix_extractor: nullptr
+2025/10/31-12:54:57.996678 73c8   Options.memtable_insert_with_hint_prefix_extractor: nullptr
+2025/10/31-12:54:57.996689 73c8             Options.num_levels: 7
+2025/10/31-12:54:57.996703 73c8        Options.min_write_buffer_number_to_merge: 1
+2025/10/31-12:54:57.996717 73c8     Options.max_write_buffer_size_to_maintain: 805306368
+2025/10/31-12:54:57.996729 73c8            Options.bottommost_compression_opts.window_bits: -14
+2025/10/31-12:54:57.996740 73c8                  Options.bottommost_compression_opts.level: 32767
+2025/10/31-12:54:57.996751 73c8               Options.bottommost_compression_opts.strategy: 0
+2025/10/31-12:54:57.996761 73c8         Options.bottommost_compression_opts.max_dict_bytes: 0
+2025/10/31-12:54:57.996772 73c8         Options.bottommost_compression_opts.zstd_max_train_bytes: 0
+2025/10/31-12:54:57.996782 73c8         Options.bottommost_compression_opts.parallel_threads: 1
+2025/10/31-12:54:57.996793 73c8                  Options.bottommost_compression_opts.enabled: false
+2025/10/31-12:54:57.996805 73c8         Options.bottommost_compression_opts.max_dict_buffer_bytes: 0
+2025/10/31-12:54:57.996816 73c8         Options.bottommost_compression_opts.use_zstd_dict_trainer: true
+2025/10/31-12:54:57.996827 73c8            Options.compression_opts.window_bits: -14
+2025/10/31-12:54:57.996838 73c8                  Options.compression_opts.level: 32767
+2025/10/31-12:54:57.996848 73c8               Options.compression_opts.strategy: 0
+2025/10/31-12:54:57.996859 73c8         Options.compression_opts.max_dict_bytes: 0
+2025/10/31-12:54:57.996869 73c8         Options.compression_opts.zstd_max_train_bytes: 0
+2025/10/31-12:54:57.996880 73c8         Options.compression_opts.use_zstd_dict_trainer: true
+2025/10/31-12:54:57.996891 73c8         Options.compression_opts.parallel_threads: 1
+2025/10/31-12:54:57.996903 73c8                  Options.compression_opts.enabled: false
+2025/10/31-12:54:57.996913 73c8         Options.compression_opts.max_dict_buffer_bytes: 0
+2025/10/31-12:54:57.996924 73c8      Options.level0_file_num_compaction_trigger: 4
+2025/10/31-12:54:57.996935 73c8          Options.level0_slowdown_writes_trigger: 20
+2025/10/31-12:54:57.996945 73c8              Options.level0_stop_writes_trigger: 36
+2025/10/31-12:54:57.996956 73c8                   Options.target_file_size_base: 67108864
+2025/10/31-12:54:57.996967 73c8             Options.target_file_size_multiplier: 1
+2025/10/31-12:54:57.996978 73c8                Options.max_bytes_for_level_base: 268435456
+2025/10/31-12:54:57.996989 73c8 Options.level_compaction_dynamic_level_bytes: 1
+2025/10/31-12:54:57.997000 73c8          Options.max_bytes_for_level_multiplier: 10.000000
+2025/10/31-12:54:57.997011 73c8 Options.max_bytes_for_level_multiplier_addtl[0]: 1
+2025/10/31-12:54:57.997022 73c8 Options.max_bytes_for_level_multiplier_addtl[1]: 1
+2025/10/31-12:54:57.997033 73c8 Options.max_bytes_for_level_multiplier_addtl[2]: 1
+2025/10/31-12:54:57.997044 73c8 Options.max_bytes_for_level_multiplier_addtl[3]: 1
+2025/10/31-12:54:57.997054 73c8 Options.max_bytes_for_level_multiplier_addtl[4]: 1
+2025/10/31-12:54:57.997066 73c8 Options.max_bytes_for_level_multiplier_addtl[5]: 1
+2025/10/31-12:54:57.997077 73c8 Options.max_bytes_for_level_multiplier_addtl[6]: 1
+2025/10/31-12:54:57.997088 73c8       Options.max_sequential_skip_in_iterations: 8
+2025/10/31-12:54:57.997098 73c8          Options.memtable_op_scan_flush_trigger: 0
+2025/10/31-12:54:57.997109 73c8      Options.memtable_avg_op_scan_flush_trigger: 0
+2025/10/31-12:54:57.997120 73c8                    Options.max_compaction_bytes: 1677721600
+2025/10/31-12:54:57.997130 73c8                        Options.arena_block_size: 1048576
+2025/10/31-12:54:57.997141 73c8   Options.soft_pending_compaction_bytes_limit: 68719476736
+2025/10/31-12:54:57.997152 73c8   Options.hard_pending_compaction_bytes_limit: 274877906944
+2025/10/31-12:54:57.997164 73c8                Options.disable_auto_compactions: 1
+2025/10/31-12:54:57.997176 73c8                        Options.compaction_style: kCompactionStyleLevel
+2025/10/31-12:54:57.997187 73c8                          Options.compaction_pri: kMinOverlappingRatio
+2025/10/31-12:54:57.997198 73c8 Options.compaction_options_universal.size_ratio: 1
+2025/10/31-12:54:57.997256 73c8 Options.compaction_options_universal.min_merge_width: 2
+2025/10/31-12:54:57.997271 73c8 Options.compaction_options_universal.max_merge_width: 4294967295
+2025/10/31-12:54:57.997283 73c8 Options.compaction_options_universal.max_size_amplification_percent: 200
+2025/10/31-12:54:57.997294 73c8 Options.compaction_options_universal.compression_size_percent: -1
+2025/10/31-12:54:57.997306 73c8 Options.compaction_options_universal.stop_style: kCompactionStopStyleTotalSize
+2025/10/31-12:54:57.997318 73c8 Options.compaction_options_universal.max_read_amp: -1
+2025/10/31-12:54:57.997328 73c8 Options.compaction_options_universal.reduce_file_locking: 0
+2025/10/31-12:54:57.997339 73c8 Options.compaction_options_fifo.max_table_files_size: 1073741824
+2025/10/31-12:54:57.997350 73c8 Options.compaction_options_fifo.allow_compaction: 0
+2025/10/31-12:54:57.997365 73c8                   Options.table_properties_collectors: 
+2025/10/31-12:54:57.997378 73c8                   Options.inplace_update_support: 0
+2025/10/31-12:54:57.997390 73c8                 Options.inplace_update_num_locks: 10000
+2025/10/31-12:54:57.997401 73c8               Options.memtable_prefix_bloom_size_ratio: 0.000000
+2025/10/31-12:54:57.997412 73c8               Options.memtable_whole_key_filtering: 0
+2025/10/31-12:54:57.997423 73c8   Options.memtable_huge_page_size: 0
+2025/10/31-12:54:57.997434 73c8                           Options.bloom_locality: 0
+2025/10/31-12:54:57.997444 73c8                    Options.max_successive_merges: 0
+2025/10/31-12:54:57.997455 73c8             Options.strict_max_successive_merges: 0
+2025/10/31-12:54:57.997467 73c8                Options.optimize_filters_for_hits: 0
+2025/10/31-12:54:57.997477 73c8                Options.paranoid_file_checks: 0
+2025/10/31-12:54:57.997488 73c8                Options.force_consistency_checks: 1
+2025/10/31-12:54:57.997498 73c8                Options.report_bg_io_stats: 0
+2025/10/31-12:54:57.997509 73c8                Options.disallow_memtable_writes: 0
+2025/10/31-12:54:57.997519 73c8                               Options.ttl: 2592000
+2025/10/31-12:54:57.997530 73c8          Options.periodic_compaction_seconds: 0
+2025/10/31-12:54:57.997542 73c8                        Options.default_temperature: kUnknown
+2025/10/31-12:54:57.997553 73c8  Options.preclude_last_level_data_seconds: 0
+2025/10/31-12:54:57.997564 73c8    Options.preserve_internal_time_seconds: 0
+2025/10/31-12:54:57.997574 73c8                       Options.enable_blob_files: false
+2025/10/31-12:54:57.997584 73c8                           Options.min_blob_size: 0
+2025/10/31-12:54:57.997593 73c8                          Options.blob_file_size: 268435456
+2025/10/31-12:54:57.997602 73c8                   Options.blob_compression_type: NoCompression
+2025/10/31-12:54:57.997612 73c8          Options.enable_blob_garbage_collection: false
+2025/10/31-12:54:57.997623 73c8      Options.blob_garbage_collection_age_cutoff: 0.250000
+2025/10/31-12:54:57.997634 73c8 Options.blob_garbage_collection_force_threshold: 1.000000
+2025/10/31-12:54:57.997645 73c8          Options.blob_compaction_readahead_size: 0
+2025/10/31-12:54:57.997655 73c8                Options.blob_file_starting_level: 0
+2025/10/31-12:54:57.997665 73c8         Options.experimental_mempurge_threshold: 0.000000
+2025/10/31-12:54:57.997674 73c8            Options.memtable_max_range_deletions: 0
+2025/10/31-12:54:57.999805 73c8 [db\version_set.cc:6174] Recovered from manifest file:C:\VCC\themis\data\themis_server/MANIFEST-002575 succeeded,manifest_file_number is 2575, next_file_number is 2577, last_sequence is 234, log_number is 2569,prev_log_number is 0,max_column_family is 0,min_log_number_to_keep is 0
+2025/10/31-12:54:57.999842 73c8 [db\version_set.cc:6183] Column family [default] (ID 0), log number is 2569
+2025/10/31-12:54:58.000128 73c8 [db\db_impl\db_impl_open.cc:692] DB ID: 91529813-b413-11f0-8e09-b42e99fe92b3
+2025/10/31-12:54:58.001877 73c8 EVENT_LOG_v1 {"time_micros": 1761911698001616, "job": 1, "event": "recovery_started", "wal_files": [4, 10, 16, 22, 28, 34, 40, 46, 52, 58, 64, 70, 76, 82, 88, 94, 100, 106, 113, 120, 126, 133, 139, 145, 151, 157, 163, 169, 175, 181, 187, 193, 200, 208, 214, 221, 229, 235, 241, 247, 253, 259, 265, 271, 277, 283, 290, 297, 306, 313, 320, 326, 332, 338, 344, 350, 356, 362, 368, 374, 381, 388, 397, 404, 411, 417, 423, 429, 435, 441, 447, 453, 459, 465, 472, 482, 491, 498, 504, 510, 516, 522, 528, 534, 540, 546, 552, 558, 565, 572, 578, 585, 592, 598, 604, 610, 616, 622, 628, 634, 640, 646, 653, 663, 669, 676, 683, 689, 695, 701, 707, 713, 719, 725, 731, 737, 744, 751, 759, 766, 773, 779, 785, 791, 797, 803, 809, 815, 821, 827, 834, 844, 852, 859, 865, 871, 877, 883, 889, 895, 901, 907, 913, 919, 926, 933, 939, 946, 953, 959, 965, 971, 977, 983, 989, 995, 1001, 1007, 1014, 1023, 1029, 1036, 1043, 1049, 1055, 1061, 1067, 1073, 1079, 1085, 1091, 1097, 1104, 1111, 1119, 1126, 1133, 1139, 1145, 1151, 1157, 1163, 1169, 1175, 1181, 1187, 1193, 1200, 1209, 1217, 1224, 1230, 1236, 1242, 1248, 1254, 1260, 1266, 1272, 1278, 1284, 1291, 1298, 1304, 1311, 1318, 1324, 1330, 1336, 1342, 1348, 1354, 1360, 1366, 1372, 1379, 1388, 1394, 1401, 1408, 1414, 1420, 1426, 1432, 1438, 1444, 1450, 1456, 1462, 1469, 1476, 1484, 1491, 1498, 1504, 1510, 1516, 1523, 1532, 1538, 1544, 1550, 1556, 1562, 1568, 1574, 1580, 1586, 1592, 1598, 1604, 1610, 1616, 1622, 1628, 1634, 1640, 1646, 1652, 1658, 1664, 1670, 1676, 1683, 1690, 1696, 1703, 1711, 1717, 1723, 1729, 1735, 1741, 1747, 1753, 1759, 1765, 1771, 1778, 1785, 1791, 1798, 1804, 1810, 1816, 1822, 1828, 1834, 1840, 1846, 1852, 1858, 1864, 1870, 1876, 1882, 1888, 1894, 1900, 1906, 1912, 1919, 1929, 1935, 1942, 1948, 1954, 1960, 1966, 1972, 1978, 1984, 1991, 1997, 2003, 2009, 2015, 2021, 2027, 2034, 2043, 2051, 2058, 2064, 2070, 2076, 2082, 2088, 2094, 2100, 2107, 2114, 2121, 2129, 2135, 2141, 2147, 2153, 2159, 2165, 2172, 2178, 2184, 2190, 2196, 2203, 2209, 2215, 2221, 2227, 2233, 2239, 2245, 2252, 2259, 2267, 2274, 2282, 2288, 2294, 2300, 2307, 2314, 2321, 2327, 2333, 2339, 2345, 2351, 2357, 2363, 2370, 2380, 2386, 2393, 2399, 2405, 2411, 2417, 2423, 2429, 2435, 2441, 2447, 2453, 2459, 2466, 2473, 2481, 2488, 2494, 2500, 2506, 2512, 2518, 2524, 2530, 2536, 2542, 2548, 2554, 2561, 2568, 2574]}
+2025/10/31-12:54:58.001928 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #4 mode 2
+2025/10/31-12:54:58.002062 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #4 next seq #72057594037927935
+2025/10/31-12:54:58.002168 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #10 mode 2
+2025/10/31-12:54:58.002252 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #10 next seq #72057594037927935
+2025/10/31-12:54:58.002312 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #16 mode 2
+2025/10/31-12:54:58.002410 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #16 next seq #72057594037927935
+2025/10/31-12:54:58.002488 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #22 mode 2
+2025/10/31-12:54:58.002566 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #22 next seq #72057594037927935
+2025/10/31-12:54:58.002624 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #28 mode 2
+2025/10/31-12:54:58.002683 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #28 next seq #72057594037927935
+2025/10/31-12:54:58.002741 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #34 mode 2
+2025/10/31-12:54:58.002800 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #34 next seq #72057594037927935
+2025/10/31-12:54:58.002879 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #40 mode 2
+2025/10/31-12:54:58.002954 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #40 next seq #72057594037927935
+2025/10/31-12:54:58.003030 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #46 mode 2
+2025/10/31-12:54:58.003108 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #46 next seq #72057594037927935
+2025/10/31-12:54:58.003186 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #52 mode 2
+2025/10/31-12:54:58.003262 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #52 next seq #72057594037927935
+2025/10/31-12:54:58.003327 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #58 mode 2
+2025/10/31-12:54:58.003387 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #58 next seq #72057594037927935
+2025/10/31-12:54:58.003450 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #64 mode 2
+2025/10/31-12:54:58.003509 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #64 next seq #72057594037927935
+2025/10/31-12:54:58.003586 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #70 mode 2
+2025/10/31-12:54:58.003684 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #70 next seq #72057594037927935
+2025/10/31-12:54:58.003780 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #76 mode 2
+2025/10/31-12:54:58.003855 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #76 next seq #72057594037927935
+2025/10/31-12:54:58.003913 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #82 mode 2
+2025/10/31-12:54:58.003973 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #82 next seq #72057594037927935
+2025/10/31-12:54:58.004030 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #88 mode 2
+2025/10/31-12:54:58.004089 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #88 next seq #72057594037927935
+2025/10/31-12:54:58.004166 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #94 mode 2
+2025/10/31-12:54:58.004243 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #94 next seq #72057594037927935
+2025/10/31-12:54:58.004300 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #100 mode 2
+2025/10/31-12:54:58.004358 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #100 next seq #72057594037927935
+2025/10/31-12:54:58.004437 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #106 mode 2
+2025/10/31-12:54:58.004573 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #106 next seq #2
+2025/10/31-12:54:58.004675 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #113 mode 2
+2025/10/31-12:54:58.004822 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #113 next seq #4
+2025/10/31-12:54:58.004901 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #120 mode 2
+2025/10/31-12:54:58.004963 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #120 next seq #4
+2025/10/31-12:54:58.005025 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #126 mode 2
+2025/10/31-12:54:58.005153 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #126 next seq #6
+2025/10/31-12:54:58.005214 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #133 mode 2
+2025/10/31-12:54:58.005297 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #133 next seq #6
+2025/10/31-12:54:58.005378 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #139 mode 2
+2025/10/31-12:54:58.005460 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #139 next seq #6
+2025/10/31-12:54:58.005575 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #145 mode 2
+2025/10/31-12:54:58.005681 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #145 next seq #6
+2025/10/31-12:54:58.005799 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #151 mode 2
+2025/10/31-12:54:58.005894 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #151 next seq #6
+2025/10/31-12:54:58.005985 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #157 mode 2
+2025/10/31-12:54:58.006094 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #157 next seq #6
+2025/10/31-12:54:58.006200 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #163 mode 2
+2025/10/31-12:54:58.006286 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #163 next seq #6
+2025/10/31-12:54:58.006374 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #169 mode 2
+2025/10/31-12:54:58.006469 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #169 next seq #6
+2025/10/31-12:54:58.006583 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #175 mode 2
+2025/10/31-12:54:58.006703 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #175 next seq #6
+2025/10/31-12:54:58.006796 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #181 mode 2
+2025/10/31-12:54:58.006891 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #181 next seq #6
+2025/10/31-12:54:58.006984 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #187 mode 2
+2025/10/31-12:54:58.007074 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #187 next seq #6
+2025/10/31-12:54:58.007164 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #193 mode 2
+2025/10/31-12:54:58.007301 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #193 next seq #7
+2025/10/31-12:54:58.007392 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #200 mode 2
+2025/10/31-12:54:58.007520 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #200 next seq #9
+2025/10/31-12:54:58.007610 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #208 mode 2
+2025/10/31-12:54:58.007741 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #208 next seq #9
+2025/10/31-12:54:58.007834 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #214 mode 2
+2025/10/31-12:54:58.007959 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #214 next seq #11
+2025/10/31-12:54:58.008084 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #221 mode 2
+2025/10/31-12:54:58.008174 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #221 next seq #11
+2025/10/31-12:54:58.008288 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #229 mode 2
+2025/10/31-12:54:58.008400 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #229 next seq #11
+2025/10/31-12:54:58.008477 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #235 mode 2
+2025/10/31-12:54:58.008549 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #235 next seq #11
+2025/10/31-12:54:58.008618 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #241 mode 2
+2025/10/31-12:54:58.008725 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #241 next seq #11
+2025/10/31-12:54:58.008893 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #247 mode 2
+2025/10/31-12:54:58.008989 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #247 next seq #11
+2025/10/31-12:54:58.009102 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #253 mode 2
+2025/10/31-12:54:58.009222 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #253 next seq #11
+2025/10/31-12:54:58.009316 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #259 mode 2
+2025/10/31-12:54:58.009408 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #259 next seq #11
+2025/10/31-12:54:58.009501 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #265 mode 2
+2025/10/31-12:54:58.009597 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #265 next seq #11
+2025/10/31-12:54:58.009692 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #271 mode 2
+2025/10/31-12:54:58.009788 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #271 next seq #11
+2025/10/31-12:54:58.009910 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #277 mode 2
+2025/10/31-12:54:58.010024 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #277 next seq #11
+2025/10/31-12:54:58.010117 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #283 mode 2
+2025/10/31-12:54:58.010248 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #283 next seq #12
+2025/10/31-12:54:58.010338 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #290 mode 2
+2025/10/31-12:54:58.010467 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #290 next seq #14
+2025/10/31-12:54:58.010579 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #297 mode 2
+2025/10/31-12:54:58.010696 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #297 next seq #14
+2025/10/31-12:54:58.010791 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #306 mode 2
+2025/10/31-12:54:58.010924 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #306 next seq #16
+2025/10/31-12:54:58.011015 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #313 mode 2
+2025/10/31-12:54:58.011112 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #313 next seq #16
+2025/10/31-12:54:58.011216 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #320 mode 2
+2025/10/31-12:54:58.011313 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #320 next seq #16
+2025/10/31-12:54:58.011451 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #326 mode 2
+2025/10/31-12:54:58.011549 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #326 next seq #16
+2025/10/31-12:54:58.011642 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #332 mode 2
+2025/10/31-12:54:58.011736 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #332 next seq #16
+2025/10/31-12:54:58.011830 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #338 mode 2
+2025/10/31-12:54:58.011925 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #338 next seq #16
+2025/10/31-12:54:58.012020 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #344 mode 2
+2025/10/31-12:54:58.012137 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #344 next seq #16
+2025/10/31-12:54:58.012250 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #350 mode 2
+2025/10/31-12:54:58.012346 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #350 next seq #16
+2025/10/31-12:54:58.012441 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #356 mode 2
+2025/10/31-12:54:58.012546 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #356 next seq #16
+2025/10/31-12:54:58.012641 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #362 mode 2
+2025/10/31-12:54:58.012737 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #362 next seq #16
+2025/10/31-12:54:58.012832 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #368 mode 2
+2025/10/31-12:54:58.012952 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #368 next seq #16
+2025/10/31-12:54:58.013065 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #374 mode 2
+2025/10/31-12:54:58.013194 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #374 next seq #17
+2025/10/31-12:54:58.013293 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #381 mode 2
+2025/10/31-12:54:58.013425 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #381 next seq #19
+2025/10/31-12:54:58.013517 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #388 mode 2
+2025/10/31-12:54:58.013635 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #388 next seq #19
+2025/10/31-12:54:58.013748 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #397 mode 2
+2025/10/31-12:54:58.013876 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #397 next seq #21
+2025/10/31-12:54:58.013968 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #404 mode 2
+2025/10/31-12:54:58.014063 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #404 next seq #21
+2025/10/31-12:54:58.014158 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #411 mode 2
+2025/10/31-12:54:58.014254 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #411 next seq #21
+2025/10/31-12:54:58.014370 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #417 mode 2
+2025/10/31-12:54:58.014482 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #417 next seq #21
+2025/10/31-12:54:58.014576 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #423 mode 2
+2025/10/31-12:54:58.014690 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #423 next seq #21
+2025/10/31-12:54:58.014786 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #429 mode 2
+2025/10/31-12:54:58.014903 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #429 next seq #21
+2025/10/31-12:54:58.015001 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #435 mode 2
+2025/10/31-12:54:58.015101 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #435 next seq #21
+2025/10/31-12:54:58.015230 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #441 mode 2
+2025/10/31-12:54:58.015348 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #441 next seq #21
+2025/10/31-12:54:58.015447 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #447 mode 2
+2025/10/31-12:54:58.015545 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #447 next seq #21
+2025/10/31-12:54:58.015658 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #453 mode 2
+2025/10/31-12:54:58.015754 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #453 next seq #21
+2025/10/31-12:54:58.015853 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #459 mode 2
+2025/10/31-12:54:58.015951 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #459 next seq #21
+2025/10/31-12:54:58.016073 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #465 mode 2
+2025/10/31-12:54:58.016222 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #465 next seq #22
+2025/10/31-12:54:58.016315 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #472 mode 2
+2025/10/31-12:54:58.016448 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #472 next seq #24
+2025/10/31-12:54:58.016542 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #482 mode 2
+2025/10/31-12:54:58.016636 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #482 next seq #24
+2025/10/31-12:54:58.016750 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #491 mode 2
+2025/10/31-12:54:58.016896 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #491 next seq #26
+2025/10/31-12:54:58.017008 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #498 mode 2
+2025/10/31-12:54:58.017106 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #498 next seq #26
+2025/10/31-12:54:58.017199 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #504 mode 2
+2025/10/31-12:54:58.017299 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #504 next seq #26
+2025/10/31-12:54:58.017391 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #510 mode 2
+2025/10/31-12:54:58.017501 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #510 next seq #26
+2025/10/31-12:54:58.017628 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #516 mode 2
+2025/10/31-12:54:58.017813 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #516 next seq #26
+2025/10/31-12:54:58.017932 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #522 mode 2
+2025/10/31-12:54:58.018027 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #522 next seq #26
+2025/10/31-12:54:58.018122 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #528 mode 2
+2025/10/31-12:54:58.018215 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #528 next seq #26
+2025/10/31-12:54:58.018309 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #534 mode 2
+2025/10/31-12:54:58.018424 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #534 next seq #26
+2025/10/31-12:54:58.018535 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #540 mode 2
+2025/10/31-12:54:58.018629 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #540 next seq #26
+2025/10/31-12:54:58.018741 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #546 mode 2
+2025/10/31-12:54:58.018831 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #546 next seq #26
+2025/10/31-12:54:58.018922 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #552 mode 2
+2025/10/31-12:54:58.019030 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #552 next seq #26
+2025/10/31-12:54:58.019122 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #558 mode 2
+2025/10/31-12:54:58.019329 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #558 next seq #27
+2025/10/31-12:54:58.019417 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #565 mode 2
+2025/10/31-12:54:58.019543 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #565 next seq #29
+2025/10/31-12:54:58.019635 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #572 mode 2
+2025/10/31-12:54:58.019728 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #572 next seq #29
+2025/10/31-12:54:58.019805 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #578 mode 2
+2025/10/31-12:54:58.019951 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #578 next seq #31
+2025/10/31-12:54:58.020038 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #585 mode 2
+2025/10/31-12:54:58.020132 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #585 next seq #31
+2025/10/31-12:54:58.020227 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #592 mode 2
+2025/10/31-12:54:58.020322 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #592 next seq #31
+2025/10/31-12:54:58.020420 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #598 mode 2
+2025/10/31-12:54:58.020518 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #598 next seq #31
+2025/10/31-12:54:58.020631 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #604 mode 2
+2025/10/31-12:54:58.020742 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #604 next seq #31
+2025/10/31-12:54:58.020835 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #610 mode 2
+2025/10/31-12:54:58.020930 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #610 next seq #31
+2025/10/31-12:54:58.021024 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #616 mode 2
+2025/10/31-12:54:58.021118 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #616 next seq #31
+2025/10/31-12:54:58.021211 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #622 mode 2
+2025/10/31-12:54:58.021320 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #622 next seq #31
+2025/10/31-12:54:58.021435 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #628 mode 2
+2025/10/31-12:54:58.021548 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #628 next seq #31
+2025/10/31-12:54:58.021641 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #634 mode 2
+2025/10/31-12:54:58.021736 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #634 next seq #31
+2025/10/31-12:54:58.021829 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #640 mode 2
+2025/10/31-12:54:58.021923 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #640 next seq #31
+2025/10/31-12:54:58.022016 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #646 mode 2
+2025/10/31-12:54:58.022146 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #646 next seq #32
+2025/10/31-12:54:58.022279 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #653 mode 2
+2025/10/31-12:54:58.022408 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #653 next seq #34
+2025/10/31-12:54:58.022500 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #663 mode 2
+2025/10/31-12:54:58.022595 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #663 next seq #34
+2025/10/31-12:54:58.022690 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #669 mode 2
+2025/10/31-12:54:58.022820 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #669 next seq #36
+2025/10/31-12:54:58.022954 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #676 mode 2
+2025/10/31-12:54:58.023050 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #676 next seq #36
+2025/10/31-12:54:58.023144 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #683 mode 2
+2025/10/31-12:54:58.023240 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #683 next seq #36
+2025/10/31-12:54:58.023340 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #689 mode 2
+2025/10/31-12:54:58.023436 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #689 next seq #36
+2025/10/31-12:54:58.023530 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #695 mode 2
+2025/10/31-12:54:58.023648 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #695 next seq #36
+2025/10/31-12:54:58.023759 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #701 mode 2
+2025/10/31-12:54:58.023855 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #701 next seq #36
+2025/10/31-12:54:58.023948 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #707 mode 2
+2025/10/31-12:54:58.024043 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #707 next seq #36
+2025/10/31-12:54:58.024137 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #713 mode 2
+2025/10/31-12:54:58.024312 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #713 next seq #36
+2025/10/31-12:54:58.024475 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #719 mode 2
+2025/10/31-12:54:58.024636 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #719 next seq #36
+2025/10/31-12:54:58.024758 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #725 mode 2
+2025/10/31-12:54:58.024944 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #725 next seq #36
+2025/10/31-12:54:58.025054 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #731 mode 2
+2025/10/31-12:54:58.025217 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #731 next seq #36
+2025/10/31-12:54:58.025326 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #737 mode 2
+2025/10/31-12:54:58.025466 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #737 next seq #37
+2025/10/31-12:54:58.025622 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #744 mode 2
+2025/10/31-12:54:58.025760 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #744 next seq #39
+2025/10/31-12:54:58.025858 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #751 mode 2
+2025/10/31-12:54:58.025959 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #751 next seq #39
+2025/10/31-12:54:58.026059 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #759 mode 2
+2025/10/31-12:54:58.026198 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #759 next seq #41
+2025/10/31-12:54:58.026295 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #766 mode 2
+2025/10/31-12:54:58.026398 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #766 next seq #41
+2025/10/31-12:54:58.026499 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #773 mode 2
+2025/10/31-12:54:58.026601 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #773 next seq #41
+2025/10/31-12:54:58.026701 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #779 mode 2
+2025/10/31-12:54:58.026803 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #779 next seq #41
+2025/10/31-12:54:58.026904 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #785 mode 2
+2025/10/31-12:54:58.027025 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #785 next seq #41
+2025/10/31-12:54:58.027141 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #791 mode 2
+2025/10/31-12:54:58.027238 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #791 next seq #41
+2025/10/31-12:54:58.027340 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #797 mode 2
+2025/10/31-12:54:58.027436 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #797 next seq #41
+2025/10/31-12:54:58.027532 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #803 mode 2
+2025/10/31-12:54:58.027628 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #803 next seq #41
+2025/10/31-12:54:58.027721 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #809 mode 2
+2025/10/31-12:54:58.027817 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #809 next seq #41
+2025/10/31-12:54:58.027931 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #815 mode 2
+2025/10/31-12:54:58.028044 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #815 next seq #41
+2025/10/31-12:54:58.028139 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #821 mode 2
+2025/10/31-12:54:58.028233 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #821 next seq #41
+2025/10/31-12:54:58.028325 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #827 mode 2
+2025/10/31-12:54:58.028447 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #827 next seq #42
+2025/10/31-12:54:58.028530 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #834 mode 2
+2025/10/31-12:54:58.028717 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #834 next seq #44
+2025/10/31-12:54:58.028811 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #844 mode 2
+2025/10/31-12:54:58.028906 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #844 next seq #44
+2025/10/31-12:54:58.028998 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #852 mode 2
+2025/10/31-12:54:58.029123 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #852 next seq #46
+2025/10/31-12:54:58.029213 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #859 mode 2
+2025/10/31-12:54:58.029351 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #859 next seq #46
+2025/10/31-12:54:58.029449 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #865 mode 2
+2025/10/31-12:54:58.029563 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #865 next seq #46
+2025/10/31-12:54:58.029655 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #871 mode 2
+2025/10/31-12:54:58.029803 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #871 next seq #46
+2025/10/31-12:54:58.029917 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #877 mode 2
+2025/10/31-12:54:58.030008 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #877 next seq #46
+2025/10/31-12:54:58.030098 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #883 mode 2
+2025/10/31-12:54:58.030207 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #883 next seq #46
+2025/10/31-12:54:58.030318 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #889 mode 2
+2025/10/31-12:54:58.030406 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #889 next seq #46
+2025/10/31-12:54:58.030495 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #895 mode 2
+2025/10/31-12:54:58.030583 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #895 next seq #46
+2025/10/31-12:54:58.030671 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #901 mode 2
+2025/10/31-12:54:58.030763 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #901 next seq #46
+2025/10/31-12:54:58.030853 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #907 mode 2
+2025/10/31-12:54:58.030968 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #907 next seq #46
+2025/10/31-12:54:58.031074 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #913 mode 2
+2025/10/31-12:54:58.031183 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #913 next seq #46
+2025/10/31-12:54:58.031309 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #919 mode 2
+2025/10/31-12:54:58.031507 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #919 next seq #47
+2025/10/31-12:54:58.031582 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #926 mode 2
+2025/10/31-12:54:58.031743 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #926 next seq #49
+2025/10/31-12:54:58.031860 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #933 mode 2
+2025/10/31-12:54:58.031961 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #933 next seq #49
+2025/10/31-12:54:58.032064 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #939 mode 2
+2025/10/31-12:54:58.032204 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #939 next seq #51
+2025/10/31-12:54:58.032302 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #946 mode 2
+2025/10/31-12:54:58.032401 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #946 next seq #51
+2025/10/31-12:54:58.032501 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #953 mode 2
+2025/10/31-12:54:58.032603 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #953 next seq #51
+2025/10/31-12:54:58.032722 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #959 mode 2
+2025/10/31-12:54:58.032821 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #959 next seq #51
+2025/10/31-12:54:58.032918 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #965 mode 2
+2025/10/31-12:54:58.033035 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #965 next seq #51
+2025/10/31-12:54:58.033130 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #971 mode 2
+2025/10/31-12:54:58.033310 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #971 next seq #51
+2025/10/31-12:54:58.033427 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #977 mode 2
+2025/10/31-12:54:58.033517 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #977 next seq #51
+2025/10/31-12:54:58.033607 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #983 mode 2
+2025/10/31-12:54:58.033679 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #983 next seq #51
+2025/10/31-12:54:58.033745 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #989 mode 2
+2025/10/31-12:54:58.033812 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #989 next seq #51
+2025/10/31-12:54:58.033878 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #995 mode 2
+2025/10/31-12:54:58.033954 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #995 next seq #51
+2025/10/31-12:54:58.034044 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1001 mode 2
+2025/10/31-12:54:58.034143 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1001 next seq #51
+2025/10/31-12:54:58.034239 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1007 mode 2
+2025/10/31-12:54:58.034400 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1007 next seq #52
+2025/10/31-12:54:58.034504 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1014 mode 2
+2025/10/31-12:54:58.034646 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1014 next seq #54
+2025/10/31-12:54:58.034748 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1023 mode 2
+2025/10/31-12:54:58.034831 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1023 next seq #54
+2025/10/31-12:54:58.034902 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1029 mode 2
+2025/10/31-12:54:58.035002 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1029 next seq #56
+2025/10/31-12:54:58.035070 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1036 mode 2
+2025/10/31-12:54:58.035139 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1036 next seq #56
+2025/10/31-12:54:58.035207 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1043 mode 2
+2025/10/31-12:54:58.035275 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1043 next seq #56
+2025/10/31-12:54:58.035349 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1049 mode 2
+2025/10/31-12:54:58.035418 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1049 next seq #56
+2025/10/31-12:54:58.035502 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1055 mode 2
+2025/10/31-12:54:58.035569 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1055 next seq #56
+2025/10/31-12:54:58.035633 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1061 mode 2
+2025/10/31-12:54:58.035697 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1061 next seq #56
+2025/10/31-12:54:58.035762 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1067 mode 2
+2025/10/31-12:54:58.035827 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1067 next seq #56
+2025/10/31-12:54:58.035919 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1073 mode 2
+2025/10/31-12:54:58.035984 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1073 next seq #56
+2025/10/31-12:54:58.036048 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1079 mode 2
+2025/10/31-12:54:58.036112 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1079 next seq #56
+2025/10/31-12:54:58.036176 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1085 mode 2
+2025/10/31-12:54:58.036241 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1085 next seq #56
+2025/10/31-12:54:58.036305 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1091 mode 2
+2025/10/31-12:54:58.036370 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1091 next seq #56
+2025/10/31-12:54:58.036433 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1097 mode 2
+2025/10/31-12:54:58.036525 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1097 next seq #57
+2025/10/31-12:54:58.036589 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1104 mode 2
+2025/10/31-12:54:58.036681 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1104 next seq #59
+2025/10/31-12:54:58.036747 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1111 mode 2
+2025/10/31-12:54:58.036813 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1111 next seq #59
+2025/10/31-12:54:58.036879 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1119 mode 2
+2025/10/31-12:54:58.036969 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1119 next seq #61
+2025/10/31-12:54:58.037033 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1126 mode 2
+2025/10/31-12:54:58.037099 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1126 next seq #61
+2025/10/31-12:54:58.037175 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1133 mode 2
+2025/10/31-12:54:58.037241 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1133 next seq #61
+2025/10/31-12:54:58.037313 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1139 mode 2
+2025/10/31-12:54:58.037383 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1139 next seq #61
+2025/10/31-12:54:58.037448 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1145 mode 2
+2025/10/31-12:54:58.037513 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1145 next seq #61
+2025/10/31-12:54:58.037577 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1151 mode 2
+2025/10/31-12:54:58.037642 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1151 next seq #61
+2025/10/31-12:54:58.037706 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1157 mode 2
+2025/10/31-12:54:58.037772 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1157 next seq #61
+2025/10/31-12:54:58.037867 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1163 mode 2
+2025/10/31-12:54:58.037949 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1163 next seq #61
+2025/10/31-12:54:58.038058 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1169 mode 2
+2025/10/31-12:54:58.038154 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1169 next seq #61
+2025/10/31-12:54:58.038247 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1175 mode 2
+2025/10/31-12:54:58.038355 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1175 next seq #61
+2025/10/31-12:54:58.038466 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1181 mode 2
+2025/10/31-12:54:58.038571 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1181 next seq #61
+2025/10/31-12:54:58.038658 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1187 mode 2
+2025/10/31-12:54:58.038765 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1187 next seq #61
+2025/10/31-12:54:58.038857 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1193 mode 2
+2025/10/31-12:54:58.039024 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1193 next seq #62
+2025/10/31-12:54:58.039132 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1200 mode 2
+2025/10/31-12:54:58.039301 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1200 next seq #64
+2025/10/31-12:54:58.039391 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1209 mode 2
+2025/10/31-12:54:58.039481 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1209 next seq #64
+2025/10/31-12:54:58.039571 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1217 mode 2
+2025/10/31-12:54:58.039694 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1217 next seq #66
+2025/10/31-12:54:58.039784 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1224 mode 2
+2025/10/31-12:54:58.039895 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1224 next seq #66
+2025/10/31-12:54:58.040003 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1230 mode 2
+2025/10/31-12:54:58.040090 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1230 next seq #66
+2025/10/31-12:54:58.040179 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1236 mode 2
+2025/10/31-12:54:58.040271 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1236 next seq #66
+2025/10/31-12:54:58.040360 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1242 mode 2
+2025/10/31-12:54:58.040448 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1242 next seq #66
+2025/10/31-12:54:58.040534 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1248 mode 2
+2025/10/31-12:54:58.040645 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1248 next seq #66
+2025/10/31-12:54:58.040755 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1254 mode 2
+2025/10/31-12:54:58.040842 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1254 next seq #66
+2025/10/31-12:54:58.040914 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1260 mode 2
+2025/10/31-12:54:58.040984 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1260 next seq #66
+2025/10/31-12:54:58.041062 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1266 mode 2
+2025/10/31-12:54:58.041153 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1266 next seq #66
+2025/10/31-12:54:58.041248 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1272 mode 2
+2025/10/31-12:54:58.041374 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1272 next seq #66
+2025/10/31-12:54:58.041485 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1278 mode 2
+2025/10/31-12:54:58.041579 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1278 next seq #66
+2025/10/31-12:54:58.041672 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1284 mode 2
+2025/10/31-12:54:58.041798 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1284 next seq #67
+2025/10/31-12:54:58.041890 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1291 mode 2
+2025/10/31-12:54:58.042019 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1291 next seq #69
+2025/10/31-12:54:58.042151 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1298 mode 2
+2025/10/31-12:54:58.042246 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1298 next seq #69
+2025/10/31-12:54:58.042340 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1304 mode 2
+2025/10/31-12:54:58.042469 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1304 next seq #71
+2025/10/31-12:54:58.042562 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1311 mode 2
+2025/10/31-12:54:58.042680 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1311 next seq #71
+2025/10/31-12:54:58.042815 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1318 mode 2
+2025/10/31-12:54:58.042927 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1318 next seq #71
+2025/10/31-12:54:58.043020 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1324 mode 2
+2025/10/31-12:54:58.043116 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1324 next seq #71
+2025/10/31-12:54:58.043211 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1330 mode 2
+2025/10/31-12:54:58.043312 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1330 next seq #71
+2025/10/31-12:54:58.043406 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1336 mode 2
+2025/10/31-12:54:58.043500 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1336 next seq #71
+2025/10/31-12:54:58.043616 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1342 mode 2
+2025/10/31-12:54:58.043729 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1342 next seq #71
+2025/10/31-12:54:58.043823 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1348 mode 2
+2025/10/31-12:54:58.043916 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1348 next seq #71
+2025/10/31-12:54:58.044009 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1354 mode 2
+2025/10/31-12:54:58.044104 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1354 next seq #71
+2025/10/31-12:54:58.044221 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1360 mode 2
+2025/10/31-12:54:58.044356 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1360 next seq #71
+2025/10/31-12:54:58.044493 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1366 mode 2
+2025/10/31-12:54:58.044592 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1366 next seq #71
+2025/10/31-12:54:58.044689 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1372 mode 2
+2025/10/31-12:54:58.044823 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1372 next seq #72
+2025/10/31-12:54:58.044919 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1379 mode 2
+2025/10/31-12:54:58.045053 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1379 next seq #74
+2025/10/31-12:54:58.045148 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1388 mode 2
+2025/10/31-12:54:58.045248 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1388 next seq #74
+2025/10/31-12:54:58.045372 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1394 mode 2
+2025/10/31-12:54:58.045507 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1394 next seq #76
+2025/10/31-12:54:58.045603 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1401 mode 2
+2025/10/31-12:54:58.045704 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1401 next seq #76
+2025/10/31-12:54:58.045806 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1408 mode 2
+2025/10/31-12:54:58.045928 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1408 next seq #76
+2025/10/31-12:54:58.046023 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1414 mode 2
+2025/10/31-12:54:58.046119 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1414 next seq #76
+2025/10/31-12:54:58.046214 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1420 mode 2
+2025/10/31-12:54:58.046310 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1420 next seq #76
+2025/10/31-12:54:58.046406 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1426 mode 2
+2025/10/31-12:54:58.046502 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1426 next seq #76
+2025/10/31-12:54:58.046600 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1432 mode 2
+2025/10/31-12:54:58.046696 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1432 next seq #76
+2025/10/31-12:54:58.046792 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1438 mode 2
+2025/10/31-12:54:58.046888 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1438 next seq #76
+2025/10/31-12:54:58.046984 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1444 mode 2
+2025/10/31-12:54:58.047080 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1444 next seq #76
+2025/10/31-12:54:58.047196 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1450 mode 2
+2025/10/31-12:54:58.047295 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1450 next seq #76
+2025/10/31-12:54:58.047400 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1456 mode 2
+2025/10/31-12:54:58.047499 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1456 next seq #76
+2025/10/31-12:54:58.047597 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1462 mode 2
+2025/10/31-12:54:58.047730 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1462 next seq #77
+2025/10/31-12:54:58.047826 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1469 mode 2
+2025/10/31-12:54:58.047960 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1469 next seq #79
+2025/10/31-12:54:58.048056 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1476 mode 2
+2025/10/31-12:54:58.048155 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1476 next seq #79
+2025/10/31-12:54:58.048415 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1484 mode 2
+2025/10/31-12:54:58.048651 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1484 next seq #81
+2025/10/31-12:54:58.048794 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1491 mode 2
+2025/10/31-12:54:58.048916 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1491 next seq #81
+2025/10/31-12:54:58.049077 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1498 mode 2
+2025/10/31-12:54:58.049271 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1498 next seq #81
+2025/10/31-12:54:58.049456 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1504 mode 2
+2025/10/31-12:54:58.049606 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1504 next seq #81
+2025/10/31-12:54:58.049704 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1510 mode 2
+2025/10/31-12:54:58.049782 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1510 next seq #81
+2025/10/31-12:54:58.049891 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1516 mode 2
+2025/10/31-12:54:58.050018 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1516 next seq #86
+2025/10/31-12:54:58.050171 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1523 mode 2
+2025/10/31-12:54:58.050345 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1523 next seq #107
+2025/10/31-12:54:58.050459 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1532 mode 2
+2025/10/31-12:54:58.050555 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1532 next seq #107
+2025/10/31-12:54:58.050648 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1538 mode 2
+2025/10/31-12:54:58.050736 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1538 next seq #107
+2025/10/31-12:54:58.050829 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1544 mode 2
+2025/10/31-12:54:58.050918 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1544 next seq #107
+2025/10/31-12:54:58.051005 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1550 mode 2
+2025/10/31-12:54:58.051119 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1550 next seq #107
+2025/10/31-12:54:58.051221 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1556 mode 2
+2025/10/31-12:54:58.051307 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1556 next seq #107
+2025/10/31-12:54:58.051392 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1562 mode 2
+2025/10/31-12:54:58.051477 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1562 next seq #107
+2025/10/31-12:54:58.051564 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1568 mode 2
+2025/10/31-12:54:58.051651 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1568 next seq #107
+2025/10/31-12:54:58.051726 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1574 mode 2
+2025/10/31-12:54:58.051809 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1574 next seq #107
+2025/10/31-12:54:58.051960 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1580 mode 2
+2025/10/31-12:54:58.052068 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1580 next seq #107
+2025/10/31-12:54:58.052166 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1586 mode 2
+2025/10/31-12:54:58.052267 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1586 next seq #107
+2025/10/31-12:54:58.052350 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1592 mode 2
+2025/10/31-12:54:58.052428 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1592 next seq #107
+2025/10/31-12:54:58.052524 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1598 mode 2
+2025/10/31-12:54:58.052637 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1598 next seq #107
+2025/10/31-12:54:58.052773 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1604 mode 2
+2025/10/31-12:54:58.052894 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1604 next seq #107
+2025/10/31-12:54:58.052993 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1610 mode 2
+2025/10/31-12:54:58.053148 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1610 next seq #107
+2025/10/31-12:54:58.053308 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1616 mode 2
+2025/10/31-12:54:58.053408 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1616 next seq #107
+2025/10/31-12:54:58.053523 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1622 mode 2
+2025/10/31-12:54:58.053658 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1622 next seq #107
+2025/10/31-12:54:58.053834 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1628 mode 2
+2025/10/31-12:54:58.053955 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1628 next seq #107
+2025/10/31-12:54:58.054092 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1634 mode 2
+2025/10/31-12:54:58.054195 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1634 next seq #107
+2025/10/31-12:54:58.054293 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1640 mode 2
+2025/10/31-12:54:58.054396 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1640 next seq #107
+2025/10/31-12:54:58.054494 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1646 mode 2
+2025/10/31-12:54:58.054595 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1646 next seq #107
+2025/10/31-12:54:58.054694 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1652 mode 2
+2025/10/31-12:54:58.054794 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1652 next seq #107
+2025/10/31-12:54:58.054893 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1658 mode 2
+2025/10/31-12:54:58.054993 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1658 next seq #107
+2025/10/31-12:54:58.055093 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1664 mode 2
+2025/10/31-12:54:58.055213 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1664 next seq #107
+2025/10/31-12:54:58.055320 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1670 mode 2
+2025/10/31-12:54:58.055427 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1670 next seq #107
+2025/10/31-12:54:58.055529 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1676 mode 2
+2025/10/31-12:54:58.055707 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1676 next seq #108
+2025/10/31-12:54:58.055825 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1683 mode 2
+2025/10/31-12:54:58.055971 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1683 next seq #110
+2025/10/31-12:54:58.056134 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1690 mode 2
+2025/10/31-12:54:58.056240 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1690 next seq #110
+2025/10/31-12:54:58.056346 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1696 mode 2
+2025/10/31-12:54:58.056492 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1696 next seq #112
+2025/10/31-12:54:58.056594 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1703 mode 2
+2025/10/31-12:54:58.056699 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1703 next seq #112
+2025/10/31-12:54:58.056805 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1711 mode 2
+2025/10/31-12:54:58.056909 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1711 next seq #112
+2025/10/31-12:54:58.057012 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1717 mode 2
+2025/10/31-12:54:58.057114 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1717 next seq #112
+2025/10/31-12:54:58.057216 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1723 mode 2
+2025/10/31-12:54:58.057320 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1723 next seq #112
+2025/10/31-12:54:58.057440 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1729 mode 2
+2025/10/31-12:54:58.057543 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1729 next seq #112
+2025/10/31-12:54:58.057644 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1735 mode 2
+2025/10/31-12:54:58.057774 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1735 next seq #112
+2025/10/31-12:54:58.057879 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1741 mode 2
+2025/10/31-12:54:58.057984 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1741 next seq #112
+2025/10/31-12:54:58.058087 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1747 mode 2
+2025/10/31-12:54:58.058204 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1747 next seq #112
+2025/10/31-12:54:58.058308 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1753 mode 2
+2025/10/31-12:54:58.058430 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1753 next seq #112
+2025/10/31-12:54:58.058530 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1759 mode 2
+2025/10/31-12:54:58.058649 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1759 next seq #112
+2025/10/31-12:54:58.058748 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1765 mode 2
+2025/10/31-12:54:58.058847 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1765 next seq #112
+2025/10/31-12:54:58.058945 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1771 mode 2
+2025/10/31-12:54:58.059081 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1771 next seq #113
+2025/10/31-12:54:58.059177 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1778 mode 2
+2025/10/31-12:54:58.059314 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1778 next seq #115
+2025/10/31-12:54:58.059451 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1785 mode 2
+2025/10/31-12:54:58.059551 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1785 next seq #115
+2025/10/31-12:54:58.059651 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1791 mode 2
+2025/10/31-12:54:58.059793 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1791 next seq #117
+2025/10/31-12:54:58.059890 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1798 mode 2
+2025/10/31-12:54:58.060013 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1798 next seq #117
+2025/10/31-12:54:58.060134 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1804 mode 2
+2025/10/31-12:54:58.060250 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1804 next seq #117
+2025/10/31-12:54:58.060346 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1810 mode 2
+2025/10/31-12:54:58.060443 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1810 next seq #117
+2025/10/31-12:54:58.060539 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1816 mode 2
+2025/10/31-12:54:58.060637 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1816 next seq #117
+2025/10/31-12:54:58.060733 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1822 mode 2
+2025/10/31-12:54:58.060829 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1822 next seq #117
+2025/10/31-12:54:58.060949 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1828 mode 2
+2025/10/31-12:54:58.061064 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1828 next seq #117
+2025/10/31-12:54:58.061156 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1834 mode 2
+2025/10/31-12:54:58.061250 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1834 next seq #117
+2025/10/31-12:54:58.061357 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1840 mode 2
+2025/10/31-12:54:58.061445 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1840 next seq #117
+2025/10/31-12:54:58.061537 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1846 mode 2
+2025/10/31-12:54:58.061633 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1846 next seq #117
+2025/10/31-12:54:58.061774 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1852 mode 2
+2025/10/31-12:54:58.061867 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1852 next seq #117
+2025/10/31-12:54:58.061958 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1858 mode 2
+2025/10/31-12:54:58.062049 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1858 next seq #117
+2025/10/31-12:54:58.062139 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1864 mode 2
+2025/10/31-12:54:58.062247 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1864 next seq #117
+2025/10/31-12:54:58.062342 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1870 mode 2
+2025/10/31-12:54:58.062436 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1870 next seq #117
+2025/10/31-12:54:58.062550 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1876 mode 2
+2025/10/31-12:54:58.062657 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1876 next seq #117
+2025/10/31-12:54:58.062748 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1882 mode 2
+2025/10/31-12:54:58.062836 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1882 next seq #117
+2025/10/31-12:54:58.062925 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1888 mode 2
+2025/10/31-12:54:58.063015 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1888 next seq #117
+2025/10/31-12:54:58.063104 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1894 mode 2
+2025/10/31-12:54:58.063193 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1894 next seq #117
+2025/10/31-12:54:58.063306 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1900 mode 2
+2025/10/31-12:54:58.063412 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1900 next seq #117
+2025/10/31-12:54:58.063500 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1906 mode 2
+2025/10/31-12:54:58.063591 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1906 next seq #117
+2025/10/31-12:54:58.063848 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1912 mode 2
+2025/10/31-12:54:58.064108 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1912 next seq #118
+2025/10/31-12:54:58.064257 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1919 mode 2
+2025/10/31-12:54:58.064440 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1919 next seq #120
+2025/10/31-12:54:58.064564 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1929 mode 2
+2025/10/31-12:54:58.064633 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1929 next seq #120
+2025/10/31-12:54:58.064717 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1935 mode 2
+2025/10/31-12:54:58.064842 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1935 next seq #122
+2025/10/31-12:54:58.064921 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1942 mode 2
+2025/10/31-12:54:58.064982 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1942 next seq #122
+2025/10/31-12:54:58.065062 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1948 mode 2
+2025/10/31-12:54:58.065140 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1948 next seq #122
+2025/10/31-12:54:58.065199 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1954 mode 2
+2025/10/31-12:54:58.065299 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1954 next seq #122
+2025/10/31-12:54:58.065395 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1960 mode 2
+2025/10/31-12:54:58.065494 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1960 next seq #122
+2025/10/31-12:54:58.065591 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1966 mode 2
+2025/10/31-12:54:58.065791 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1966 next seq #122
+2025/10/31-12:54:58.065921 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1972 mode 2
+2025/10/31-12:54:58.066100 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1972 next seq #122
+2025/10/31-12:54:58.066223 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1978 mode 2
+2025/10/31-12:54:58.066352 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1978 next seq #122
+2025/10/31-12:54:58.066492 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1984 mode 2
+2025/10/31-12:54:58.066633 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1984 next seq #123
+2025/10/31-12:54:58.066761 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1991 mode 2
+2025/10/31-12:54:58.066864 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1991 next seq #123
+2025/10/31-12:54:58.066964 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #1997 mode 2
+2025/10/31-12:54:58.067065 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #1997 next seq #123
+2025/10/31-12:54:58.067187 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2003 mode 2
+2025/10/31-12:54:58.067306 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2003 next seq #123
+2025/10/31-12:54:58.067424 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2009 mode 2
+2025/10/31-12:54:58.067525 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2009 next seq #123
+2025/10/31-12:54:58.067623 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2015 mode 2
+2025/10/31-12:54:58.067746 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2015 next seq #123
+2025/10/31-12:54:58.067862 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2021 mode 2
+2025/10/31-12:54:58.067961 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2021 next seq #123
+2025/10/31-12:54:58.068082 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2027 mode 2
+2025/10/31-12:54:58.068238 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2027 next seq #124
+2025/10/31-12:54:58.068333 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2034 mode 2
+2025/10/31-12:54:58.068490 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2034 next seq #126
+2025/10/31-12:54:58.068606 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2043 mode 2
+2025/10/31-12:54:58.068706 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2043 next seq #126
+2025/10/31-12:54:58.068827 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2051 mode 2
+2025/10/31-12:54:58.068982 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2051 next seq #128
+2025/10/31-12:54:58.069079 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2058 mode 2
+2025/10/31-12:54:58.069178 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2058 next seq #128
+2025/10/31-12:54:58.069282 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2064 mode 2
+2025/10/31-12:54:58.069383 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2064 next seq #128
+2025/10/31-12:54:58.069496 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2070 mode 2
+2025/10/31-12:54:58.069617 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2070 next seq #128
+2025/10/31-12:54:58.069733 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2076 mode 2
+2025/10/31-12:54:58.069832 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2076 next seq #128
+2025/10/31-12:54:58.069930 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2082 mode 2
+2025/10/31-12:54:58.070031 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2082 next seq #128
+2025/10/31-12:54:58.070129 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2088 mode 2
+2025/10/31-12:54:58.070228 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2088 next seq #128
+2025/10/31-12:54:58.070325 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2094 mode 2
+2025/10/31-12:54:58.070445 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2094 next seq #128
+2025/10/31-12:54:58.070560 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2100 mode 2
+2025/10/31-12:54:58.070706 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2100 next seq #130
+2025/10/31-12:54:58.070802 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2107 mode 2
+2025/10/31-12:54:58.070949 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2107 next seq #144
+2025/10/31-12:54:58.071047 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2114 mode 2
+2025/10/31-12:54:58.071253 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2114 next seq #150
+2025/10/31-12:54:58.071368 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2121 mode 2
+2025/10/31-12:54:58.071483 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2121 next seq #150
+2025/10/31-12:54:58.071583 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2129 mode 2
+2025/10/31-12:54:58.071682 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2129 next seq #150
+2025/10/31-12:54:58.071780 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2135 mode 2
+2025/10/31-12:54:58.071878 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2135 next seq #150
+2025/10/31-12:54:58.071996 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2141 mode 2
+2025/10/31-12:54:58.072114 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2141 next seq #150
+2025/10/31-12:54:58.072213 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2147 mode 2
+2025/10/31-12:54:58.072311 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2147 next seq #150
+2025/10/31-12:54:58.072408 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2153 mode 2
+2025/10/31-12:54:58.072506 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2153 next seq #150
+2025/10/31-12:54:58.072604 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2159 mode 2
+2025/10/31-12:54:58.072719 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2159 next seq #150
+2025/10/31-12:54:58.072852 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2165 mode 2
+2025/10/31-12:54:58.073002 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2165 next seq #152
+2025/10/31-12:54:58.073114 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2172 mode 2
+2025/10/31-12:54:58.073211 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2172 next seq #152
+2025/10/31-12:54:58.073328 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2178 mode 2
+2025/10/31-12:54:58.073455 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2178 next seq #152
+2025/10/31-12:54:58.073551 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2184 mode 2
+2025/10/31-12:54:58.073682 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2184 next seq #152
+2025/10/31-12:54:58.073773 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2190 mode 2
+2025/10/31-12:54:58.073879 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2190 next seq #152
+2025/10/31-12:54:58.074000 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2196 mode 2
+2025/10/31-12:54:58.074162 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2196 next seq #166
+2025/10/31-12:54:58.074254 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2203 mode 2
+2025/10/31-12:54:58.074346 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2203 next seq #166
+2025/10/31-12:54:58.074457 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2209 mode 2
+2025/10/31-12:54:58.074562 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2209 next seq #166
+2025/10/31-12:54:58.074670 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2215 mode 2
+2025/10/31-12:54:58.074798 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2215 next seq #166
+2025/10/31-12:54:58.074931 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2221 mode 2
+2025/10/31-12:54:58.075066 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2221 next seq #166
+2025/10/31-12:54:58.075162 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2227 mode 2
+2025/10/31-12:54:58.075312 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2227 next seq #166
+2025/10/31-12:54:58.075403 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2233 mode 2
+2025/10/31-12:54:58.075511 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2233 next seq #166
+2025/10/31-12:54:58.075602 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2239 mode 2
+2025/10/31-12:54:58.075693 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2239 next seq #166
+2025/10/31-12:54:58.075785 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2245 mode 2
+2025/10/31-12:54:58.075908 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2245 next seq #167
+2025/10/31-12:54:58.075996 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2252 mode 2
+2025/10/31-12:54:58.076116 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2252 next seq #169
+2025/10/31-12:54:58.076252 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2259 mode 2
+2025/10/31-12:54:58.076369 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2259 next seq #169
+2025/10/31-12:54:58.076479 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2267 mode 2
+2025/10/31-12:54:58.076590 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2267 next seq #171
+2025/10/31-12:54:58.076681 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2274 mode 2
+2025/10/31-12:54:58.076772 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2274 next seq #171
+2025/10/31-12:54:58.076867 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2282 mode 2
+2025/10/31-12:54:58.076960 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2282 next seq #171
+2025/10/31-12:54:58.077036 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2288 mode 2
+2025/10/31-12:54:58.077108 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2288 next seq #171
+2025/10/31-12:54:58.077186 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2294 mode 2
+2025/10/31-12:54:58.077278 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2294 next seq #171
+2025/10/31-12:54:58.077371 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2300 mode 2
+2025/10/31-12:54:58.077523 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2300 next seq #188
+2025/10/31-12:54:58.077618 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2307 mode 2
+2025/10/31-12:54:58.077755 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2307 next seq #205
+2025/10/31-12:54:58.077847 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2314 mode 2
+2025/10/31-12:54:58.077990 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2314 next seq #222
+2025/10/31-12:54:58.078087 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2321 mode 2
+2025/10/31-12:54:58.078185 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2321 next seq #222
+2025/10/31-12:54:58.078281 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2327 mode 2
+2025/10/31-12:54:58.078382 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2327 next seq #222
+2025/10/31-12:54:58.078479 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2333 mode 2
+2025/10/31-12:54:58.078578 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2333 next seq #222
+2025/10/31-12:54:58.078748 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2339 mode 2
+2025/10/31-12:54:58.078917 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2339 next seq #222
+2025/10/31-12:54:58.079058 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2345 mode 2
+2025/10/31-12:54:58.079168 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2345 next seq #222
+2025/10/31-12:54:58.079264 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2351 mode 2
+2025/10/31-12:54:58.079367 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2351 next seq #222
+2025/10/31-12:54:58.079473 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2357 mode 2
+2025/10/31-12:54:58.079571 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2357 next seq #222
+2025/10/31-12:54:58.079639 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2363 mode 2
+2025/10/31-12:54:58.079775 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2363 next seq #223
+2025/10/31-12:54:58.079866 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2370 mode 2
+2025/10/31-12:54:58.079966 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2370 next seq #225
+2025/10/31-12:54:58.080046 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2380 mode 2
+2025/10/31-12:54:58.080131 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2380 next seq #225
+2025/10/31-12:54:58.080216 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2386 mode 2
+2025/10/31-12:54:58.080329 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2386 next seq #227
+2025/10/31-12:54:58.080416 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2393 mode 2
+2025/10/31-12:54:58.080492 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2393 next seq #227
+2025/10/31-12:54:58.080585 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2399 mode 2
+2025/10/31-12:54:58.080719 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2399 next seq #227
+2025/10/31-12:54:58.080857 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2405 mode 2
+2025/10/31-12:54:58.080975 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2405 next seq #227
+2025/10/31-12:54:58.081093 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2411 mode 2
+2025/10/31-12:54:58.081181 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2411 next seq #227
+2025/10/31-12:54:58.081251 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2417 mode 2
+2025/10/31-12:54:58.081334 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2417 next seq #227
+2025/10/31-12:54:58.081432 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2423 mode 2
+2025/10/31-12:54:58.081506 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2423 next seq #227
+2025/10/31-12:54:58.081589 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2429 mode 2
+2025/10/31-12:54:58.081676 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2429 next seq #227
+2025/10/31-12:54:58.081777 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2435 mode 2
+2025/10/31-12:54:58.081872 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2435 next seq #227
+2025/10/31-12:54:58.081944 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2441 mode 2
+2025/10/31-12:54:58.082019 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2441 next seq #227
+2025/10/31-12:54:58.082103 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2447 mode 2
+2025/10/31-12:54:58.082175 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2447 next seq #227
+2025/10/31-12:54:58.082258 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2453 mode 2
+2025/10/31-12:54:58.082342 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2453 next seq #227
+2025/10/31-12:54:58.082445 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2459 mode 2
+2025/10/31-12:54:58.082569 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2459 next seq #228
+2025/10/31-12:54:58.082683 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2466 mode 2
+2025/10/31-12:54:58.082794 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2466 next seq #230
+2025/10/31-12:54:58.082901 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2473 mode 2
+2025/10/31-12:54:58.082983 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2473 next seq #230
+2025/10/31-12:54:58.083078 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2481 mode 2
+2025/10/31-12:54:58.083206 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2481 next seq #232
+2025/10/31-12:54:58.083290 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2488 mode 2
+2025/10/31-12:54:58.083374 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2488 next seq #232
+2025/10/31-12:54:58.083455 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2494 mode 2
+2025/10/31-12:54:58.083525 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2494 next seq #232
+2025/10/31-12:54:58.083617 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2500 mode 2
+2025/10/31-12:54:58.083714 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2500 next seq #232
+2025/10/31-12:54:58.083847 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2506 mode 2
+2025/10/31-12:54:58.083942 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2506 next seq #232
+2025/10/31-12:54:58.084003 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2512 mode 2
+2025/10/31-12:54:58.084065 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2512 next seq #232
+2025/10/31-12:54:58.084125 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2518 mode 2
+2025/10/31-12:54:58.084187 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2518 next seq #232
+2025/10/31-12:54:58.084246 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2524 mode 2
+2025/10/31-12:54:58.084327 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2524 next seq #232
+2025/10/31-12:54:58.084402 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2530 mode 2
+2025/10/31-12:54:58.084463 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2530 next seq #232
+2025/10/31-12:54:58.084522 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2536 mode 2
+2025/10/31-12:54:58.084582 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2536 next seq #232
+2025/10/31-12:54:58.084641 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2542 mode 2
+2025/10/31-12:54:58.084701 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2542 next seq #232
+2025/10/31-12:54:58.084760 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2548 mode 2
+2025/10/31-12:54:58.084839 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2548 next seq #232
+2025/10/31-12:54:58.084915 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2554 mode 2
+2025/10/31-12:54:58.085006 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2554 next seq #233
+2025/10/31-12:54:58.085067 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2561 mode 2
+2025/10/31-12:54:58.085148 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2561 next seq #235
+2025/10/31-12:54:58.085244 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2568 mode 2
+2025/10/31-12:54:58.085325 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2568 next seq #235
+2025/10/31-12:54:58.085402 73c8 [db\db_impl\db_impl_open.cc:1379] Recovering log #2574 mode 2
+2025/10/31-12:54:58.086470 73c8 [db\db_impl\db_impl_open.cc:1353] Recovered to log #2574 next seq #237
+2025/10/31-12:54:58.119281 73c8 EVENT_LOG_v1 {"time_micros": 1761911698119249, "cf_name": "default", "job": 1, "event": "table_file_creation", "file_number": 2580, "file_size": 1288, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 236, "largest_seqno": 236, "table_properties": {"data_size": 44, "index_size": 37, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 69, "raw_key_size": 28, "raw_average_key_size": 28, "raw_value_size": 0, "raw_average_value_size": 0, "num_data_blocks": 1, "num_entries": 1, "num_filter_entries": 1, "num_deletions": 1, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 236, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; ", "creation_time": 1761911698, "oldest_key_time": 1761911698, "newest_key_time": 0, "file_creation_time": 0, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "91529813-b413-11f0-8e09-b42e99fe92b3", "db_session_id": "DRW9XR453NDA52T71XGW", "orig_file_number": 2580, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2025/10/31-12:54:58.285653 73c8 EVENT_LOG_v1 {"time_micros": 1761911698285643, "job": 1, "event": "recovery_finished", "status": "OK"}
+2025/10/31-12:54:58.286753 73c8 [db\version_set.cc:5624] Creating manifest 2582
+2025/10/31-12:54:58.306393 73c8 [db\db_impl\db_impl_open.cc:2632] SstFileManager instance 000001E4503319D0
+2025/10/31-12:54:58.309450 73c8 DB pointer 000001E45031FE00
+2025/10/31-12:54:58.309628 73c8 [WARN] [utilities\transactions\pessimistic_transaction_db.cc:269] Transaction write_policy is 0
+2025/10/31-12:54:58.310031 2fe8 [db\compaction\compaction_picker.cc:575] [default] Expanding@0 1+1(1285+4186 bytes) to 4+1 (5152+4186 bytes)
+2025/10/31-12:54:58.310201 2fe8 [db\compaction\compaction_job.cc:2294] [default] [JOB 3] Compacting 4@0 + 1@6 files to L6, score 1.00
+2025/10/31-12:54:58.310227 2fe8 [db\compaction\compaction_job.cc:2298] [default]: Compaction start summary: Base version 3 Base level 0, inputs: [2580(1288B) 2567(1291B) 2560(1285B) 2487(1288B)], [2478(4186B)]
+2025/10/31-12:54:58.310270 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698310245, "job": 3, "event": "compaction_started", "cf_name": "default", "compaction_reason": "LevelL0FilesNum", "files_L0": [2580, 2567, 2560, 2487], "files_L6": [2478], "score": 1, "input_data_size": 9338, "oldest_snapshot_seqno": -1}
+2025/10/31-12:54:58.310405 3dd8 [db\db_impl\db_impl.cc:1117] ------- DUMPING STATS -------
+2025/10/31-12:54:58.310437 3dd8 [db\db_impl\db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 0.3 total, 0.3 interval
+Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      4/4      5.03 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   1.0      0.0      0.0      0.03              0.00         1    0.033       2      0       0.0       0.0
+  L6      1/1      4.09 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      5/5      9.12 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   1.0      0.0      0.0      0.03              0.00         1    0.033       2      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   1.0      0.0      0.0      0.03              0.00         1    0.033       2      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+User      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.03              0.00         1    0.033       2      0       0.0       0.0
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 0.3 total, 0.3 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 5152
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache LRUCache@000001E45031DF50#14544 capacity: 1.00 GB seed: 1952091581 usage: 1.63 KB table_size: 1024 occupancy: 9 collections: 1 last_copies: 0 last_secs: 8.5e-05 secs_since: 0
+Block cache entry stats(count,size,portion): FilterBlock(4,0.39 KB,3.76254e-05%) IndexBlock(4,0.47 KB,4.46104e-05%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+** Level 0 read latency histogram (micros):
+Count: 4 Average: 39.5000  StdDev: 4.56
+Min: 32  Median: 39.6667  Max: 44
+Percentiles: P50: 39.67 P75: 44.00 P99: 44.00 P99.9: 44.00 P99.99: 44.00
+------------------------------------------------------
+(      22,      34 ]        1  25.000%  25.000% #####
+(      34,      51 ]        3  75.000% 100.000% ###############
+
+** Level 6 read latency histogram (micros):
+Count: 1 Average: 44.0000  StdDev: 0.00
+Min: 44  Median: 44.0000  Max: 44
+Percentiles: P50: 44.00 P75: 44.00 P99: 44.00 P99.9: 44.00 P99.99: 44.00
+------------------------------------------------------
+(      34,      51 ]        1 100.000% 100.000% ####################
+
+2025/10/31-12:54:58.312001 3dd8 [db\db_impl\db_impl.cc:767] STATISTICS:
+ rocksdb.block.cache.miss COUNT : 9
+rocksdb.block.cache.hit COUNT : 0
+rocksdb.block.cache.add COUNT : 8
+rocksdb.block.cache.add.failures COUNT : 0
+rocksdb.block.cache.index.miss COUNT : 4
+rocksdb.block.cache.index.hit COUNT : 0
+rocksdb.block.cache.index.add COUNT : 4
+rocksdb.block.cache.index.bytes.insert COUNT : 479
+rocksdb.block.cache.filter.miss COUNT : 4
+rocksdb.block.cache.filter.hit COUNT : 0
+rocksdb.block.cache.filter.add COUNT : 4
+rocksdb.block.cache.filter.bytes.insert COUNT : 404
+rocksdb.block.cache.data.miss COUNT : 1
+rocksdb.block.cache.data.hit COUNT : 0
+rocksdb.block.cache.data.add COUNT : 0
+rocksdb.block.cache.data.bytes.insert COUNT : 0
+rocksdb.block.cache.bytes.read COUNT : 0
+rocksdb.block.cache.bytes.write COUNT : 883
+rocksdb.block.cache.compression.dict.miss COUNT : 0
+rocksdb.block.cache.compression.dict.hit COUNT : 0
+rocksdb.block.cache.compression.dict.add COUNT : 0
+rocksdb.block.cache.compression.dict.bytes.insert COUNT : 0
+rocksdb.block.cache.add.redundant COUNT : 0
+rocksdb.block.cache.index.add.redundant COUNT : 0
+rocksdb.block.cache.filter.add.redundant COUNT : 0
+rocksdb.block.cache.data.add.redundant COUNT : 0
+rocksdb.block.cache.compression.dict.add.redundant COUNT : 0
+rocksdb.secondary.cache.hits COUNT : 0
+rocksdb.secondary.cache.filter.hits COUNT : 0
+rocksdb.secondary.cache.index.hits COUNT : 0
+rocksdb.secondary.cache.data.hits COUNT : 0
+rocksdb.compressed.secondary.cache.dummy.hits COUNT : 0
+rocksdb.compressed.secondary.cache.hits COUNT : 0
+rocksdb.compressed.secondary.cache.promotions COUNT : 0
+rocksdb.compressed.secondary.cache.promotion.skips COUNT : 0
+rocksdb.bloom.filter.useful COUNT : 0
+rocksdb.bloom.filter.full.positive COUNT : 0
+rocksdb.bloom.filter.full.true.positive COUNT : 0
+rocksdb.bloom.filter.prefix.checked COUNT : 0
+rocksdb.bloom.filter.prefix.useful COUNT : 0
+rocksdb.bloom.filter.prefix.true.positive COUNT : 0
+rocksdb.persistent.cache.hit COUNT : 0
+rocksdb.persistent.cache.miss COUNT : 0
+rocksdb.sim.block.cache.hit COUNT : 0
+rocksdb.sim.block.cache.miss COUNT : 0
+rocksdb.memtable.hit COUNT : 0
+rocksdb.memtable.miss COUNT : 0
+rocksdb.l0.hit COUNT : 0
+rocksdb.l1.hit COUNT : 0
+rocksdb.l2andup.hit COUNT : 0
+rocksdb.compaction.key.drop.new COUNT : 0
+rocksdb.compaction.key.drop.obsolete COUNT : 0
+rocksdb.compaction.key.drop.range_del COUNT : 0
+rocksdb.compaction.key.drop.user COUNT : 0
+rocksdb.compaction.range_del.drop.obsolete COUNT : 0
+rocksdb.compaction.optimized.del.drop.obsolete COUNT : 0
+rocksdb.compaction.cancelled COUNT : 0
+rocksdb.number.keys.written COUNT : 0
+rocksdb.number.keys.read COUNT : 0
+rocksdb.number.keys.updated COUNT : 0
+rocksdb.bytes.written COUNT : 0
+rocksdb.bytes.read COUNT : 0
+rocksdb.number.db.seek COUNT : 0
+rocksdb.number.db.next COUNT : 0
+rocksdb.number.db.prev COUNT : 0
+rocksdb.number.db.seek.found COUNT : 0
+rocksdb.number.db.next.found COUNT : 0
+rocksdb.number.db.prev.found COUNT : 0
+rocksdb.db.iter.bytes.read COUNT : 0
+rocksdb.number.iter.skip COUNT : 0
+rocksdb.number.reseeks.iteration COUNT : 0
+rocksdb.num.iterator.created COUNT : 0
+rocksdb.num.iterator.deleted COUNT : 0
+rocksdb.no.file.opens COUNT : 5
+rocksdb.no.file.errors COUNT : 0
+rocksdb.stall.micros COUNT : 0
+rocksdb.db.mutex.wait.micros COUNT : 0
+rocksdb.number.multiget.get COUNT : 0
+rocksdb.number.multiget.keys.read COUNT : 0
+rocksdb.number.multiget.bytes.read COUNT : 0
+rocksdb.number.multiget.keys.found COUNT : 0
+rocksdb.number.merge.failures COUNT : 0
+rocksdb.getupdatessince.calls COUNT : 0
+rocksdb.wal.synced COUNT : 0
+rocksdb.wal.bytes COUNT : 0
+rocksdb.write.self COUNT : 0
+rocksdb.write.other COUNT : 0
+rocksdb.write.wal COUNT : 0
+rocksdb.compact.read.bytes COUNT : 0
+rocksdb.compact.write.bytes COUNT : 1288
+rocksdb.flush.write.bytes COUNT : 0
+rocksdb.compact.read.marked.bytes COUNT : 0
+rocksdb.compact.read.periodic.bytes COUNT : 0
+rocksdb.compact.read.ttl.bytes COUNT : 0
+rocksdb.compact.write.marked.bytes COUNT : 0
+rocksdb.compact.write.periodic.bytes COUNT : 0
+rocksdb.compact.write.ttl.bytes COUNT : 0
+rocksdb.number.direct.load.table.properties COUNT : 0
+rocksdb.number.superversion_acquires COUNT : 0
+rocksdb.number.superversion_releases COUNT : 0
+rocksdb.number.superversion_cleanups COUNT : 0
+rocksdb.number.block.compressed COUNT : 0
+rocksdb.number.block.decompressed COUNT : 0
+rocksdb.bytes.compressed.from COUNT : 0
+rocksdb.bytes.compressed.to COUNT : 0
+rocksdb.bytes.compression_bypassed COUNT : 0
+rocksdb.bytes.compression.rejected COUNT : 71
+rocksdb.number.block_compression_bypassed COUNT : 0
+rocksdb.number.block_compression_rejected COUNT : 2
+rocksdb.bytes.decompressed.from COUNT : 0
+rocksdb.bytes.decompressed.to COUNT : 0
+rocksdb.merge.operation.time.nanos COUNT : 0
+rocksdb.filter.operation.time.nanos COUNT : 0
+rocksdb.compaction.total.time.cpu_micros COUNT : 0
+rocksdb.row.cache.hit COUNT : 0
+rocksdb.row.cache.miss COUNT : 0
+rocksdb.read.amp.estimate.useful.bytes COUNT : 0
+rocksdb.read.amp.total.read.bytes COUNT : 0
+rocksdb.number.rate_limiter.drains COUNT : 0
+rocksdb.blobdb.num.put COUNT : 0
+rocksdb.blobdb.num.write COUNT : 0
+rocksdb.blobdb.num.get COUNT : 0
+rocksdb.blobdb.num.multiget COUNT : 0
+rocksdb.blobdb.num.seek COUNT : 0
+rocksdb.blobdb.num.next COUNT : 0
+rocksdb.blobdb.num.prev COUNT : 0
+rocksdb.blobdb.num.keys.written COUNT : 0
+rocksdb.blobdb.num.keys.read COUNT : 0
+rocksdb.blobdb.bytes.written COUNT : 0
+rocksdb.blobdb.bytes.read COUNT : 0
+rocksdb.blobdb.write.inlined COUNT : 0
+rocksdb.blobdb.write.inlined.ttl COUNT : 0
+rocksdb.blobdb.write.blob COUNT : 0
+rocksdb.blobdb.write.blob.ttl COUNT : 0
+rocksdb.blobdb.blob.file.bytes.written COUNT : 0
+rocksdb.blobdb.blob.file.bytes.read COUNT : 0
+rocksdb.blobdb.blob.file.synced COUNT : 0
+rocksdb.blobdb.blob.index.expired.count COUNT : 0
+rocksdb.blobdb.blob.index.expired.size COUNT : 0
+rocksdb.blobdb.blob.index.evicted.count COUNT : 0
+rocksdb.blobdb.blob.index.evicted.size COUNT : 0
+rocksdb.blobdb.gc.num.files COUNT : 0
+rocksdb.blobdb.gc.num.new.files COUNT : 0
+rocksdb.blobdb.gc.failures COUNT : 0
+rocksdb.blobdb.gc.num.keys.relocated COUNT : 0
+rocksdb.blobdb.gc.bytes.relocated COUNT : 0
+rocksdb.blobdb.fifo.num.files.evicted COUNT : 0
+rocksdb.blobdb.fifo.num.keys.evicted COUNT : 0
+rocksdb.blobdb.fifo.bytes.evicted COUNT : 0
+rocksdb.blobdb.cache.miss COUNT : 0
+rocksdb.blobdb.cache.hit COUNT : 0
+rocksdb.blobdb.cache.add COUNT : 0
+rocksdb.blobdb.cache.add.failures COUNT : 0
+rocksdb.blobdb.cache.bytes.read COUNT : 0
+rocksdb.blobdb.cache.bytes.write COUNT : 0
+rocksdb.txn.overhead.mutex.prepare COUNT : 0
+rocksdb.txn.overhead.mutex.old.commit.map COUNT : 0
+rocksdb.txn.overhead.duplicate.key COUNT : 0
+rocksdb.txn.overhead.mutex.snapshot COUNT : 0
+rocksdb.txn.get.tryagain COUNT : 0
+rocksdb.files.marked.trash COUNT : 0
+rocksdb.files.marked.trash.deleted COUNT : 0
+rocksdb.files.deleted.immediately COUNT : 0
+rocksdb.error.handler.bg.error.count COUNT : 0
+rocksdb.error.handler.bg.io.error.count COUNT : 0
+rocksdb.error.handler.bg.retryable.io.error.count COUNT : 0
+rocksdb.error.handler.autoresume.count COUNT : 0
+rocksdb.error.handler.autoresume.retry.total.count COUNT : 0
+rocksdb.error.handler.autoresume.success.count COUNT : 0
+rocksdb.memtable.payload.bytes.at.flush COUNT : 0
+rocksdb.memtable.garbage.bytes.at.flush COUNT : 0
+rocksdb.verify_checksum.read.bytes COUNT : 0
+rocksdb.backup.read.bytes COUNT : 0
+rocksdb.backup.write.bytes COUNT : 0
+rocksdb.remote.compact.read.bytes COUNT : 0
+rocksdb.remote.compact.write.bytes COUNT : 0
+rocksdb.hot.file.read.bytes COUNT : 0
+rocksdb.warm.file.read.bytes COUNT : 0
+rocksdb.cold.file.read.bytes COUNT : 0
+rocksdb.hot.file.read.count COUNT : 0
+rocksdb.warm.file.read.count COUNT : 0
+rocksdb.cold.file.read.count COUNT : 0
+rocksdb.last.level.read.bytes COUNT : 4186
+rocksdb.last.level.read.count COUNT : 1
+rocksdb.non.last.level.read.bytes COUNT : 5152
+rocksdb.non.last.level.read.count COUNT : 4
+rocksdb.last.level.seek.filtered COUNT : 0
+rocksdb.last.level.seek.filter.match COUNT : 0
+rocksdb.last.level.seek.data COUNT : 0
+rocksdb.last.level.seek.data.useful.no.filter COUNT : 0
+rocksdb.last.level.seek.data.useful.filter.match COUNT : 0
+rocksdb.non.last.level.seek.filtered COUNT : 0
+rocksdb.non.last.level.seek.filter.match COUNT : 0
+rocksdb.non.last.level.seek.data COUNT : 0
+rocksdb.non.last.level.seek.data.useful.no.filter COUNT : 0
+rocksdb.non.last.level.seek.data.useful.filter.match COUNT : 0
+rocksdb.block.checksum.compute.count COUNT : 13
+rocksdb.block.checksum.mismatch.count COUNT : 0
+rocksdb.multiget.coroutine.count COUNT : 0
+rocksdb.read.async.micros COUNT : 0
+rocksdb.async.read.error.count COUNT : 0
+rocksdb.table.open.prefetch.tail.miss COUNT : 0
+rocksdb.table.open.prefetch.tail.hit COUNT : 23
+rocksdb.timestamp.filter.table.checked COUNT : 0
+rocksdb.timestamp.filter.table.filtered COUNT : 0
+rocksdb.readahead.trimmed COUNT : 0
+rocksdb.fifo.max.size.compactions COUNT : 0
+rocksdb.fifo.ttl.compactions COUNT : 0
+rocksdb.fifo.change_temperature.compactions COUNT : 0
+rocksdb.prefetch.bytes COUNT : 0
+rocksdb.prefetch.bytes.useful COUNT : 0
+rocksdb.prefetch.hits COUNT : 0
+rocksdb.footer.corruption.count COUNT : 0
+rocksdb.file.read.corruption.retry.count COUNT : 0
+rocksdb.file.read.corruption.retry.success.count COUNT : 0
+rocksdb.number.wbwi.ingest COUNT : 0
+rocksdb.db.get.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.db.write.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.compaction.times.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.compaction.times.cpu_micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.subcompaction.setup.times.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.table.sync.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.compaction.outfile.sync.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.wal.file.sync.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.manifest.file.sync.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.table.open.io.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.db.multiget.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.read.block.compaction.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.read.block.get.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.write.raw.block.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.numfiles.in.singlecompaction P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.db.seek.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.db.write.stall P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.sst.read.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.flush.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.compaction.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.db.open.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.get.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.multiget.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.db.iterator.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.verify.db.checksum.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.read.verify.file.checksums.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.sst.write.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.write.flush.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.write.compaction.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.file.write.db.open.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.num.subcompactions.scheduled P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.bytes.per.read P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.bytes.per.write P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.bytes.per.multiget P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.compression.times.nanos P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.decompression.times.nanos P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.read.num.merge_operands P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.key.size P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.value.size P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.write.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.get.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.multiget.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.seek.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.next.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.prev.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.blob.file.write.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.blob.file.read.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.blob.file.sync.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.compression.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.blobdb.decompression.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.db.flush.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.sst.batch.size P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.multiget.io.batch.size P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.num.index.and.filter.blocks.read.per.level P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.num.sst.read.per.level P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.num.level.read.per.multiget P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.error.handler.autoresume.retry.count P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.async.read.bytes P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.poll.wait.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.compaction.prefetch.bytes P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.prefetched.bytes.discarded P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.async.prefetch.abort.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.table.open.prefetch.tail.read.bytes P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.num.op.per.transaction P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+2025/10/31-12:54:58.317438 2fe8 [db\compaction\compaction_job.cc:1775] [default] [JOB 3] Generated table #2586: 67 keys, 4186 bytes, temperature: kUnknown
+2025/10/31-12:54:58.317523 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698317472, "cf_name": "default", "job": 3, "event": "table_file_creation", "file_number": 2586, "file_size": 4186, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 2794, "index_size": 90, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 133, "raw_key_size": 2927, "raw_average_key_size": 43, "raw_value_size": 6481, "raw_average_value_size": 96, "num_data_blocks": 3, "num_entries": 67, "num_filter_entries": 67, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "ZSTD", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; ", "creation_time": 1761666006, "oldest_key_time": 1761911698, "newest_key_time": 0, "file_creation_time": 1761911698, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "91529813-b413-11f0-8e09-b42e99fe92b3", "db_session_id": "DRW9XR453NDA52T71XGW", "orig_file_number": 2586, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2025/10/31-12:54:58.319508 2fe8 (Original Log Time 2025/10/31-12:54:58.318476) [db\compaction\compaction_job.cc:1848] [default] [JOB 3] Compacted 4@0 + 1@6 files to L6 => 4186 bytes
+2025/10/31-12:54:58.319531 2fe8 (Original Log Time 2025/10/31-12:54:58.319437) [db\compaction\compaction_job.cc:1003] [default] compacted to: base level 6 level multiplier 10.00 max bytes base 268435456 files[0 0 0 0 0 0 1] max score 0.00, estimated pending compaction bytes 0, MB/sec: 1.2 rd, 0.5 wr, level 6, files in(4, 1) filtered(0, 0) out(1 +0 blob) MB in(0.0, 0.0 +0.0 blob) filtered(0.0, 0.0) out(0.0 +0.0 blob), read-write-amplify(2.6) write-amplify(0.8) OK, records in: 71, records dropped: 4 output_compression: ZSTD
+2025/10/31-12:54:58.319542 2fe8 (Original Log Time 2025/10/31-12:54:58.319466) EVENT_LOG_v1 {"time_micros": 1761911698319449, "job": 3, "event": "compaction_finished", "compaction_time_micros": 7883, "compaction_time_cpu_micros": 0, "output_level": 6, "num_output_files": 1, "total_output_size": 4186, "num_input_records": 71, "num_output_records": 67, "num_subcompactions": 1, "output_compression": "ZSTD", "num_single_delete_mismatches": 0, "num_single_delete_fallthrough": 0, "lsm_state": [0, 0, 0, 0, 0, 0, 1]}
+2025/10/31-12:54:58.320123 2fe8 [file\delete_scheduler.cc:77] Deleted file C:\VCC\themis\data\themis_server/002478.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 13524, max_trash_db_ratio 0.250000
+2025/10/31-12:54:58.320163 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698320154, "job": 3, "event": "table_file_deletion", "file_number": 2478, "status": "OK"}
+2025/10/31-12:54:58.320532 2fe8 [file\delete_scheduler.cc:77] Deleted file C:\VCC\themis\data\themis_server/002487.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 13524, max_trash_db_ratio 0.250000
+2025/10/31-12:54:58.320565 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698320559, "job": 3, "event": "table_file_deletion", "file_number": 2487, "status": "OK"}
+2025/10/31-12:54:58.320978 2fe8 [file\delete_scheduler.cc:77] Deleted file C:\VCC\themis\data\themis_server/002560.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 13524, max_trash_db_ratio 0.250000
+2025/10/31-12:54:58.321012 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698321005, "job": 3, "event": "table_file_deletion", "file_number": 2560, "status": "OK"}
+2025/10/31-12:54:58.321494 2fe8 [file\delete_scheduler.cc:77] Deleted file C:\VCC\themis\data\themis_server/002567.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 13524, max_trash_db_ratio 0.250000
+2025/10/31-12:54:58.321528 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698321521, "job": 3, "event": "table_file_deletion", "file_number": 2567, "status": "OK"}
+2025/10/31-12:54:58.321823 2fe8 [file\delete_scheduler.cc:77] Deleted file C:\VCC\themis\data\themis_server/002580.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 13524, max_trash_db_ratio 0.250000
+2025/10/31-12:54:58.321869 2fe8 EVENT_LOG_v1 {"time_micros": 1761911698321864, "job": 3, "event": "table_file_deletion", "file_number": 2580, "status": "OK"}
+2025/10/31-12:54:58.328624 73c8 [db\db_impl\db_impl.cc:1266] SetOptions() on column family [default], inputs:
+2025/10/31-12:54:58.328693 73c8 [db\db_impl\db_impl.cc:1269] disable_auto_compactions: false
+2025/10/31-12:54:58.328710 73c8 [db\db_impl\db_impl.cc:1273] [default] SetOptions() succeeded
+2025/10/31-12:54:58.328723 73c8 [options\cf_options.cc:1118]                         write_buffer_size: 268435456
+2025/10/31-12:54:58.328734 73c8 [options\cf_options.cc:1120]                   max_write_buffer_number: 3
+2025/10/31-12:54:58.328743 73c8 [options\cf_options.cc:1123]                          arena_block_size: 1048576
+2025/10/31-12:54:58.328753 73c8 [options\cf_options.cc:1125]               memtable_prefix_bloom_ratio: 0.000000
+2025/10/31-12:54:58.328764 73c8 [options\cf_options.cc:1127]               memtable_whole_key_filtering: 0
+2025/10/31-12:54:58.328777 73c8 [options\cf_options.cc:1130]                   memtable_huge_page_size: 0
+2025/10/31-12:54:58.328787 73c8 [options\cf_options.cc:1133]                     max_successive_merges: 0
+2025/10/31-12:54:58.328798 73c8 [options\cf_options.cc:1135]              strict_max_successive_merges: 0
+2025/10/31-12:54:58.328809 73c8 [options\cf_options.cc:1138]                  inplace_update_num_locks: 10000
+2025/10/31-12:54:58.328819 73c8 [options\cf_options.cc:1142]                          prefix_extractor: nullptr
+2025/10/31-12:54:58.328829 73c8 [options\cf_options.cc:1144]                  disable_auto_compactions: 0
+2025/10/31-12:54:58.328839 73c8 [options\cf_options.cc:1146]       soft_pending_compaction_bytes_limit: 68719476736
+2025/10/31-12:54:58.328849 73c8 [options\cf_options.cc:1148]       hard_pending_compaction_bytes_limit: 274877906944
+2025/10/31-12:54:58.328858 73c8 [options\cf_options.cc:1150]        level0_file_num_compaction_trigger: 4
+2025/10/31-12:54:58.328868 73c8 [options\cf_options.cc:1152]            level0_slowdown_writes_trigger: 20
+2025/10/31-12:54:58.328920 73c8 [options\cf_options.cc:1154]                level0_stop_writes_trigger: 36
+2025/10/31-12:54:58.328936 73c8 [options\cf_options.cc:1156]                      max_compaction_bytes: 1677721600
+2025/10/31-12:54:58.328946 73c8 [options\cf_options.cc:1158]                     target_file_size_base: 67108864
+2025/10/31-12:54:58.328956 73c8 [options\cf_options.cc:1160]               target_file_size_multiplier: 1
+2025/10/31-12:54:58.328966 73c8 [options\cf_options.cc:1162]                  max_bytes_for_level_base: 268435456
+2025/10/31-12:54:58.328976 73c8 [options\cf_options.cc:1164]            max_bytes_for_level_multiplier: 10.000000
+2025/10/31-12:54:58.329064 73c8 [options\cf_options.cc:1166]                                       ttl: 2592000
+2025/10/31-12:54:58.329115 73c8 [options\cf_options.cc:1168]               periodic_compaction_seconds: 0
+2025/10/31-12:54:58.329156 73c8 [options\cf_options.cc:1171]               preclude_last_level_data_seconds: 0
+2025/10/31-12:54:58.329167 73c8 [options\cf_options.cc:1173]               preserve_internal_time_seconds: 0
+2025/10/31-12:54:58.329175 73c8 [options\cf_options.cc:1175]                    paranoid_memory_checks: 0
+2025/10/31-12:54:58.329218 73c8 [options\cf_options.cc:1189] max_bytes_for_level_multiplier_additional: 1, 1, 1, 1, 1, 1, 1
+2025/10/31-12:54:58.329260 73c8 [options\cf_options.cc:1191]         max_sequential_skip_in_iterations: 8
+2025/10/31-12:54:58.329269 73c8 [options\cf_options.cc:1193]                      paranoid_file_checks: 0
+2025/10/31-12:54:58.329276 73c8 [options\cf_options.cc:1195]                        report_bg_io_stats: 0
+2025/10/31-12:54:58.329283 73c8 [options\cf_options.cc:1197]                               compression: 4
+2025/10/31-12:54:58.329291 73c8 [options\cf_options.cc:1199]           experimental_mempurge_threshold: 0.000000
+2025/10/31-12:54:58.329299 73c8 [options\cf_options.cc:1201]          bottommost_file_compaction_delay: 0
+2025/10/31-12:54:58.329345 73c8 [options\cf_options.cc:1203]                    uncache_aggressiveness: 0
+2025/10/31-12:54:58.329354 73c8 [options\cf_options.cc:1205]              memtable_op_scan_flush_trigger: 0
+2025/10/31-12:54:58.329405 73c8 [options\cf_options.cc:1207]          memtable_avg_op_scan_flush_trigger: 0
+2025/10/31-12:54:58.329415 73c8 [options\cf_options.cc:1210] compaction_options_universal.size_ratio : 1
+2025/10/31-12:54:58.329426 73c8 [options\cf_options.cc:1212] compaction_options_universal.min_merge_width : 2
+2025/10/31-12:54:58.329435 73c8 [options\cf_options.cc:1214] compaction_options_universal.max_merge_width : -1
+2025/10/31-12:54:58.329442 73c8 [options\cf_options.cc:1217] compaction_options_universal.max_size_amplification_percent : 200
+2025/10/31-12:54:58.329449 73c8 [options\cf_options.cc:1220] compaction_options_universal.compression_size_percent : -1
+2025/10/31-12:54:58.329457 73c8 [options\cf_options.cc:1222] compaction_options_universal.max_read_amp:  -1
+2025/10/31-12:54:58.329464 73c8 [options\cf_options.cc:1224] compaction_options_universal.stop_style : 1
+2025/10/31-12:54:58.329470 73c8 [options\cf_options.cc:1227] compaction_options_universal.allow_trivial_move : 0
+2025/10/31-12:54:58.329477 73c8 [options\cf_options.cc:1229] compaction_options_universal.incremental        : 0
+2025/10/31-12:54:58.329484 73c8 [options\cf_options.cc:1231] compaction_options_universal.reduce_file_locking : 0
+2025/10/31-12:54:58.329492 73c8 [options\cf_options.cc:1235] compaction_options_fifo.max_table_files_size : 1073741824
+2025/10/31-12:54:58.329499 73c8 [options\cf_options.cc:1237] compaction_options_fifo.allow_compaction : 0
+2025/10/31-12:54:58.329506 73c8 [options\cf_options.cc:1241]                         enable_blob_files: false
+2025/10/31-12:54:58.329512 73c8 [options\cf_options.cc:1243]                             min_blob_size: 0
+2025/10/31-12:54:58.329519 73c8 [options\cf_options.cc:1245]                            blob_file_size: 268435456
+2025/10/31-12:54:58.329525 73c8 [options\cf_options.cc:1247]                     blob_compression_type: NoCompression
+2025/10/31-12:54:58.329532 73c8 [options\cf_options.cc:1249]            enable_blob_garbage_collection: false
+2025/10/31-12:54:58.329540 73c8 [options\cf_options.cc:1251]        blob_garbage_collection_age_cutoff: 0.250000
+2025/10/31-12:54:58.329548 73c8 [options\cf_options.cc:1253]   blob_garbage_collection_force_threshold: 1.000000
+2025/10/31-12:54:58.329555 73c8 [options\cf_options.cc:1255]            blob_compaction_readahead_size: 0
+2025/10/31-12:54:58.329562 73c8 [options\cf_options.cc:1257]                  blob_file_starting_level: 0
+2025/10/31-12:54:58.329568 73c8 [options\cf_options.cc:1261]                    prepopulate_blob_cache: disable
+2025/10/31-12:54:58.329575 73c8 [options\cf_options.cc:1263]                    last_level_temperature: 0
+2025/10/31-12:54:59.312479 3dd8 [db\db_impl\db_impl.cc:935] ------- PERSISTING STATS -------
+2025/10/31-12:55:00.439022 3dd8 [db\db_impl\db_impl.cc:1006] [Pre-GC] In-memory stats history size: 16 bytes, slice count: 0
+2025/10/31-12:55:00.439053 3dd8 [db\db_impl\db_impl.cc:1015] [Post-GC] In-memory stats history size: 16 bytes, slice count: 0

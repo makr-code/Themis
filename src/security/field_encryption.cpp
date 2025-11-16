@@ -6,10 +6,60 @@
 #include <sstream>
 #include <iomanip>
 #include "utils/hkdf_cache.h"
+#include "utils/logger.h"
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
+#include <fstream>
+#include <filesystem>
+#include <chrono>
 
 namespace themis {
+
+static void write_debug_dump(const std::string& prefix, const EncryptedBlob& blob, const std::vector<uint8_t>& key, bool success) {
+    try {
+        namespace fs = std::filesystem;
+
+        // Only write debug dumps when user explicitly sets THEMIS_DEBUG_ENC_DIR
+        const char* env_dir = std::getenv("THEMIS_DEBUG_ENC_DIR");
+        if (!env_dir || !*env_dir) return; // disabled by default
+
+        fs::path dir = fs::path(env_dir);
+
+        try {
+            fs::create_directories(dir);
+        } catch (const std::exception& e) {
+            fprintf(stderr, "write_debug_dump: failed to create directory '%s': %s\n", dir.string().c_str(), e.what());
+            return;
+        }
+
+        // timestamp
+        auto now = std::chrono::system_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+
+        // short key fingerprint (first 8 bytes hex)
+        std::ostringstream kf;
+        kf << std::hex << std::setfill('0');
+        for (size_t i = 0; i < key.size() && i < 8; ++i) kf << std::setw(2) << static_cast<int>(key[i]);
+
+        nlohmann::json j = blob.toJson();
+        j["key_fingerprint_prefix"] = kf.str();
+        j["success"] = success;
+        j["ts_ms"] = ms;
+
+        fs::path file = dir / (prefix + "_" + std::to_string(ms) + ".json");
+        std::ofstream ofs(file.string());
+        if (ofs.is_open()) {
+            ofs << j.dump(2) << std::endl;
+            fprintf(stderr, "write_debug_dump: wrote '%s'\n", file.string().c_str());
+        } else {
+            fprintf(stderr, "write_debug_dump: failed to open '%s' for writing\n", file.string().c_str());
+        }
+    } catch (const std::exception& e) {
+        fprintf(stderr, "write_debug_dump: exception: %s\n", e.what());
+    } catch (...) {
+        fprintf(stderr, "write_debug_dump: unknown exception\n");
+    }
+}
 
 // ===== Base64 Encoding/Decoding Helpers =====
 
@@ -138,30 +188,6 @@ EncryptedBlob EncryptedBlob::fromBase64(const std::string& b64) {
     return blob;
 }
 
-std::vector<EncryptedBlob> FieldEncryption::encryptEntityBatch(const std::vector<std::pair<std::string,std::string>>& items,
-                                                                const std::string& key_id) {
-    std::vector<EncryptedBlob> out;
-    out.resize(items.size());
-    // Fetch base key once
-    auto base_key = key_provider_->getKey(key_id);
-    auto metadata = key_provider_->getKeyMetadata(key_id);
-    // For each entity: derive per-entity key via HKDF(base_key, salt=entity_salt, info="entity:<salt>")
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, items.size()), [&](const tbb::blocked_range<size_t>& r){
-        for (size_t i = r.begin(); i != r.end(); ++i) {
-            const auto& ent = items[i];
-            std::vector<uint8_t> salt(ent.first.begin(), ent.first.end());
-            std::string info = std::string("entity:") + ent.first;
-            auto derived = themis::utils::HKDFCache::threadLocal().derive_cached(base_key, salt, info, base_key.size());
-            try {
-                out[i] = encryptWithKey(ent.second, key_id, metadata.version, derived);
-            } catch (...) {
-                // On error, leave default constructed blob; errors should be handled by caller
-            }
-        }
-    });
-    return out;
-}
-
 nlohmann::json EncryptedBlob::toJson() const {
     return nlohmann::json{
         {"key_id", key_id},
@@ -174,12 +200,71 @@ nlohmann::json EncryptedBlob::toJson() const {
 
 EncryptedBlob EncryptedBlob::fromJson(const nlohmann::json& j) {
     EncryptedBlob blob;
-    blob.key_id = j["key_id"];
-    blob.key_version = j["key_version"];
-    blob.iv = base64_decode(j["iv"]);
-    blob.ciphertext = base64_decode(j["ciphertext"]);
-    blob.tag = base64_decode(j["tag"]);
+
+    if (!j.is_object()) {
+        throw std::runtime_error("EncryptedBlob::fromJson: expected JSON object");
+    }
+
+    try {
+        blob.key_id = j.at("key_id").get<std::string>();
+        blob.key_version = j.at("key_version").get<uint32_t>();
+
+        std::string iv_b64 = j.at("iv").get<std::string>();
+        std::string ct_b64 = j.at("ciphertext").get<std::string>();
+        std::string tag_b64 = j.at("tag").get<std::string>();
+
+        blob.iv = base64_decode(iv_b64);
+        blob.ciphertext = base64_decode(ct_b64);
+        blob.tag = base64_decode(tag_b64);
+
+    } catch (const nlohmann::json::exception& ex) {
+        throw std::runtime_error(std::string("EncryptedBlob::fromJson: JSON error: ") + ex.what());
+    }
+
     return blob;
+}
+
+std::vector<EncryptedBlob> FieldEncryption::encryptEntityBatch(const std::vector<std::pair<std::string,std::string>>& items,
+                                                                const std::string& key_id) {
+    std::vector<EncryptedBlob> out;
+    out.resize(items.size());
+
+    // Fetch base key once
+    auto base_key = key_provider_->getKey(key_id);
+    auto metadata = key_provider_->getKeyMetadata(key_id);
+
+    // If environment variable THEMIS_ENC_PARALLEL is set, run encryptions in parallel for stress testing.
+    const char* parallel_env = std::getenv("THEMIS_ENC_PARALLEL");
+    bool do_parallel = (parallel_env && *parallel_env);
+
+    if (do_parallel) {
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, items.size()), [&](const tbb::blocked_range<size_t>& r) {
+            for (size_t i = r.begin(); i != r.end(); ++i) {
+                const auto& ent = items[i];
+                try {
+                    out[i] = encryptWithKey(ent.second, key_id, metadata.version, base_key);
+                    // best-effort debug write (opt-in via env)
+                    try { write_debug_dump("encrypt", out[i], base_key, true); } catch(...) {}
+                } catch (...) {
+                    // ignore per-item errors here
+                }
+            }
+        });
+    } else {
+        // Use sequential loop to avoid potential threading issues with OpenSSL in tests.
+        for (size_t i = 0; i < items.size(); ++i) {
+            const auto& ent = items[i];
+            try {
+                out[i] = encryptWithKey(ent.second, key_id, metadata.version, base_key);
+                // best-effort debug write (opt-in via env)
+                try { write_debug_dump("encrypt", out[i], base_key, true); } catch(...) {}
+            } catch (...) {
+                // On error, leave default constructed blob; errors should be handled by caller
+            }
+        }
+    }
+
+    return out;
 }
 
 // ===== FieldEncryption Implementation =====
@@ -236,7 +321,7 @@ std::string FieldEncryption::decryptWithKey(const EncryptedBlob& blob,
 std::vector<uint8_t> FieldEncryption::generateIV() const {
     std::vector<uint8_t> iv(12);  // 96 bits for GCM
     
-    if (RAND_bytes(iv.data(), iv.size()) != 1) {
+    if (RAND_bytes(iv.data(), static_cast<int>(iv.size())) != 1) {
         throw EncryptionException("Failed to generate random IV");
     }
     
@@ -281,7 +366,7 @@ EncryptedBlob FieldEncryption::encryptInternal(const std::vector<uint8_t>& plain
         // Encrypt plaintext
         blob.ciphertext.resize(plaintext.size() + EVP_CIPHER_block_size(EVP_aes_256_gcm()));
         int len = 0;
-        if (EVP_EncryptUpdate(ctx, blob.ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
+        if (EVP_EncryptUpdate(ctx, blob.ciphertext.data(), &len, plaintext.data(), static_cast<int>(plaintext.size())) != 1) {
             throw EncryptionException("Encryption failed");
         }
         int ciphertext_len = len;
@@ -305,7 +390,11 @@ EncryptedBlob FieldEncryption::encryptInternal(const std::vector<uint8_t>& plain
         EVP_CIPHER_CTX_free(ctx);
         throw;
     }
-    
+    THEMIS_INFO("encryptInternal: key_id={}, key_ver={}, iv_len={}, ciphertext_len={}, tag_len={}",
+                blob.key_id, blob.key_version, blob.iv.size(), blob.ciphertext.size(), blob.tag.size());
+    // Write debug dump (best-effort)
+    write_debug_dump("encrypt", blob, key, true);
+
     return blob;
 }
 
@@ -348,7 +437,7 @@ std::vector<uint8_t> FieldEncryption::decryptInternal(const EncryptedBlob& blob,
         // Decrypt ciphertext
         std::vector<uint8_t> plaintext(blob.ciphertext.size() + EVP_CIPHER_block_size(EVP_aes_256_gcm()));
         int len = 0;
-        if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, blob.ciphertext.data(), blob.ciphertext.size()) != 1) {
+        if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, blob.ciphertext.data(), static_cast<int>(blob.ciphertext.size())) != 1) {
             throw DecryptionException("Decryption failed");
         }
         int plaintext_len = len;
@@ -359,10 +448,21 @@ std::vector<uint8_t> FieldEncryption::decryptInternal(const EncryptedBlob& blob,
         }
         
         // Finalize decryption (verifies tag)
+        // Also print to stderr so test runner captures sizes even if logger is not fully initialized
+        THEMIS_INFO("decryptInternal: key_id={}, key_ver={}, ciphertext_len={}, tag_len={}, iv_len={}, key_len={}",
+                    blob.key_id, blob.key_version, blob.ciphertext.size(), blob.tag.size(), blob.iv.size(), key.size());
+        fprintf(stderr, "decryptInternal: ciphertext_len=%zu, tag_len=%zu, iv_len=%zu, key_len=%zu\n",
+            blob.ciphertext.size(), blob.tag.size(), blob.iv.size(), key.size());
         int ret = EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len);
         if (ret <= 0) {
+            // write debug dump showing failure
+            write_debug_dump("decrypt_failed", blob, key, false);
+            fprintf(stderr, "decryptInternal: EVP_DecryptFinal_ex returned %d (auth failed)\n", ret);
+            THEMIS_ERROR("decryptInternal: EVP_DecryptFinal_ex returned {} (auth failed)", ret);
             throw DecryptionException("Authentication failed - data may have been tampered with");
         }
+        // write debug dump showing success
+        write_debug_dump("decrypt_ok", blob, key, true);
         plaintext_len += len;
         plaintext.resize(plaintext_len);
         

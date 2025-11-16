@@ -157,7 +157,8 @@ public:
      * @param content_id Content UUID (with or without "content:" prefix)
      * @return ContentMeta if found
      */
-    std::optional<ContentMeta> getContentMeta(const std::string& content_id);
+    // Get content metadata; optional user_context can be provided for contextual decryption
+    std::optional<ContentMeta> getContentMeta(const std::string& content_id, const std::string& user_context = "");
 
     /**
      * @brief Get content blob (original binary)

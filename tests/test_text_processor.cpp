@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "content/content_processor.h"
 #include "content/content_type.h"
+#include <cmath>
 
 using namespace themis::content;
 

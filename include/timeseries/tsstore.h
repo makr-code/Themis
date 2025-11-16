@@ -110,9 +110,12 @@ public:
      * @param cf Optional column family handle (nullptr = default CF)
      * @param config Compression and storage configuration
      */
+    // Main constructor (explicit): accepts DB, optional CF and Config
     explicit TSStore(rocksdb::TransactionDB* db, 
-                     rocksdb::ColumnFamilyHandle* cf = nullptr,
-                     Config config = Config{});
+                     rocksdb::ColumnFamilyHandle* cf,
+                     Config config);
+    // Convenience ctor: use default Config
+    TSStore(rocksdb::TransactionDB* db, rocksdb::ColumnFamilyHandle* cf = nullptr);
     
     ~TSStore() = default;
     

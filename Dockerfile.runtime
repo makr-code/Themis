@@ -1,0 +1,20 @@
+# Lightweight runtime Dockerfile for ThemisDB
+# Usage: docker build -f Dockerfile.runtime --build-arg TRIPLET=<triplet> -t myrepo/themis:<tag>-linux-<triplet> <release_dir>
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 curl jq && rm -rf /var/lib/apt/lists/*
+
+ARG TRIPLET=x64-linux
+WORKDIR /opt/themis
+
+# The build context should contain linux/<triplet>/ with the binaries
+# Copy server binary if present
+COPY linux/${TRIPLET}/themis_server /usr/local/bin/themis_server
+RUN chmod +x /usr/local/bin/themis_server || true
+
+# Copy config folder if provided in release context
+COPY config/ /etc/themis/  
+
+EXPOSE 8080 18765
+ENV THEMIS_CONFIG_PATH=/etc/themis/config.json
+ENTRYPOINT ["/usr/local/bin/themis_server", "--config", "/etc/themis/config.json"]

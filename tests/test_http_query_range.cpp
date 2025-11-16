@@ -184,7 +184,11 @@ TEST_F(HttpQueryRangeTest, DISABLED_CombineRangeAndOrderBy) {
 
     // Insert events (timestamps as strings for lexicographic order)
     for (auto t : {"2025-10-27T10:00:00", "2025-10-27T11:00:00", "2025-10-27T12:00:00", "2025-10-27T13:00:00"}) {
-        std::string pk = std::string("evt_") + t;
+        std::string tstr = t;
+        std::string safe_t = tstr;
+        std::replace(safe_t.begin(), safe_t.end(), ':', '_');
+        std::string pk = std::string("evt_") + safe_t;
+        // Keep the timestamp value in the blob as the original (with colons)
         json ent = {{"key", "events:" + pk}, {"blob", json{{"timestamp", t}}.dump()}};
         auto r = server_->post("/entities", ent);
         ASSERT_EQ(r.result(), http::status::created) << r.body();
@@ -204,6 +208,6 @@ TEST_F(HttpQueryRangeTest, DISABLED_CombineRangeAndOrderBy) {
     ASSERT_TRUE(resp.contains("keys"));
     auto keys = resp["keys"];
     ASSERT_EQ(keys.size(), 2u);
-    EXPECT_EQ(keys[0].get<std::string>(), "evt_2025-10-27T11:00:00");
-    EXPECT_EQ(keys[1].get<std::string>(), "evt_2025-10-27T12:00:00");
+    EXPECT_EQ(keys[0].get<std::string>(), "evt_2025-10-27T11_00_00");
+    EXPECT_EQ(keys[1].get<std::string>(), "evt_2025-10-27T12_00_00");
 }

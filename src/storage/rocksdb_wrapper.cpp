@@ -36,7 +36,8 @@ RocksDBWrapper::RocksDBWrapper(RocksDBWrapper&& other) noexcept
     , txn_db_options_(std::move(other.txn_db_options_))
     , txn_options_(std::move(other.txn_options_))
     , read_options_(std::move(other.read_options_))
-    , write_options_(std::move(other.write_options_)) {}
+    , write_options_(std::move(other.write_options_))
+    , cf_handles_(std::move(other.cf_handles_)) {}
 
 RocksDBWrapper& RocksDBWrapper::operator=(RocksDBWrapper&& other) noexcept {
     if (this != &other) {
@@ -48,6 +49,7 @@ RocksDBWrapper& RocksDBWrapper::operator=(RocksDBWrapper&& other) noexcept {
         txn_options_ = std::move(other.txn_options_);
         read_options_ = std::move(other.read_options_);
         write_options_ = std::move(other.write_options_);
+        cf_handles_ = std::move(other.cf_handles_);
     }
     return *this;
 }
@@ -208,6 +210,19 @@ bool RocksDBWrapper::open() {
 void RocksDBWrapper::close() {
     if (db_) {
         THEMIS_INFO("Closing RocksDB");
+        // Destroy any created ColumnFamily handles first to avoid RocksDB assertions
+        for (auto* h : cf_handles_) {
+            if (h) {
+                // Safe to call even if DB is shutting down; check status
+                try {
+                    db_->DestroyColumnFamilyHandle(h);
+                } catch (...) {
+                    // Swallow exceptions here but log
+                    THEMIS_WARN("Exception while destroying ColumnFamilyHandle");
+                }
+            }
+        }
+        cf_handles_.clear();
         db_.reset();
     }
 }
@@ -686,6 +701,8 @@ rocksdb::ColumnFamilyHandle* RocksDBWrapper::getOrCreateColumnFamily(const std::
         return nullptr;
     }
     
+    // Track handle so we can destroy it on close
+    cf_handles_.push_back(cf_handle);
     THEMIS_INFO("Created or got column family '{}'", cf_name);
     return cf_handle;
 }

@@ -1,7 +1,10 @@
 #include "security/signing.h"
+#include "security/signing_provider.h"
 #include "security/cms_signing.h"
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include <openssl/x509.h>
+#include <openssl/evp.h>
 #include <sstream>
 
 namespace themis {
@@ -25,21 +28,22 @@ public:
         BIO_free(bio);
         if (!pkey) throw std::runtime_error("Failed to parse private key from KeyProvider");
 
-        // Optionally load cert
-        std::shared_ptr<X509> cert(nullptr, X509_free);
+        // Optionally load cert (keep raw pointers and transfer ownership to CMSSigningService)
+        X509* cert_ptr = nullptr;
         try {
             auto cert_bytes = kp_->getKey(key_id + ":cert");
             if (!cert_bytes.empty()) {
                 BIO* cbio = BIO_new_mem_buf(cert_bytes.data(), static_cast<int>(cert_bytes.size()));
                 X509* x = PEM_read_bio_X509(cbio, nullptr, nullptr, nullptr);
                 BIO_free(cbio);
-                if (x) cert.reset(x);
+                if (x) cert_ptr = x; // transfer ownership to CMSSigningService below
             }
         } catch (...) {
             // missing cert is acceptable
         }
 
-        CMSSigningService cms(cert, std::shared_ptr<EVP_PKEY>(pkey, EVP_PKEY_free));
+        // pkey is owned by the CMSSigningService after construction
+        CMSSigningService cms(cert_ptr, pkey);
         return cms.sign(data, key_id);
     }
 
@@ -52,7 +56,8 @@ public:
                 X509* x = PEM_read_bio_X509(cbio, nullptr, nullptr, nullptr);
                 BIO_free(cbio);
                 if (x) {
-                    CMSSigningService cms(std::shared_ptr<X509>(x, X509_free), nullptr);
+                    // transfer ownership of 'x' to CMSSigningService
+                    CMSSigningService cms(x, nullptr);
                     return cms.verify(data, signature, key_id);
                 }
             }

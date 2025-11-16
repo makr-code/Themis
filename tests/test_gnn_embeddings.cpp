@@ -6,6 +6,7 @@
 #include "index/vector_index.h"
 #include "storage/rocksdb_wrapper.h"
 #include "storage/base_entity.h"
+#include <cmath>
 #include <filesystem>
 
 using namespace themis;

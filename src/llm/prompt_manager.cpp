@@ -43,7 +43,7 @@ std::optional<PromptManager::PromptTemplate> PromptManager::getTemplate(const st
             try {
                 std::string s(reinterpret_cast<const char*>(val_opt->data()), val_opt->size());
                 auto j = nlohmann::json::parse(s);
-                PromptTemplate t = PromptTemplate::fromJson ? PromptTemplate::fromJson(j) : PromptTemplate();
+                    PromptTemplate t;
                 // The PromptTemplate::fromJson isn't defined here; parse manually
                 t.id = j.value("id", id);
                 t.name = j.value("name", "");

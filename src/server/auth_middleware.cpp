@@ -44,11 +44,25 @@ void AuthMiddleware::clearTokens() {
 
 AuthMiddleware::AuthResult AuthMiddleware::authorize(std::string_view token, std::string_view required_scope) const {
     std::lock_guard<std::mutex> lock(mutex_);
+    // Mask token for logging (show first/last 4 chars)
+    auto mask = [](std::string_view t) {
+        std::string s(t);
+        if (s.size() <= 8) return s;
+        return s.substr(0,4) + "..." + s.substr(s.size()-4);
+    };
+    THEMIS_INFO("AuthMiddleware::authorize called for token='{}' required_scope='{}'", mask(token), required_scope);
     
     // First try API token lookup
     auto it = tokens_.find(std::string(token));
     if (it != tokens_.end()) {
         const auto& config = it->second;
+        // Build scopes string for diagnostics
+        std::string scopes_list;
+        for (const auto& s : config.scopes) {
+            if (!scopes_list.empty()) scopes_list += ",";
+            scopes_list += s;
+        }
+        THEMIS_INFO("Auth token matched for user='{}' scopes='{}'", config.user_id, scopes_list);
         
         // Check if token has required scope
         if (config.scopes.count(std::string(required_scope)) == 0) {

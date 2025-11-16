@@ -119,6 +119,19 @@ std::string SecondaryIndexManager::makeCompositeIndexPrefix(std::string_view tab
 std::string SecondaryIndexManager::encodeKeyComponent(std::string_view raw) {
 	std::string out;
 	out.reserve(raw.size());
+	// Heuristic: if the component is a positive integer (digits only),
+	// encode it as a fixed-width zero-padded field so lexicographic
+	// ordering matches numeric ordering for ORDER BY on range indices.
+	bool all_digits = !raw.empty();
+	for (char ch : raw) { if (!std::isdigit(static_cast<unsigned char>(ch))) { all_digits = false; break; } }
+	if (all_digits && raw.size() <= 20) {
+		// Pad to 20 characters (large enough for typical integers)
+		const size_t width = 20;
+		if (raw.size() < width) out.append(width - raw.size(), '0');
+		out.append(raw.data(), raw.size());
+		return out;
+	}
+
 	for (unsigned char c : raw) {
 		if (c == ':' || c == '%') {
 			char buf[4];

@@ -295,10 +295,18 @@ void VaultKeyProvider::writeSecret(const std::string& key_id, const std::string&
 std::vector<std::string> VaultKeyProvider::listSecrets() {
     std::string path = "/v1/" + impl_->config.kv_mount_path + 
                        (impl_->config.kv_version == "v2" ? "/metadata/keys" : "/keys");
-    
-    std::string response = httpList(path);
+
+    std::string response;
+    // Some Vault setups / client stacks return the key list for KV v2 when using
+    // a GET with the query parameter `?list=true` instead of the HTTP LIST verb.
+    if (impl_->config.kv_version == "v2") {
+        response = httpGet(path + "?list=true");
+    } else {
+        response = httpList(path);
+    }
+
     json j = json::parse(response);
-    
+
     std::vector<std::string> keys;
     if (j.contains("data") && j["data"].contains("keys")) {
         for (const auto& key : j["data"]["keys"]) {

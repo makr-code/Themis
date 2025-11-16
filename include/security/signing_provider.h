@@ -12,7 +12,7 @@ namespace themis {
  * Implementations should avoid exporting raw private key material and
  * instead return a `SigningResult` for the provided data.
  */
-class SigningProvider : public KeyProvider {
+class SigningProvider : public virtual KeyProvider {
 public:
     virtual ~SigningProvider() = default;
 

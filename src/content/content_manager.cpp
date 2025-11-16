@@ -5,6 +5,7 @@
 #include "storage/key_schema.h"
 #include "utils/zstd_codec.h"
 #include "utils/hkdf_helper.h"
+#include "utils/hkdf_cache.h"
 
 #include <algorithm>
 #include <chrono>
@@ -560,8 +561,7 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
                     }
                 }
             }
-        }
-<<<<<<< Updated upstream
+    }
         // Optionale Verschlüsselung von Metadaten-Feldern (vector metadata encryption)
         try {
             bool meta_encrypt_enabled = false;
@@ -635,10 +635,7 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
             THEMIS_WARN("vector metadata encryption processing error: {}", ex.what());
         }
 
-        // Content-Meta aktualisieren/speichern (verschlüsselte Felder markiert)
-=======
-        // Content-Meta aktualisieren/speichern
->>>>>>> Stashed changes
+    // Content-Meta aktualisieren/speichern (verschlüsselte Felder markiert)
         meta.chunk_count = static_cast<int>(chunk_ids.size());
         meta.chunked = meta.chunk_count > 0;
         if (meta.created_at == 0) meta.created_at = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
@@ -680,19 +677,6 @@ Status ContentManager::importContent(const json& spec, const std::optional<std::
     }
 }
 
-std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& content_id) {
-    std::string id = normalizeId(content_id, "content:");
-    std::string key = std::string("content:") + id;
-    auto v = storage_->get(key);
-    if (!v) return std::nullopt;
-    try {
-        std::string s(v->begin(), v->end());
-        json j = json::parse(s);
-        return ContentMeta::fromJson(j);
-    } catch (...) { return std::nullopt; }
-}
-
-<<<<<<< Updated upstream
 std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& content_id, const std::string& user_context) {
     std::string id = normalizeId(content_id, "content:");
     std::string key = std::string("content:") + id;
@@ -742,9 +726,6 @@ std::optional<ContentMeta> ContentManager::getContentMeta(const std::string& con
         return ContentMeta::fromJson(j);
     } catch (...) { return std::nullopt; }
 }
-
-=======
->>>>>>> Stashed changes
 std::optional<std::string> ContentManager::getContentBlob(const std::string& content_id, const std::string& user_context) {
     std::string id = normalizeId(content_id, "content:");
     std::string key = std::string("content_blob:") + id;

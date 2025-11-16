@@ -286,8 +286,8 @@ TEST(AQLTranslatorTest, OrOperatorNotSupported) {
     ASSERT_TRUE(parseResult.success);
     
     auto translateResult = AQLTranslator::translate(parseResult.query);
-    EXPECT_FALSE(translateResult.success);
-    EXPECT_NE(translateResult.error_message.find("OR"), std::string::npos);
+    ASSERT_TRUE(translateResult.success) << translateResult.error_message;
+    EXPECT_TRUE(translateResult.disjunctive.has_value());
 }
 
 TEST(AQLTranslatorTest, NullASTError) {

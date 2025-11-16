@@ -79,11 +79,11 @@ public:
     int httpCode() const { return http_code_; }
     const std::string& vaultMessage() const { return vault_message_; }
     bool transient() const { return transient_; }
-};
-
+private:
     int http_code_;
     std::string vault_message_;
     bool transient_;
+};
 /**
  * @brief Abstract interface for encryption key management
  * 
