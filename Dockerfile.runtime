@@ -5,6 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
 	apt-get upgrade -y && \
 	apt-get install -y --no-install-recommends ca-certificates libssl3 curl jq && \
+	apt-get purge -y tar && apt-get autoremove -y && \
 	rm -rf /var/lib/apt/lists/*
 
 ARG TRIPLET=x64-linux
@@ -20,4 +21,11 @@ COPY config/ /etc/themis/
 
 EXPOSE 8080 18765
 ENV THEMIS_CONFIG_PATH=/etc/themis/config.json
+# Create non-root runtime user and prepare data dirs
+RUN groupadd -r themis && useradd -r -g themis themis \
+	&& mkdir -p /data /opt/themis/logs /var/run/themis \
+	&& chown -R themis:themis /data /opt/themis /opt/themis/logs /var/run/themis || true
+
+USER themis
+
 ENTRYPOINT ["/usr/local/bin/themis_server", "--config", "/etc/themis/config.json"]
