@@ -2,29 +2,74 @@
 
 ## Overview
 
-The **Themis AQL Query Builder** is a visual query editor for constructing AQL (Advanced Query Language) queries for ThemisDB. It provides an intuitive drag-and-drop interface for building complex queries without manually writing AQL syntax.
+The **Themis AQL Query Builder** is a visual query editor for constructing AQL (Advanced Query Language) queries for ThemisDB. It provides an intuitive interface for building complex queries without manually writing AQL syntax, with support for multiple connection methods.
 
 ## Features
 
-- **Visual Query Construction**: Build queries using forms and dropdowns instead of writing code
+### Phase 1 ✅ Completed
+
+- **Schema Explorer**: Browse collections and fields with type indicators
+- **Visual Query Construction**: Build queries using forms and dropdowns
+- **Multi-Table Queries**: Implicit JOINs via multiple FOR clauses
 - **Real-time Query Preview**: See the generated AQL query as you build it
-- **Query Execution**: Execute queries directly against a running Themis server
+- **Query Execution**: Execute queries directly against Themis
 - **Clause Support**:
-  - FOR clauses (collection iteration)
+  - FOR clauses (collection iteration, implicit JOINs)
   - LET clauses (variable binding)
   - FILTER clauses (conditions with visual operators)
   - SORT clauses (ordering)
-  - LIMIT clause (pagination)
+  - LIMIT clause (pagination with offset)
   - RETURN clause (result projection)
-- **Sample Queries**: Load pre-built sample queries to get started
-- **Query Management**: Copy, clear, and save queries
-- **Modern WPF UI**: Clean, responsive interface with syntax highlighting
+- **Connection Options**:
+  - HTTP/HTTPS REST API
+  - TCP Socket (planned)
+  - UDP (planned)
+  - Direct C# API (planned)
+  - Direct C++ API (planned)
+- **Modern WPF UI**: Clean, responsive interface with color-coded types
+
+## Connection Methods
+
+The query builder supports multiple ways to connect to ThemisDB:
+
+### 1. HTTP/HTTPS REST API (Default)
+```
+Server: http://localhost:8080
+Endpoint: POST /api/query/aql
+```
+
+### 2. TCP Socket Connection (Coming Soon)
+```
+Host: localhost
+Port: 8080
+Protocol: Binary
+```
+
+### 3. UDP Connection (Coming Soon)
+```
+Host: localhost
+Port: 8080
+Protocol: Datagram
+```
+
+### 4. Direct C# API (Coming Soon)
+```
+Type: In-process
+Requires: Themis .NET library
+```
+
+### 5. Direct C++ API (Coming Soon)
+```
+Type: Native interop (P/Invoke)
+Requires: Themis native library
+```
 
 ## Prerequisites
 
 - .NET 8 SDK
 - Visual Studio 2022 or VS Code with C# Dev Kit
-- Running ThemisDB server (default: http://localhost:8080)
+- Running ThemisDB server (for HTTP/Socket/UDP modes)
+- OR Themis libraries (for Direct API modes)
 
 ## Installation
 
@@ -47,7 +92,9 @@ Or open the solution in Visual Studio and press F5.
 
 ### Building a Query
 
-1. **Add FOR Clause**: Click "+ Add FOR Clause" to specify which collection to query
+1. **Browse Schema**: Use the Schema Explorer panel to see available collections and fields
+
+2. **Add FOR Clause**: Click "+ Add FOR Clause" to specify which collection to query
    - Enter a variable name (e.g., `u` for users)
    - Select or enter a collection name (e.g., `users`)
 

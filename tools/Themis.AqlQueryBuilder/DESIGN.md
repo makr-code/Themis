@@ -4,6 +4,57 @@
 
 This document outlines the design for an enhanced Visual Query Builder that supports ThemisDB's multi-model capabilities: **relational**, **graph**, **vector**, and **geo** data.
 
+## Connection Architecture
+
+The query builder supports multiple connection methods to the Themis database:
+
+### Supported Connection Types
+
+1. **HTTP/HTTPS REST API** (Default)
+   - Standard REST endpoints
+   - JSON request/response
+   - Easy to use, works remotely
+   - Endpoint: `/api/query/aql`
+
+2. **TCP Socket Connection**
+   - Direct socket communication
+   - Lower latency than HTTP
+   - Binary protocol support
+   - Persistent connection
+
+3. **UDP Connection**
+   - Lightweight, connectionless
+   - Best for high-throughput scenarios
+   - Fire-and-forget queries
+   - Reduced overhead
+
+4. **Direct C# API**
+   - In-process database access
+   - Highest performance
+   - No network overhead
+   - Requires Themis .NET library
+
+5. **Direct C++ API**
+   - Native C++ interop via P/Invoke
+   - Full access to C++ API
+   - Maximum control and performance
+   - Requires native Themis library
+
+### Connection Configuration
+
+```csharp
+public class ConnectionConfig {
+    ConnectionType Type;        // HTTP, Socket, UDP, DirectCSharp, DirectCpp
+    string ServerUrl;           // For HTTP/HTTPS
+    string Host;                // For Socket/UDP
+    int Port;                   // For Socket/UDP
+    string DatabasePath;        // For Direct API
+    bool UseSsl;                // SSL/TLS support
+    string ApiKey;              // Authentication
+    int TimeoutSeconds;         // Connection timeout
+}
+```
+
 ## Research Summary
 
 ### Analyzed Solutions
@@ -184,12 +235,29 @@ FOR location IN locations
 
 ## Implementation Phases
 
-### Phase 1: Enhanced Relational Builder ✅ CURRENT
+### Phase 1: Enhanced Relational Builder ✅ COMPLETED
 - [x] Basic FOR/FILTER/SORT
-- [ ] Schema Browser (left panel)
-- [ ] Visual JOIN builder
-- [ ] Advanced filter grouping (AND/OR)
-- [ ] Aggregation controls
+- [x] Schema Browser (left panel) with collection tree
+- [x] Multi-table queries (implicit JOINs via multiple FOR clauses)
+- [x] Color-coded data types and field visualization
+- [x] Real-time AQL query preview
+- [x] Query execution via HTTP REST API
+- [x] Connection configuration support
+- [ ] Visual JOIN diagram (planned for Phase 1.5)
+- [ ] Advanced filter grouping with AND/OR (planned for Phase 1.5)
+- [ ] Aggregation controls (planned for Phase 1.5)
+
+### Phase 1.5: Connection Options & Advanced Relational (NEW)
+- [x] HTTP/HTTPS REST API connection
+- [x] Connection type selector (HTTP, Socket, UDP, Direct C#, Direct C++)
+- [ ] TCP Socket connection implementation
+- [ ] UDP connection implementation
+- [ ] Direct C# API integration
+- [ ] Direct C++ API integration (P/Invoke)
+- [ ] Connection status indicator
+- [ ] Visual JOIN diagram with drag-drop
+- [ ] Filter grouping with AND/OR/NOT logic
+- [ ] COLLECT/AGGREGATE clause builder
 
 ### Phase 2: Graph Query Builder
 - [ ] Graph canvas component

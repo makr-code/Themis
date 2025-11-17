@@ -53,6 +53,21 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private QueryType _selectedQueryType = QueryType.Relational;
 
+    [ObservableProperty]
+    private ConnectionConfig _connectionConfig = new();
+
+    [ObservableProperty]
+    private ConnectionStatus _connectionStatus = ConnectionStatus.Disconnected;
+
+    public ObservableCollection<ConnectionType> AvailableConnectionTypes { get; } = new()
+    {
+        ConnectionType.HttpRest,
+        ConnectionType.Socket,
+        ConnectionType.Udp,
+        ConnectionType.DirectCSharp,
+        ConnectionType.DirectCpp
+    };
+
     public MainViewModel()
     {
         _httpClient = new HttpClient();

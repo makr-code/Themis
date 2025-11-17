@@ -1,4 +1,4 @@
-﻿<Window x:Class="Themis.AqlQueryBuilder.MainWindow"
+<Window x:Class="Themis.AqlQueryBuilder.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -6,12 +6,20 @@
         xmlns:local="clr-namespace:Themis.AqlQueryBuilder"
         xmlns:vm="clr-namespace:Themis.AqlQueryBuilder.ViewModels"
         mc:Ignorable="d"
-        Title="Themis AQL Visual Query Builder" Height="800" Width="1200"
+        Title="Themis AQL Multi-Model Query Builder - Phase 1" Height="900" Width="1600"
         WindowStartupLocation="CenterScreen">
     
     <Window.DataContext>
         <vm:MainViewModel/>
     </Window.DataContext>
+
+    <Window.Resources>
+        <!-- Value Converters -->
+        <local:BoolToIntConverter x:Key="BoolToIntConverter"/>
+        <local:CollectionTypeToIconConverter x:Key="CollectionTypeToIcon"/>
+        <local:FieldTypeToColorConverter x:Key="FieldTypeToColor"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -23,30 +31,36 @@
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="#2D2D30" Padding="10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Themis AQL Query Builder" 
+                <TextBlock Text="📊 Themis AQL Query Builder - Phase 1" 
                           Foreground="White" 
                           FontSize="18" 
                           FontWeight="Bold" 
                           VerticalAlignment="Center"/>
+                
+                <Separator Width="20" Background="Transparent"/>
+                
                 <Button Content="New Query" 
                         Command="{Binding ClearQueryCommand}"
-                        Margin="20,0,5,0" 
+                        Margin="5,0" 
                         Padding="10,5"/>
                 <Button Content="Sample Query" 
                         Command="{Binding AddSampleQueryCommand}"
                         Margin="5,0" 
                         Padding="10,5"/>
-                <Button Content="Execute" 
+                <Button Content="▶ Execute" 
                         Command="{Binding ExecuteQueryCommand}"
                         Margin="5,0" 
-                        Padding="10,5"
+                        Padding="15,5"
                         Background="#007ACC"
-                        Foreground="White"/>
-                <Button Content="Copy Query" 
+                        Foreground="White"
+                        FontWeight="Bold"/>
+                <Button Content="📋 Copy" 
                         Command="{Binding CopyQueryCommand}"
                         Margin="5,0" 
                         Padding="10,5"/>
+                
                 <Separator Width="20" Background="Transparent"/>
+                
                 <TextBlock Text="Server:" 
                           Foreground="White" 
                           VerticalAlignment="Center" 
@@ -60,41 +74,125 @@
         <!-- Main Content -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="2*"/>
                 <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Query Builder Panel -->
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="10">
-                    <!-- FOR Clauses -->
-                    <GroupBox Header="FOR Clauses (Collections)" Margin="0,0,0,10">
+            <!-- Left Panel: Schema Explorer -->
+            <Border Grid.Column="0" BorderBrush="LightGray" BorderThickness="0,0,1,0" Background="White">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Background="#F0F0F0" Padding="10,5">
                         <StackPanel>
+                            <TextBlock Text="📚 Schema Explorer" FontWeight="Bold" FontSize="14"/>
+                            <TextBlock Text="{Binding SchemaCollections.Count, StringFormat='{0} collections loaded'}" 
+                                      FontSize="10" 
+                                      Foreground="Gray" 
+                                      Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <TreeView ItemsSource="{Binding SchemaCollections}" 
+                             BorderThickness="0"
+                             Padding="5" Background="White">
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Fields}">
+                                <StackPanel Orientation="Horizontal" Margin="0,3">
+                                    <TextBlock Text="{Binding Type, Converter={StaticResource CollectionTypeToIcon}}" 
+                                              FontSize="16" 
+                                              Margin="0,0,5,0"/>
+                                    <TextBlock Text="{Binding Name}" 
+                                              FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding EstimatedDocumentCount, StringFormat=' ({0})'}" 
+                                              Foreground="Gray" 
+                                              FontSize="10"
+                                              VerticalAlignment="Center"
+                                              Margin="5,0,0,0"/>
+                                </StackPanel>
+                                
+                                <HierarchicalDataTemplate.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <Ellipse Width="8" Height="8" 
+                                                    Fill="{Binding DataType, Converter={StaticResource FieldTypeToColor}}"
+                                                    Margin="0,0,5,0"
+                                                    VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Name}"/>
+                                            <TextBlock Text="{Binding DataType, StringFormat=' : {0}'}" 
+                                                      Foreground="Gray" 
+                                                      FontSize="10"
+                                                      Margin="5,0,0,0"/>
+                                            <TextBlock Text=" 🔍" 
+                                                      ToolTip="Indexed" 
+                                                      Visibility="{Binding IsIndexed, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </HierarchicalDataTemplate.ItemTemplate>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="LightGray"/>
+
+            <!-- Center Panel: Query Builder -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Background="#FAFAFA">
+                <StackPanel Margin="15">
+                    
+                    <!-- Phase 1 Banner -->
+                    <Border Background="#E3F2FD" BorderBrush="#2196F3" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
+                        <StackPanel>
+                            <TextBlock Text="✅ Phase 1: Enhanced Relational Query Builder" FontWeight="Bold" FontSize="14" Foreground="#1976D2"/>
+                            <TextBlock Text="Features: Schema Explorer • Multi-table Queries (FOR) • Advanced Filtering • Sorting • Pagination" 
+                                      FontSize="11" Foreground="#424242" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- FOR Clauses -->
+                    <GroupBox Header="FOR Clauses (Collections / JOINs)" Margin="0,0,0,10" BorderBrush="#007ACC" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#007ACC" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="💡 Multiple FOR clauses create nested loops (implicit JOINs). Use schema explorer to select collections." 
+                                      FontSize="10" 
+                                      Foreground="#666" 
+                                      Margin="5,0,5,8"
+                                      TextWrapping="Wrap"/>
                             <ItemsControl ItemsSource="{Binding ForClauses}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="5" Margin="0,2">
+                                        <Border BorderBrush="#007ACC" BorderThickness="1" Padding="8" Margin="0,3" Background="White" CornerRadius="3">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="1.5*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="FOR" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="1" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
-                                                <TextBlock Text="IN" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
+                                                <TextBlock Text="FOR" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" Foreground="#007ACC" FontSize="12"/>
+                                                <TextBox Grid.Column="1" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
+                                                <TextBlock Text="IN" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" Foreground="#007ACC" FontSize="12"/>
                                                 <ComboBox Grid.Column="3" 
                                                          Text="{Binding Collection, UpdateSourceTrigger=PropertyChanged}" 
-                                                         ItemsSource="{Binding DataContext.AvailableCollections, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                         ItemsSource="{Binding DataContext.SchemaCollections, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                         DisplayMemberPath="Name"
                                                          IsEditable="True"
-                                                         Margin="0,0,5,0"/>
+                                                         Margin="0,0,8,0"
+                                                         Padding="4"/>
                                                 <Button Grid.Column="4" Content="✕" 
                                                        Command="{Binding DataContext.RemoveForClauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        CommandParameter="{Binding}"
-                                                       Width="25" Height="25"/>
+                                                       Width="28" Height="28"
+                                                       Background="#FFE5E5"
+                                                       BorderBrush="#F44336"
+                                                       ToolTip="Remove this FOR clause"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -103,54 +201,31 @@
                             <Button Content="+ Add FOR Clause" 
                                    Command="{Binding AddForClauseCommand}"
                                    HorizontalAlignment="Left" 
-                                   Margin="0,5,0,0"
-                                   Padding="10,5"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <!-- LET Clauses -->
-                    <GroupBox Header="LET Clauses (Variables)" Margin="0,0,0,10">
-                        <StackPanel>
-                            <ItemsControl ItemsSource="{Binding LetClauses}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="5" Margin="0,2">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="2*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="LET" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="1" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
-                                                <TextBlock Text="=" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="3" Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
-                                                <Button Grid.Column="4" Content="✕" 
-                                                       Command="{Binding DataContext.RemoveLetClauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       CommandParameter="{Binding}"
-                                                       Width="25" Height="25"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Button Content="+ Add LET Clause" 
-                                   Command="{Binding AddLetClauseCommand}"
-                                   HorizontalAlignment="Left" 
-                                   Margin="0,5,0,0"
-                                   Padding="10,5"/>
+                                   Margin="0,8,0,0"
+                                   Padding="12,6"
+                                   Background="#E3F2FD"
+                                   BorderBrush="#007ACC"
+                                   FontWeight="SemiBold"/>
                         </StackPanel>
                     </GroupBox>
 
                     <!-- FILTER Clauses -->
-                    <GroupBox Header="FILTER Clauses (Conditions)" Margin="0,0,0,10">
+                    <GroupBox Header="FILTER Clauses (WHERE Conditions)" Margin="0,0,0,10" BorderBrush="#F97316" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#F97316" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
                         <StackPanel>
+                            <TextBlock Text="💡 Add conditions to filter results. All filters are combined with AND logic (Phase 1)." 
+                                      FontSize="10" 
+                                      Foreground="#666" 
+                                      Margin="5,0,5,8"
+                                      TextWrapping="Wrap"/>
                             <ItemsControl ItemsSource="{Binding FilterClauses}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="5" Margin="0,2">
+                                        <Border BorderBrush="#F97316" BorderThickness="1" Padding="8" Margin="0,3" Background="#FFF9E6" CornerRadius="3">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
@@ -164,12 +239,13 @@
                                                     <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
                                                 
-                                                <TextBlock Text="FILTER" Grid.Column="0" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="1" Grid.Row="0" Text="{Binding LeftOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
+                                                <TextBlock Text="FILTER" Grid.Column="0" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" Foreground="#F97316" FontSize="12"/>
+                                                <TextBox Grid.Column="1" Grid.Row="0" Text="{Binding LeftOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
                                                 <ComboBox Grid.Column="2" Grid.Row="0" 
                                                          SelectedItem="{Binding Operator}" 
-                                                         Margin="0,0,5,0"
-                                                         Width="100">
+                                                         Margin="0,0,8,0"
+                                                         Width="100"
+                                                         Padding="4">
                                                     <ComboBox.Items>
                                                         <ComboBoxItem Content="==" Tag="Equals"/>
                                                         <ComboBoxItem Content="!=" Tag="NotEquals"/>
@@ -181,17 +257,22 @@
                                                         <ComboBoxItem Content="CONTAINS" Tag="Contains"/>
                                                     </ComboBox.Items>
                                                 </ComboBox>
-                                                <TextBox Grid.Column="3" Grid.Row="0" Text="{Binding RightOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
+                                                <TextBox Grid.Column="3" Grid.Row="0" Text="{Binding RightOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
                                                 <Button Grid.Column="4" Grid.Row="0" Content="✕" 
                                                        Command="{Binding DataContext.RemoveFilterClauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        CommandParameter="{Binding}"
-                                                       Width="25" Height="25"/>
+                                                       Width="28" Height="28"
+                                                       Background="#FFE5E5"
+                                                       BorderBrush="#F44336"
+                                                       ToolTip="Remove this FILTER clause"/>
                                                 
                                                 <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="5" 
                                                           Text="{Binding Condition}" 
                                                           FontStyle="Italic" 
-                                                          Foreground="Gray"
-                                                          Margin="0,2,0,0"/>
+                                                          Foreground="#666"
+                                                          FontFamily="Consolas"
+                                                          Margin="0,4,0,0"
+                                                          FontSize="10"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -200,68 +281,98 @@
                             <Button Content="+ Add FILTER Clause" 
                                    Command="{Binding AddFilterClauseCommand}"
                                    HorizontalAlignment="Left" 
-                                   Margin="0,5,0,0"
-                                   Padding="10,5"/>
+                                   Margin="0,8,0,0"
+                                   Padding="12,6"
+                                   Background="#FFF4E6"
+                                   BorderBrush="#F97316"
+                                   FontWeight="SemiBold"/>
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- SORT Clauses -->
-                    <GroupBox Header="SORT Clauses" Margin="0,0,0,10">
-                        <StackPanel>
-                            <ItemsControl ItemsSource="{Binding SortClauses}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="5" Margin="0,2">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="SORT" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="1" Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
-                                                <ComboBox Grid.Column="2" SelectedIndex="{Binding Ascending, Converter={StaticResource BoolToIntConverter}}" Margin="0,0,5,0">
-                                                    <ComboBoxItem Content="ASC"/>
-                                                    <ComboBoxItem Content="DESC"/>
-                                                </ComboBox>
-                                                <Button Grid.Column="3" Content="✕" 
-                                                       Command="{Binding DataContext.RemoveSortClauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       CommandParameter="{Binding}"
-                                                       Width="25" Height="25"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Button Content="+ Add SORT Clause" 
-                                   Command="{Binding AddSortClauseCommand}"
-                                   HorizontalAlignment="Left" 
-                                   Margin="0,5,0,0"
-                                   Padding="10,5"/>
-                        </StackPanel>
-                    </GroupBox>
+                    <!-- SORT and LIMIT in compact row -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- SORT Clauses -->
+                        <GroupBox Grid.Column="0" Header="SORT (ORDER BY)" BorderBrush="#10B981" BorderThickness="2">
+                            <GroupBox.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#10B981" FontSize="12"/>
+                                </DataTemplate>
+                            </GroupBox.HeaderTemplate>
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding SortClauses}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#10B981" BorderThickness="1" Padding="5" Margin="0,2" Background="White">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,4,0" Padding="3"/>
+                                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding Ascending, Converter={StaticResource BoolToIntConverter}}" Margin="0,0,4,0" Width="60" Padding="3">
+                                                        <ComboBoxItem Content="ASC"/>
+                                                        <ComboBoxItem Content="DESC"/>
+                                                    </ComboBox>
+                                                    <Button Grid.Column="2" Content="✕" 
+                                                           Command="{Binding DataContext.RemoveSortClauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           CommandParameter="{Binding}"
+                                                           Width="24" Height="24"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="+ Add SORT" 
+                                       Command="{Binding AddSortClauseCommand}"
+                                       HorizontalAlignment="Left" 
+                                       Margin="0,5,0,0"
+                                       Padding="8,4"
+                                       FontSize="11"/>
+                            </StackPanel>
+                        </GroupBox>
 
-                    <!-- LIMIT Clause -->
-                    <GroupBox Header="LIMIT Clause" Margin="0,0,0,10">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="100"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Offset:" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                            <TextBox Grid.Column="1" Text="{Binding Query.Limit.Offset, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,10,0"/>
-                            <TextBlock Text="Count:" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                            <TextBox Grid.Column="3" Text="{Binding Query.Limit.Count, UpdateSourceTrigger=PropertyChanged}"/>
-                        </Grid>
-                    </GroupBox>
+                        <!-- LIMIT Clause -->
+                        <GroupBox Grid.Column="2" Header="LIMIT (Pagination)" BorderBrush="#8B5CF6" BorderThickness="2">
+                            <GroupBox.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#8B5CF6" FontSize="12"/>
+                                </DataTemplate>
+                            </GroupBox.HeaderTemplate>
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Offset:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,5"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Query.Limit.Offset, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5" Padding="4"/>
+                                    <TextBlock Text="Count:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Query.Limit.Count, UpdateSourceTrigger=PropertyChanged}" Padding="4"/>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </Grid>
 
                     <!-- RETURN Clause -->
-                    <GroupBox Header="RETURN Clause" Margin="0,0,0,10">
+                    <GroupBox Header="RETURN (Output Projection)" Margin="0,0,0,10" BorderBrush="#EC4899" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#EC4899" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
                         <StackPanel>
-                            <ComboBox SelectedIndex="0" Margin="0,0,0,5">
+                            <ComboBox SelectedIndex="0" Margin="0,0,0,5" Padding="4">
                                 <ComboBoxItem Content="Return whole document" Tag="WholeDocument"/>
                                 <ComboBoxItem Content="Return custom object" Tag="CustomObject"/>
                                 <ComboBoxItem Content="Custom expression" Tag="Custom"/>
@@ -270,26 +381,30 @@
                                     Height="60" 
                                     TextWrapping="Wrap" 
                                     AcceptsReturn="True"
-                                    VerticalScrollBarVisibility="Auto"/>
+                                    VerticalScrollBarVisibility="Auto"
+                                    FontFamily="Consolas"
+                                    Background="White"
+                                    Padding="6"/>
                         </StackPanel>
                     </GroupBox>
 
                     <Button Content="🔄 Update Query Preview" 
                            Command="{Binding UpdateGeneratedQueryCommand}"
                            HorizontalAlignment="Center"
-                           Padding="20,10"
+                           Padding="25,12"
                            FontSize="14"
                            FontWeight="Bold"
                            Background="#007ACC"
                            Foreground="White"
-                           Margin="0,10"/>
+                           Margin="0,15"
+                           BorderThickness="0"/>
                 </StackPanel>
             </ScrollViewer>
 
-            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="LightGray"/>
+            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" Background="LightGray"/>
 
-            <!-- Query Preview and Results Panel -->
-            <Grid Grid.Column="2">
+            <!-- Right Panel: Query Preview & Results -->
+            <Grid Grid.Column="4" Background="#FAFAFA">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="5"/>
@@ -297,7 +412,12 @@
                 </Grid.RowDefinitions>
 
                 <!-- Generated Query -->
-                <GroupBox Grid.Row="0" Header="Generated AQL Query" Margin="5">
+                <GroupBox Grid.Row="0" Header="📝 Generated AQL Query" Margin="5" BorderBrush="#424242" BorderThickness="1">
+                    <GroupBox.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontWeight="Bold" FontSize="12"/>
+                        </DataTemplate>
+                    </GroupBox.HeaderTemplate>
                     <TextBox Text="{Binding GeneratedQuery, Mode=OneWay}" 
                             IsReadOnly="True"
                             TextWrapping="Wrap"
@@ -305,13 +425,20 @@
                             FontSize="12"
                             VerticalScrollBarVisibility="Auto"
                             Background="#1E1E1E"
-                            Foreground="#D4D4D4"/>
+                            Foreground="#D4D4D4"
+                            Padding="10"
+                            BorderThickness="0"/>
                 </GroupBox>
 
                 <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="LightGray"/>
 
                 <!-- Query Results -->
-                <GroupBox Grid.Row="2" Header="Query Results" Margin="5">
+                <GroupBox Grid.Row="2" Header="📊 Query Results" Margin="5" BorderBrush="#424242" BorderThickness="1">
+                    <GroupBox.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontWeight="Bold" FontSize="12"/>
+                        </DataTemplate>
+                    </GroupBox.HeaderTemplate>
                     <TextBox Text="{Binding QueryResult, Mode=OneWay}" 
                             IsReadOnly="True"
                             TextWrapping="Wrap"
@@ -319,20 +446,46 @@
                             FontSize="11"
                             VerticalScrollBarVisibility="Auto"
                             Background="#1E1E1E"
-                            Foreground="#D4D4D4"/>
+                            Foreground="#D4D4D4"
+                            Padding="10"
+                            BorderThickness="0"/>
                 </GroupBox>
             </Grid>
         </Grid>
 
         <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#007ACC" Padding="5">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Ready" Foreground="White" VerticalAlignment="Center"/>
-                <TextBlock Text=" | " Foreground="White" Margin="10,0"/>
-                <TextBlock Text="{Binding IsExecuting, StringFormat='Executing: {0}'}" 
-                          Foreground="White" 
-                          VerticalAlignment="Center"/>
-            </StackPanel>
+        <Border Grid.Row="2" Background="#1976D2" Padding="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="✅ Phase 1 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBlock Text="|" Foreground="White" Margin="0,0,10,0"/>
+                    <TextBlock Text="{Binding SchemaCollections.Count, StringFormat='{0} collections'}" 
+                              Foreground="White" 
+                              VerticalAlignment="Center"/>
+                    <TextBlock Text="|" Foreground="White" Margin="10,0"/>
+                    <TextBlock Text="{Binding ForClauses.Count, StringFormat='Query: {0} FOR'}" 
+                              Foreground="White" 
+                              VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding FilterClauses.Count, StringFormat=', {0} FILTER'}" 
+                              Foreground="White" 
+                              VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SortClauses.Count, StringFormat=', {0} SORT'}" 
+                              Foreground="White" 
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="{Binding IsExecuting, StringFormat='Executing: {0}'}" 
+                              Foreground="White" 
+                              VerticalAlignment="Center"
+                              Margin="10,0"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>
