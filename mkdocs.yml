@@ -36,6 +36,7 @@ markdown_extensions:
 
 nav:
   - Übersicht: index.md
+  - Ecosystem Overview: ECOSYSTEM_OVERVIEW.md
   - Architektur: architecture.md
   - Basismodell:
       - Base Entity & Keys: base_entity.md
