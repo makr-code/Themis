@@ -1953,9 +1953,9 @@ Indexes (Atomar mit Transaction: Secondary/Graph/Vector)
 - [x] HTTP-API: POST /vector/search (bereits implementiert)
 - [x] Tests: 6 Unit-Tests (Init, Add, Search, Whitelist, Remove, Update)
 - [ ] GPU-Beschleunigung mit Faiss-GPU (optional, für später)
-- [ ] Persistierung des HNSW-Index auf SSD (save/load, für später)
+- [x] Persistierung des HNSW-Index auf SSD (save/load) ✅ DONE (28.10.2025) - Automatisch bei Server start/shutdown
 - [ ] chunking strategie mit überlappung und fester / variabler Länge?
-- [ ] cosinus Ähnlichkeit
+- [x] cosinus Ähnlichkeit ✅ DONE (28.10.2025) - InnerProductSpace mit L2-Normalisierung
 
 **Erfolgskriterien:** ANN-Suche mit Filtern in <100ms für Millionen Vektoren ✅ (Basis)
 
