@@ -30,10 +30,10 @@ Diese Lücken betreffen bereits implementierte Features, die in der Dokumentatio
 - ❌ Konfigurierbare HNSW-Parameter (M, efConstruction): NICHT implementiert (hardcoded)
 
 **Zu aktualisieren:**
-- [ ] `docs/development/todo.md` Zeile 574: `[ ] Cosine` → `[x] Cosine (inkl. Normalisierung)`
-- [ ] `docs/development/todo.md` Zeile 568: `[ ] HNSW-Persistenz` → `[x] HNSW-Persistenz (save/load, auto-save)`
-- [ ] `docs/development/implementation_status.md` Zeile 222-228: Status aktualisieren
-- [ ] `docs/vector_ops.md`: Sektion über Cosine-Similarity und Persistenz hinzufügen
+- [x] `docs/development/todo.md` Zeile 574: `[ ] Cosine` → `[x] Cosine (inkl. Normalisierung)` ✅ ERLEDIGT (17.11.2025)
+- [x] `docs/development/todo.md` Zeile 568: `[ ] HNSW-Persistenz` → `[x] HNSW-Persistenz (save/load, auto-save)` ✅ ERLEDIGT (17.11.2025)
+- [x] `docs/development/implementation_status.md` Zeile 222-228: Status aktualisieren ✅ ERLEDIGT (17.11.2025)
+- [x] `docs/vector_ops.md`: Sektion über Cosine-Similarity und Persistenz hinzufügen ✅ BEREITS VORHANDEN
 
 ### 1.2 Backup & Recovery ✅ IMPLEMENTIERT, aber nicht dokumentiert
 
@@ -45,9 +45,9 @@ Diese Lücken betreffen bereits implementierte Features, die in der Dokumentatio
 - ✅ Code: `src/storage/rocksdb_wrapper.cpp`, `src/server/http_server.cpp`
 
 **Zu aktualisieren:**
-- [ ] `docs/development/todo.md` Zeile 509: `[ ]` → `[x]` Backup/Restore Endpoints
-- [ ] `docs/deployment.md`: Sektion über Backup/Restore-Prozeduren hinzufügen
-- [ ] `docs/operations_runbook.md`: Backup/Restore-Runbook erstellen
+- [x] `docs/development/todo.md` Zeile 509: `[ ]` → `[x]` Backup/Restore Endpoints ✅ BEREITS KORREKT MARKIERT
+- [x] `docs/deployment.md`: Sektion über Backup/Restore-Prozeduren hinzufügen ✅ BEREITS VORHANDEN (Zeile 773+)
+- [x] `docs/operations_runbook.md`: Backup/Restore-Runbook erstellen ✅ BEREITS VORHANDEN (Zeile 112+)
 
 ### 1.3 Prometheus Metrics ✅ IMPLEMENTIERT mit kumulativen Buckets
 
@@ -59,9 +59,9 @@ Diese Lücken betreffen bereits implementierte Features, die in der Dokumentatio
 - ✅ Latency-Buckets: 100us, 500us, 1ms, 5ms, 10ms, 50ms, 100ms, 500ms, 1s, 5s, +Inf
 
 **Zu aktualisieren:**
-- [ ] `docs/development/todo.md`: Status auf `[x]` setzen für kumulative Buckets
-- [ ] `docs/operations_runbook.md`: Prometheus-Metriken-Sektion erweitern
-- [ ] Neue Datei `docs/observability/prometheus_metrics.md` erstellen mit vollständiger Metrik-Referenz
+- [x] `docs/development/todo.md`: Status auf `[x]` setzen für kumulative Buckets ✅ BEREITS IMPLEMENTIERT (29.10.2025)
+- [x] `docs/operations_runbook.md`: Prometheus-Metriken-Sektion erweitern ✅ BEREITS VORHANDEN
+- [x] Neue Datei `docs/observability/prometheus_metrics.md` erstellen mit vollständiger Metrik-Referenz ✅ ERSTELLT (17.11.2025)
 
 ### 1.4 AQL COLLECT/GROUP BY ✅ MVP IMPLEMENTIERT
 
@@ -74,8 +74,8 @@ Diese Lücken betreffen bereits implementierte Features, die in der Dokumentatio
 - ⚠️ Limitierungen: Nur 1 Gruppierungsfeld, keine Cursor-Paginierung
 
 **Zu aktualisieren:**
-- [ ] `docs/aql_syntax.md`: COLLECT/GROUP BY Beispiele erweitern
-- [ ] `docs/development/todo.md`: Status präzisieren (MVP abgeschlossen, Erweiterungen offen)
+- [ ] `docs/aql_syntax.md`: COLLECT/GROUP BY Beispiele erweitern (bereits vorhanden, könnte verbessert werden)
+- [x] `docs/development/todo.md`: Status präzisieren (MVP abgeschlossen, Erweiterungen offen) ✅ KORREKT MARKIERT
 - [ ] `docs/query_engine_aql.md`: Aggregations-Sektion hinzufügen
 
 ### 1.5 Time-Series Engine ✅ VOLLSTÄNDIG IMPLEMENTIERT
