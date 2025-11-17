@@ -20,6 +20,11 @@ enum class TokenType {
     COLLECT, AGGREGATE,
     TRUE, FALSE, NULL_LITERAL,
     
+    // Phase 2: Hybrid Query Keywords
+    SIMILARITY,      // SIMILARITY(vectorField, queryVector) for Vector+Geo
+    PROXIMITY,       // PROXIMITY(geoField, point) for Content+Geo
+    SHORTEST_PATH,   // SHORTEST_PATH TO target for Graph+Geo
+    
     // Operators
     EQ, NEQ, LT, LTE, GT, GTE,
     PLUS, MINUS, STAR, SLASH, MODULO,
@@ -214,6 +219,11 @@ private:
     if (lower == "type") return Token(TokenType::TYPE, value, line, col);
         if (lower == "collect") return Token(TokenType::COLLECT, value, line, col);
         if (lower == "aggregate") return Token(TokenType::AGGREGATE, value, line, col);
+        
+            // Phase 2: Hybrid Query Keywords
+            if (lower == "similarity") return Token(TokenType::SIMILARITY, value, line, col);
+            if (lower == "proximity") return Token(TokenType::PROXIMITY, value, line, col);
+            if (lower == "shortest_path") return Token(TokenType::SHORTEST_PATH, value, line, col);
         
         return Token(TokenType::IDENTIFIER, value, line, col);
     }
