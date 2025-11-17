@@ -58,7 +58,16 @@ Die Datei beginnt jetzt mit den offenen Tasks zur schnellen Nachverfolgung. Absc
 
 ### Verbleibende Offene Tasks
 
-- [ ] Inkrementelle Backups / WAL-Archiving — TODO
+- [x] **Inkrementelle Backups / WAL-Archiving** — ✅ ERLEDIGT (18.11.2025)
+  - Implementation: BackupManager mit RocksDB Checkpoint API
+  - Features: Full/Incremental Backups, WAL Archiving, Manifest Files, Integrity Verification
+  - API: createFullBackup(), createIncrementalBackup(), archiveWAL(), restoreFromBackup(), listBackups(), verifyBackup()
+  - Dateien: `include/storage/backup_manager.h`, `src/storage/backup_manager.cpp` (506 Zeilen)
+  - Tests: `tests/test_wal_backup_manager.cpp` (aktualisiert für RocksDBWrapper)
+  - Struktur: backup_dir/full_YYYYMMDD_HHMMSS/{checkpoint/, wal/, MANIFEST.json}
+  - Logging: THEMIS_INFO/ERROR Integration
+  - Next: Automation (Scheduled Tasks), Cloud Storage (S3/Azure/GCS), Retention Policies
+
 - [ ] eIDAS-konforme Signaturen / PKI Integration (Produktiv-Ready mit HSM) — TODO
 - [ ] LLM Interaction Store & Prompt Management (Prompt-Versioning, CoT Storage) — TODO
 - [ ] Multi-Modal Embeddings (Text+Image+Audio) — TODO
@@ -106,7 +115,8 @@ _Hinweis:_ Dieser Abschnitt wurde eingefügt, damit offene Aufgaben direkt am Do
 
 - Mittelfristig (Medium):
   - PKI / eIDAS-konforme Signaturen (3–5 Tage)
-  - Inkrementelle Backups / WAL-Archiving (2–3 Tage)
+  - Backup Automation & Cloud Storage (2-3 Tage)
+  - LLM Interaction Store & Prompt Management (3-4 Tage)
 
 - Vorgehen / Optionen:
   - Ich kann die Shortlist in einzelne Git-Tasks (Issues) aufsplitten, PR-Branches vorschlagen und `docs/development/todo.md` weiter mit Checkbox-Status synchronisieren.
