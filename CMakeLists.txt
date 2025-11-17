@@ -46,7 +46,8 @@ option(THEMIS_ENTERPRISE "Enable enterprise capabilities bundle" OFF)
 
 # Compiler warnings and optimizations
 if(MSVC)
-    add_compile_options(/W4 /utf-8 /wd4701 /bigobj)
+    add_compile_options(/W4 /utf-8 /wd4701 /bigobj /FS)
+    # /FS: Allow parallel PDB writes to avoid C1041 errors
     # Suppress unreachable code warnings from external headers (e.g., nlohmann/json)
     add_compile_options(/wd4702)
     if(THEMIS_STRICT_BUILD)
@@ -435,6 +436,9 @@ if(THEMIS_BUILD_TESTS)
         tests/geo/test_geo_ewkb.cpp
         tests/geo/test_spatial_index.cpp
         tests/geo/test_aql_st_functions.cpp
+        tests/geo/test_aql_st_queryengine.cpp
+        tests/test_aql_let_st.cpp
+        tests/test_hybrid_queries.cpp
         tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp

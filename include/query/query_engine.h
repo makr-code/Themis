@@ -20,11 +20,42 @@ struct RecursivePathQuery {
     std::optional<std::string> valid_from;
     std::optional<std::string> valid_to;
     // Optional: weitere Filter auf Knoten/Kanten
+    
+    // Spatial constraints for Graph+Geo hybrid queries
+    struct SpatialConstraint {
+        std::string vertex_geom_field = "location"; // field containing geometry in vertex
+        std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_Within(v.location, @region)
+    };
+    std::optional<SpatialConstraint> spatial_constraint;
+};
+
+// Vector + Geo Hybrid Query
+struct VectorGeoQuery {
+    std::string table;
+    std::string vector_field = "embedding";
+    std::string geom_field = "location";
+    std::vector<float> query_vector;
+    size_t k = 10; // top-k results
+    std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_Within(location, @region)
+};
+
+// Content + Geo Hybrid Query
+struct ContentGeoQuery {
+    std::string table;
+    std::string text_field;
+    std::string fulltext_query;
+    std::string geom_field = "location";
+    std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_DWithin(location, @center, 5000)
+    size_t limit = 100;
+    bool boost_by_distance = false; // if true, re-rank by spatial proximity
+    std::optional<std::vector<float>> center_point; // for distance boosting: [lon, lat]
 };
 
 class RocksDBWrapper;
 class SecondaryIndexManager;
 class BaseEntity;
+class VectorIndexManager;
+class SpatialIndexManager;
 
 // Forward declarations für AQL-Typen
 namespace query {
@@ -98,6 +129,8 @@ public:
     
     QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx);
     QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx, GraphIndexManager& graphIdx);
+    QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx, GraphIndexManager& graphIdx,
+                VectorIndexManager* vectorIdx, SpatialIndexManager* spatialIdx);
     // Rekursive Pfadabfrage (Multi-Hop Traversal)
     std::pair<Status, std::vector<std::vector<std::string>>> executeRecursivePathQuery(const RecursivePathQuery& q) const;
 
@@ -164,10 +197,39 @@ public:
         const std::shared_ptr<query::ReturnNode>& return_node
     ) const;
 
+    // ============================================================================
+    // Hybrid Multi-Model Queries
+    // ============================================================================
+    
+    // Vector + Geo: Spatial-filtered ANN search
+    // Returns top-k vectors that satisfy spatial constraint
+    struct VectorGeoResult {
+        std::string pk;
+        float vector_distance;
+        nlohmann::json entity;
+    };
+    std::pair<Status, std::vector<VectorGeoResult>> executeVectorGeoQuery(
+        const VectorGeoQuery& q
+    ) const;
+    
+    // Content + Geo: Fulltext + Spatial hybrid search
+    // Returns documents matching fulltext query within spatial constraint
+    struct ContentGeoResult {
+        std::string pk;
+        double bm25_score;
+        std::optional<double> geo_distance; // if boost_by_distance enabled
+        nlohmann::json entity;
+    };
+    std::pair<Status, std::vector<ContentGeoResult>> executeContentGeoQuery(
+        const ContentGeoQuery& q
+    ) const;
+
 private:
     RocksDBWrapper& db_;
     SecondaryIndexManager& secIdx_;
-    GraphIndexManager* graphIdx_ = nullptr; // Optional: für Graph-Queries
+    GraphIndexManager* graphIdx_ = nullptr;
+    VectorIndexManager* vectorIdx_ = nullptr;  // Optional for Vector+Geo optimization
+    SpatialIndexManager* spatialIdx_ = nullptr;  // Optional for Spatial pre-filtering // Optional: für Graph-Queries
     
     // Expression evaluation helpers (implemented in cpp)
     nlohmann::json evaluateExpression(
