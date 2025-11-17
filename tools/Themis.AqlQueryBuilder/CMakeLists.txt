@@ -11,8 +11,8 @@ cmake_minimum_required(VERSION 3.20)
 # Check if .NET SDK is available
 find_program(DOTNET_EXECUTABLE dotnet)
 
-if(DOTNET_EXECUTABLE)
-    message(STATUS "Found .NET SDK: ${DOTNET_EXECUTABLE}")
+if(DOTNET_EXECUTABLE AND WIN32)
+    message(STATUS "Found .NET SDK on Windows: ${DOTNET_EXECUTABLE}")
     
     # Add custom target for building the AQL Query Builder
     add_custom_target(Themis.AqlQueryBuilder ALL
@@ -51,6 +51,8 @@ if(DOTNET_EXECUTABLE)
         OPTIONAL
     )
     
+elseif(NOT WIN32)
+    message(STATUS "Themis.AqlQueryBuilder is a Windows-only WPF application. Skipping on ${CMAKE_SYSTEM_NAME}.")
 else()
     message(WARNING "Themis.AqlQueryBuilder requires .NET SDK 8.0 or later. Skipping .NET tools build.")
     message(WARNING "Install .NET SDK from: https://dotnet.microsoft.com/download")
@@ -58,7 +60,7 @@ endif()
 
 # Add documentation
 install(
-    FILES README.md
+    FILES README.md STATUS.md
     DESTINATION share/doc/themis/tools/AqlQueryBuilder
     OPTIONAL
 )

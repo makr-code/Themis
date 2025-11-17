@@ -4,6 +4,7 @@
 # CMake build system. The actual building is done by the .NET SDK (dotnet build).
 
 cmake_minimum_required(VERSION 3.20)
+project(ThemisAdminTools LANGUAGES NONE)
 
 # Check if .NET SDK is available
 find_program(DOTNET_EXECUTABLE dotnet)
