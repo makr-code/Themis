@@ -5,6 +5,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 
 namespace themis {
 namespace query {
@@ -928,6 +929,264 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
         }
         
         return hasZ ? nlohmann::json(zmax) : nlohmann::json(nullptr);
+    }
+
+    // ST_GeomFromText(wkt_string) - Parse WKT (Well-Known Text) to geometry
+    // Returns: GeoJSON object
+    // Supports: POINT, LINESTRING, POLYGON (simplified WKT parser)
+    if (funcName == "ST_GeomFromText") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_GeomFromText expects 1 argument: ST_GeomFromText(wkt_string)");
+        }
+        
+        auto wktArg = evaluateExpression(args[0], currentDoc);
+        
+        if (!wktArg.is_string()) {
+            throw std::runtime_error("ST_GeomFromText: Argument must be WKT string");
+        }
+        
+        std::string wkt = wktArg.get<std::string>();
+        
+        // Remove whitespace and convert to uppercase for parsing
+        auto trim = [](std::string s) {
+            s.erase(0, s.find_first_not_of(" \t\n\r"));
+            s.erase(s.find_last_not_of(" \t\n\r") + 1);
+            return s;
+        };
+        
+        wkt = trim(wkt);
+        std::transform(wkt.begin(), wkt.end(), wkt.begin(), ::toupper);
+        
+        nlohmann::json geojson;
+        
+        // Parse POINT
+        if (wkt.find("POINT") == 0) {
+            size_t start = wkt.find('(');
+            size_t end = wkt.find(')');
+            if (start == std::string::npos || end == std::string::npos) {
+                throw std::runtime_error("ST_GeomFromText: Invalid WKT POINT syntax");
+            }
+            
+            std::string coords = wkt.substr(start + 1, end - start - 1);
+            std::istringstream iss(coords);
+            double x, y, z;
+            
+            if (!(iss >> x >> y)) {
+                throw std::runtime_error("ST_GeomFromText: Invalid POINT coordinates");
+            }
+            
+            geojson["type"] = "Point";
+            if (iss >> z) {
+                geojson["coordinates"] = {x, y, z};
+            } else {
+                geojson["coordinates"] = {x, y};
+            }
+            
+            return geojson;
+        }
+        
+        // Parse LINESTRING
+        if (wkt.find("LINESTRING") == 0) {
+            size_t start = wkt.find('(');
+            size_t end = wkt.find(')');
+            if (start == std::string::npos || end == std::string::npos) {
+                throw std::runtime_error("ST_GeomFromText: Invalid WKT LINESTRING syntax");
+            }
+            
+            std::string coordsStr = wkt.substr(start + 1, end - start - 1);
+            std::replace(coordsStr.begin(), coordsStr.end(), ',', ' ');
+            std::istringstream iss(coordsStr);
+            
+            nlohmann::json coords = nlohmann::json::array();
+            double x, y, z;
+            
+            while (iss >> x >> y) {
+                if (iss >> z) {
+                    coords.push_back({x, y, z});
+                    // Try to skip comma or continue
+                    if (iss.peek() == ',') iss.ignore();
+                } else {
+                    coords.push_back({x, y});
+                }
+            }
+            
+            geojson["type"] = "LineString";
+            geojson["coordinates"] = coords;
+            
+            return geojson;
+        }
+        
+        throw std::runtime_error("ST_GeomFromText: Unsupported WKT type (only POINT, LINESTRING supported)");
+    }
+
+    // ST_AsText(geom) - Convert geometry to WKT (Well-Known Text)
+    // Returns: WKT string representation
+    if (funcName == "ST_AsText") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_AsText expects 1 argument");
+        }
+        
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        if (!geom.is_object() || !geom.contains("type") || !geom.contains("coordinates")) {
+            throw std::runtime_error("ST_AsText: Invalid geometry object");
+        }
+        
+        std::string type = geom["type"];
+        const auto& coords = geom["coordinates"];
+        
+        std::ostringstream wkt;
+        
+        if (type == "Point") {
+            if (!coords.is_array() || coords.size() < 2) {
+                throw std::runtime_error("ST_AsText: Invalid Point coordinates");
+            }
+            
+            wkt << "POINT(";
+            wkt << coords[0].get<double>() << " " << coords[1].get<double>();
+            if (coords.size() >= 3) {
+                wkt << " " << coords[2].get<double>();
+            }
+            wkt << ")";
+        }
+        else if (type == "LineString") {
+            if (!coords.is_array() || coords.empty()) {
+                throw std::runtime_error("ST_AsText: Invalid LineString coordinates");
+            }
+            
+            wkt << "LINESTRING(";
+            for (size_t i = 0; i < coords.size(); ++i) {
+                if (i > 0) wkt << ",";
+                const auto& pt = coords[i];
+                if (pt.is_array() && pt.size() >= 2) {
+                    wkt << pt[0].get<double>() << " " << pt[1].get<double>();
+                    if (pt.size() >= 3) {
+                        wkt << " " << pt[2].get<double>();
+                    }
+                }
+            }
+            wkt << ")";
+        }
+        else if (type == "Polygon") {
+            if (!coords.is_array() || coords.empty()) {
+                throw std::runtime_error("ST_AsText: Invalid Polygon coordinates");
+            }
+            
+            wkt << "POLYGON(";
+            for (size_t ringIdx = 0; ringIdx < coords.size(); ++ringIdx) {
+                if (ringIdx > 0) wkt << ",";
+                wkt << "(";
+                const auto& ring = coords[ringIdx];
+                if (ring.is_array()) {
+                    for (size_t i = 0; i < ring.size(); ++i) {
+                        if (i > 0) wkt << ",";
+                        const auto& pt = ring[i];
+                        if (pt.is_array() && pt.size() >= 2) {
+                            wkt << pt[0].get<double>() << " " << pt[1].get<double>();
+                            if (pt.size() >= 3) {
+                                wkt << " " << pt[2].get<double>();
+                            }
+                        }
+                    }
+                }
+                wkt << ")";
+            }
+            wkt << ")";
+        }
+        else {
+            throw std::runtime_error("ST_AsText: Unsupported geometry type: " + type);
+        }
+        
+        return wkt.str();
+    }
+
+    // ST_3DDistance(g1, g2) - 3D Euclidean distance between geometries
+    // Returns: Distance in 3D space
+    if (funcName == "ST_3DDistance") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_3DDistance expects 2 arguments: ST_3DDistance(geom1, geom2)");
+        }
+        
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        
+        // Extract 3D Point coordinates
+        auto extractPoint3D = [](const nlohmann::json& geojson) -> std::tuple<double, double, double> {
+            if (geojson.is_object() && geojson.contains("type") && geojson["type"] == "Point") {
+                if (geojson.contains("coordinates") && geojson["coordinates"].is_array()) {
+                    const auto& coords = geojson["coordinates"];
+                    if (coords.size() >= 2) {
+                        double x = coords[0].get<double>();
+                        double y = coords[1].get<double>();
+                        double z = coords.size() >= 3 ? coords[2].get<double>() : 0.0;
+                        return {x, y, z};
+                    }
+                }
+            }
+            throw std::runtime_error("ST_3DDistance: Expected Point geometry");
+        };
+        
+        auto [x1, y1, z1] = extractPoint3D(g1);
+        auto [x2, y2, z2] = extractPoint3D(g2);
+        
+        // 3D Euclidean distance
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double dz = z2 - z1;
+        double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        
+        return distance;
+    }
+
+    // ST_Force2D(geom) - Remove Z coordinates from geometry
+    // Returns: 2D geometry (GeoJSON without Z)
+    if (funcName == "ST_Force2D") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_Force2D expects 1 argument");
+        }
+        
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        if (!geom.is_object() || !geom.contains("type") || !geom.contains("coordinates")) {
+            return geom;  // Return as-is if not valid geometry
+        }
+        
+        nlohmann::json result = geom;
+        std::string type = geom["type"];
+        
+        // Helper to strip Z from coordinate array
+        auto strip2D = [](const nlohmann::json& coord) -> nlohmann::json {
+            if (coord.is_array() && coord.size() >= 2) {
+                return nlohmann::json::array({coord[0], coord[1]});
+            }
+            return coord;
+        };
+        
+        if (type == "Point") {
+            result["coordinates"] = strip2D(geom["coordinates"]);
+        }
+        else if (type == "LineString" || type == "MultiPoint") {
+            nlohmann::json newCoords = nlohmann::json::array();
+            for (const auto& pt : geom["coordinates"]) {
+                newCoords.push_back(strip2D(pt));
+            }
+            result["coordinates"] = newCoords;
+        }
+        else if (type == "Polygon" || type == "MultiLineString") {
+            nlohmann::json newRings = nlohmann::json::array();
+            for (const auto& ring : geom["coordinates"]) {
+                nlohmann::json newRing = nlohmann::json::array();
+                if (ring.is_array()) {
+                    for (const auto& pt : ring) {
+                        newRing.push_back(strip2D(pt));
+                    }
+                }
+                newRings.push_back(newRing);
+            }
+            result["coordinates"] = newRings;
+        }
+        
+        return result;
     }
 
     throw std::runtime_error("Unknown function: " + funcName);
