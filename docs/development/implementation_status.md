@@ -217,21 +217,21 @@
   - VectorSearch_RequiresVectorField
   - VectorSearch_RejectsInvalidK
 
-#### ✅ Cosine-Distanz **FALSCH MARKIERT IN TODO.MD**
-- **Status:** ✅ **IMPLEMENTIERT** (trotz `[ ]` in todo.md)
+#### ✅ Cosine-Distanz ✅ KORRIGIERT (17.11.2025)
+- **Status:** ✅ **IMPLEMENTIERT**
 - **Code:** `src/index/vector_index.cpp` Zeile 33-42 (`cosineOneMinus`)
 - **Implementierung:**
   - L2-Normalisierung für Vektoren
   - hnswlib::InnerProductSpace (Zeile 77)
   - Metriken: L2 oder COSINE (Zeile 55, 124, 163, 198)
 - **HTTP-Server:** Zeilen 2271, 2330 (`vector_index_->getMetric() == Metric::L2 ? "L2" : "COSINE"`)
-- **todo.md Status:** Zeile 574 als `[ ]` - **FALSCH, sollte `[x]` sein**
+- **todo.md Status:** ✅ KORRIGIERT - Zeile 1958 jetzt als `[x]` markiert
 
 #### ❌ Dot-Product
 - **Status:** ❌ Nicht separat implementiert
 - **todo.md Status:** `[ ]` (Zeile 574) - **KORREKT**
 
-#### ✅ HNSW-Persistenz
+#### ✅ HNSW-Persistenz ✅ KORRIGIERT (17.11.2025)
 - **Status:** ✅ Vollständig implementiert
 - **Code:** `src/index/vector_index.cpp` (save/load via hnswlib serialize)
 - **Features:**
@@ -240,7 +240,7 @@
   - Format: index.bin, labels.txt, meta.txt
   - Konfigurierbar: `vector_index.save_path`, `vector_index.auto_save`
 - **Integration:** main_server.cpp übergibt save_path, HttpServer-Destruktor ruft shutdown()
-- **todo.md Status:** `[ ]` (Zeile 568) - **FALSCH, sollte `[x]` sein**
+- **todo.md Status:** ✅ KORRIGIERT - Zeile 1956 jetzt als `[x]` markiert
 
 #### ❌ Konfigurierbare HNSW-Parameter
 - **Status:** ❌ Nicht implementiert (hardcoded M, efConstruction)
@@ -289,8 +289,8 @@
 - **Tests:** ✅ 4/4 PASS (`test_metrics_api.cpp`), inklusive Kumulative-Bucket-Validierung
 - **todo.md Status:** `[x]` Prometheus-Metriken - **AKTUALISIERUNGSBEDARF für kumulative Buckets**
 
-#### ✅ Backup/Restore **FALSCH MARKIERT IN TODO.MD**
-- **Status:** ✅ **IMPLEMENTIERT** (trotz `[ ]` in todo.md Zeile 509)
+#### ✅ Backup/Restore ✅ KORRIGIERT (17.11.2025)
+- **Status:** ✅ **IMPLEMENTIERT**
 - **Code:**
   - `include/storage/rocksdb_wrapper.h` Zeile 200-208
   - `src/storage/rocksdb_wrapper.cpp` (createCheckpoint, restoreFromCheckpoint)
@@ -299,7 +299,8 @@
   - POST /admin/backup
   - POST /admin/restore
 - **Tests:** Funktional (verwendet in smoke tests)
-- **todo.md Status:** Zeile 509 als `[ ]` - **FALSCH, sollte `[x]` sein**
+- **todo.md Status:** ✅ KORRIGIERT - Zeile 1653-1655 bereits als `[x]` markiert
+- **Dokumentations-Bedarf:** ⚠️ Deployment-Guide und Operations-Runbook erweitern
 
 #### ❌ Prometheus-Histogramme (kumulative Buckets)
 - **Status:** ❌ Nicht konform
