@@ -2,6 +2,15 @@
 
 **Status:** v1 Complete (BM25 HTTP + Hybrid Fusion) – v2 Planning
 
+<<<<<<< Updated upstream
+=======
+> Verification – 16. November 2025
+> - Kurze Überprüfung gegen den Quellcode:
+>   - Gefunden/implementiert: BM25 + FULLTEXT AQL Integration, Hybrid Text+Vector Fusion, Stemming/Analyzer, VectorIndex (HNSW optional), SemanticCache, HKDFCache, TSStore + Gorilla Codec, ContentManager ZSTD Wrapper.
+>   - Fehlend / nur dokumentiert: CDC/Changefeed HTTP Endpoints (GET /changefeed, SSE), FieldEncryption batch API (`encryptEntityBatch`) und PKI/eIDAS Signaturen (Design vorhanden, produktive Implementierung fehlt).
+>   - Empfehlung: Nächster Implementierungsschritt: CDC/Changefeed (MVP) — siehe `docs/development/todo.md` für Details.
+
+>>>>>>> Stashed changes
 ## Implemented Features (v1)
 
 ### ✅ BM25 Fulltext Search (Commit 94af141)
