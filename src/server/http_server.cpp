@@ -1476,6 +1476,107 @@ http::response<http::string_body> HttpServer::handleMetrics(const http::request<
         out << "# HELP themis_content_blob_compression_ratio Histogram of compression ratios (original_size / compressed_size) per upload\n";
         out << "# TYPE themis_content_blob_compression_ratio histogram\n";
 
+        // Encryption metrics
+        out << "# HELP themis_encryption_operations_total Total number of encryption operations\n";
+        out << "# TYPE themis_encryption_operations_total counter\n";
+        out << "# HELP themis_decryption_operations_total Total number of decryption operations\n";
+        out << "# TYPE themis_decryption_operations_total counter\n";
+        out << "# HELP themis_reencryption_operations_total Total number of successful lazy re-encryptions\n";
+        out << "# TYPE themis_reencryption_operations_total counter\n";
+        out << "# HELP themis_reencryption_skipped_total Number of re-encryption checks that found data already using latest key\n";
+        out << "# TYPE themis_reencryption_skipped_total counter\n";
+        out << "# HELP themis_encryption_errors_total Total number of encryption failures\n";
+        out << "# TYPE themis_encryption_errors_total counter\n";
+        out << "# HELP themis_decryption_errors_total Total number of decryption failures\n";
+        out << "# TYPE themis_decryption_errors_total counter\n";
+        out << "# HELP themis_reencryption_errors_total Total number of lazy re-encryption failures\n";
+        out << "# TYPE themis_reencryption_errors_total counter\n";
+        out << "# HELP themis_encryption_bytes_total Total bytes encrypted\n";
+        out << "# TYPE themis_encryption_bytes_total counter\n";
+        out << "# HELP themis_decryption_bytes_total Total bytes decrypted\n";
+        out << "# TYPE themis_decryption_bytes_total counter\n";
+        out << "# HELP themis_encryption_duration_seconds Encryption operation latency histogram\n";
+        out << "# TYPE themis_encryption_duration_seconds histogram\n";
+        out << "# HELP themis_decryption_duration_seconds Decryption operation latency histogram\n";
+        out << "# TYPE themis_decryption_duration_seconds histogram\n";
+
+        // Encryption metrics (if field_encryption_ available)
+        if (field_encryption_) {
+            const auto& em = field_encryption_->getMetrics();
+            
+            // Operation counters
+            out << "themis_encryption_operations_total " << em.encrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_decryption_operations_total " << em.decrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_reencryption_operations_total " << em.reencrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_reencryption_skipped_total " << em.reencrypt_skipped_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Error counters
+            out << "themis_encryption_errors_total " << em.encrypt_errors_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_decryption_errors_total " << em.decrypt_errors_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_reencryption_errors_total " << em.reencrypt_errors_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Bytes processed
+            out << "themis_encryption_bytes_total " << em.encrypt_bytes_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_decryption_bytes_total " << em.decrypt_bytes_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Encryption duration histogram (cumulative buckets)
+            uint64_t enc_le_100us = em.encrypt_duration_le_100us.load(std::memory_order_relaxed);
+            uint64_t enc_le_500us = em.encrypt_duration_le_500us.load(std::memory_order_relaxed);
+            uint64_t enc_le_1ms = em.encrypt_duration_le_1ms.load(std::memory_order_relaxed);
+            uint64_t enc_le_5ms = em.encrypt_duration_le_5ms.load(std::memory_order_relaxed);
+            uint64_t enc_le_10ms = em.encrypt_duration_le_10ms.load(std::memory_order_relaxed);
+            uint64_t enc_gt_10ms = em.encrypt_duration_gt_10ms.load(std::memory_order_relaxed);
+            
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0001\"} " << enc_le_100us << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0005\"} " << (enc_le_100us + enc_le_500us) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.001\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.005\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms + enc_le_5ms) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.01\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms + enc_le_5ms + enc_le_10ms) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"+Inf\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms + enc_le_5ms + enc_le_10ms + enc_gt_10ms) << "\n";
+            out << "themis_encryption_duration_seconds_count " << em.encrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Decryption duration histogram (cumulative buckets)
+            uint64_t dec_le_100us = em.decrypt_duration_le_100us.load(std::memory_order_relaxed);
+            uint64_t dec_le_500us = em.decrypt_duration_le_500us.load(std::memory_order_relaxed);
+            uint64_t dec_le_1ms = em.decrypt_duration_le_1ms.load(std::memory_order_relaxed);
+            uint64_t dec_le_5ms = em.decrypt_duration_le_5ms.load(std::memory_order_relaxed);
+            uint64_t dec_le_10ms = em.decrypt_duration_le_10ms.load(std::memory_order_relaxed);
+            uint64_t dec_gt_10ms = em.decrypt_duration_gt_10ms.load(std::memory_order_relaxed);
+            
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0001\"} " << dec_le_100us << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0005\"} " << (dec_le_100us + dec_le_500us) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.001\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.005\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms + dec_le_5ms) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.01\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms + dec_le_5ms + dec_le_10ms) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"+Inf\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms + dec_le_5ms + dec_le_10ms + dec_gt_10ms) << "\n";
+            out << "themis_decryption_duration_seconds_count " << em.decrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+        } else {
+            // No encryption configured: emit zeros
+            out << "themis_encryption_operations_total 0\n";
+            out << "themis_decryption_operations_total 0\n";
+            out << "themis_reencryption_operations_total 0\n";
+            out << "themis_reencryption_skipped_total 0\n";
+            out << "themis_encryption_errors_total 0\n";
+            out << "themis_decryption_errors_total 0\n";
+            out << "themis_reencryption_errors_total 0\n";
+            out << "themis_encryption_bytes_total 0\n";
+            out << "themis_decryption_bytes_total 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0001\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0005\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.001\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.005\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.01\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"+Inf\"} 0\n";
+            out << "themis_encryption_duration_seconds_count 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0001\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0005\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.001\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.005\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.01\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"+Inf\"} 0\n";
+            out << "themis_decryption_duration_seconds_count 0\n";
+        }
+
         // Content metrics (if available)
         if (content_manager_) {
             const auto& m = content_manager_->getMetrics();
