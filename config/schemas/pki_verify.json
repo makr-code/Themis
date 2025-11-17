@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["data", "signature"],
+  "properties": {
+    "data": { "type": "string" },
+    "signature": { "type": "string" },
+    "algorithm": { "type": "string" }
+  }
+}

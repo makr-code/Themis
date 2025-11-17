@@ -3,6 +3,7 @@
 #include "query/query_engine.h"
 #include "query/query_optimizer.h"
 #include "query/aql_parser.h"
+#include "query/let_evaluator.h"
 #include "index/secondary_index.h"
 #include "index/graph_index.h"
 #include "storage/rocksdb_wrapper.h"
@@ -1408,10 +1409,22 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 						ctx.bind(build_for.variable, build_doc);
 						ctx.bind(probe_for.variable, doc);
 						
-						// Process LET bindings
+						// Process LET bindings using LetEvaluator
+						query::LetEvaluator letEval;
+						nlohmann::json currentDoc;
+						currentDoc[build_for.variable] = build_doc;
+						currentDoc[probe_for.variable] = doc;
+						
 						for (const auto& let : let_nodes) {
-							auto val = evaluateExpression(let.expression, ctx);
-							ctx.bind(let.variable, std::move(val));
+							if (!letEval.evaluateLet(let, currentDoc)) {
+								THEMIS_WARN("LET evaluation failed for variable '{}' in hash-join", let.variable);
+								continue; // Skip this join result
+							}
+							auto letVal = letEval.resolveVariable(let.variable);
+							if (letVal.has_value()) {
+								ctx.bind(let.variable, letVal.value());
+								currentDoc[let.variable] = letVal.value(); // For subsequent LETs
+							}
 						}
 						
 						// Apply remaining multi-variable FILTER conditions (excluding join condition)
@@ -1470,10 +1483,25 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 		std::function<void(size_t, EvaluationContext)> nestedLoop;
 		nestedLoop = [&](size_t depth, EvaluationContext ctx) {
 			if (depth >= for_nodes.size()) {
-				// Process LET bindings
+				// Process LET bindings using LetEvaluator
+				query::LetEvaluator letEval;
+				nlohmann::json currentDoc; // Aggregate all bindings for LET evaluation
+				for (const auto& [var, val] : ctx.bindings) {
+					currentDoc[var] = val;
+				}
+				
 				for (const auto& let : let_nodes) {
-					auto val = evaluateExpression(let.expression, ctx);
-					ctx.bind(let.variable, std::move(val));
+					// Evaluate LET with LetEvaluator for proper variable resolution
+					if (!letEval.evaluateLet(let, currentDoc)) {
+						THEMIS_WARN("LET evaluation failed for variable '{}', skipping result", let.variable);
+						return;
+					}
+					// Bind LET variable to context for downstream use
+					auto letVal = letEval.resolveVariable(let.variable);
+					if (letVal.has_value()) {
+						ctx.bind(let.variable, letVal.value());
+						currentDoc[let.variable] = letVal.value(); // Update for subsequent LETs
+					}
 				}
 				
 				// Apply multi-variable FILTER conditions

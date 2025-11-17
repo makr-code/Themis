@@ -165,6 +165,9 @@ GraphIndexManager::Status GraphIndexManager::addEdge(const BaseEntity& edge, Roc
 		return Status::Error(std::string("addEdge: encryption failed: ") + e.what());
 	}
 
+	// Extract graphId from edge (optional field)
+	std::string graphId = edge.getFieldAsString("_graph").value_or("");
+
 	// Edge speichern (Primärspeicher)
 	batch.put(KeySchema::makeGraphEdgeKey(eid), stored.serialize());
 	// Adjazenz-Indizes
@@ -173,7 +176,7 @@ GraphIndexManager::Status GraphIndexManager::addEdge(const BaseEntity& edge, Roc
 
 	// Update in-memory topology if loaded
 	if (topologyLoaded_) {
-		addEdgeToTopology_(eid, from, to);
+		addEdgeToTopology_(eid, from, to, graphId);
 	}
 
 	return Status::OK();
@@ -187,6 +190,7 @@ GraphIndexManager::Status GraphIndexManager::deleteEdge(std::string_view edgeId,
 	BaseEntity e = BaseEntity::deserialize(std::string(edgeId), *blob);
 	auto fromOpt = e.getFieldAsString("_from");
 	auto toOpt = e.getFieldAsString("_to");
+	std::string graphId = e.getFieldAsString("_graph").value_or("");
 	batch.del(edgeKey);
 	if (fromOpt && toOpt) {
 		batch.del(KeySchema::makeGraphOutdexKey(*fromOpt, std::string(edgeId)));
@@ -194,7 +198,7 @@ GraphIndexManager::Status GraphIndexManager::deleteEdge(std::string_view edgeId,
 
 		// Update in-memory topology if loaded
 		if (topologyLoaded_) {
-			removeEdgeFromTopology_(std::string(edgeId), *fromOpt, *toOpt);
+			removeEdgeFromTopology_(std::string(edgeId), *fromOpt, *toOpt, graphId);
 		}
 
 		return Status::OK();
@@ -510,13 +514,13 @@ GraphIndexManager::Status GraphIndexManager::rebuildTopology() {
 	return Status::OK();
 }
 
-void GraphIndexManager::addEdgeToTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk) {
+void GraphIndexManager::addEdgeToTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk, const std::string& graphId) {
 	std::lock_guard<std::mutex> lock(topology_mutex_);
-	outEdges_[fromPk].push_back({edgeId, toPk});
-	inEdges_[toPk].push_back({edgeId, fromPk});
+	outEdges_[fromPk].push_back({edgeId, toPk, graphId});
+	inEdges_[toPk].push_back({edgeId, fromPk, graphId});
 }
 
-void GraphIndexManager::removeEdgeFromTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk) {
+void GraphIndexManager::removeEdgeFromTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk, const std::string& graphId) {
 	std::lock_guard<std::mutex> lock(topology_mutex_);
 
 	// Remove from outEdges_
@@ -1103,6 +1107,9 @@ GraphIndexManager::Status GraphIndexManager::addEdge(const BaseEntity& edge, Roc
 		return Status::Error(std::string("addEdge(mvcc): encryption failed: ") + e.what());
 	}
 
+	// Extract graphId from edge (optional field)
+	std::string graphId = edge.getFieldAsString("_graph").value_or("");
+
 	// Edge speichern (Primärspeicher)
 	txn.put(KeySchema::makeGraphEdgeKey(eid), stored.serialize());
 	
@@ -1112,7 +1119,7 @@ GraphIndexManager::Status GraphIndexManager::addEdge(const BaseEntity& edge, Roc
 
 	// Update in-memory topology if loaded
 	if (topologyLoaded_) {
-		addEdgeToTopology_(eid, from, to);
+		addEdgeToTopology_(eid, from, to, graphId);
 	}
 
 	return Status::OK();
@@ -1131,6 +1138,7 @@ GraphIndexManager::Status GraphIndexManager::deleteEdge(std::string_view edgeId,
 	BaseEntity e = BaseEntity::deserialize(std::string(edgeId), *blob);
 	auto fromOpt = e.getFieldAsString("_from");
 	auto toOpt = e.getFieldAsString("_to");
+	std::string graphId = e.getFieldAsString("_graph").value_or("");
 	
 	txn.del(edgeKey);
 	
@@ -1140,7 +1148,7 @@ GraphIndexManager::Status GraphIndexManager::deleteEdge(std::string_view edgeId,
 
 		// Update in-memory topology if loaded
 		if (topologyLoaded_) {
-			removeEdgeFromTopology_(std::string(edgeId), *fromOpt, *toOpt);
+			removeEdgeFromTopology_(std::string(edgeId), *fromOpt, *toOpt, graphId);
 		}
 
 		return Status::OK();

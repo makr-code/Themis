@@ -346,7 +346,9 @@ bool AQLTranslator::extractPredicates(
                 break;
                 
             case BinaryOperator::Neq:
-                error = "NEQ operator not yet supported";
+                // NEQ should be handled in convertToDNF, not here
+                // If we reach here, it's a programming error
+                error = "Internal error: NEQ should be converted to (< OR >) in convertToDNF";
                 return false;
                 
             case BinaryOperator::Lt:
@@ -494,6 +496,138 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
         return {};
     }
     
+    // Handle NOT operator using De Morgan's Laws
+    // NOT (A AND B) = (NOT A) OR (NOT B)
+    // NOT (A OR B) = (NOT A) AND (NOT B)
+    if (expr->getType() == ASTNodeType::UnaryOp) {
+        auto unaryOp = std::static_pointer_cast<UnaryOpExpr>(expr);
+        
+        if (unaryOp->op == UnaryOperator::Not) {
+            auto operand = unaryOp->operand;
+            
+            // NOT of binary operator - apply De Morgan's Laws
+            if (operand->getType() == ASTNodeType::BinaryOp) {
+                auto binOp = std::static_pointer_cast<BinaryOpExpr>(operand);
+                
+                // NOT (A OR B) = (NOT A) AND (NOT B)
+                if (binOp->op == BinaryOperator::Or) {
+                    auto notLeft = std::make_shared<UnaryOpExpr>();
+                    notLeft->op = UnaryOperator::Not;
+                    notLeft->operand = binOp->left;
+                    
+                    auto notRight = std::make_shared<UnaryOpExpr>();
+                    notRight->op = UnaryOperator::Not;
+                    notRight->operand = binOp->right;
+                    
+                    auto andExpr = std::make_shared<BinaryOpExpr>();
+                    andExpr->op = BinaryOperator::And;
+                    andExpr->left = notLeft;
+                    andExpr->right = notRight;
+                    
+                    return convertToDNF(andExpr, table, error);
+                }
+                
+                // NOT (A AND B) = (NOT A) OR (NOT B)
+                if (binOp->op == BinaryOperator::And) {
+                    auto notLeft = std::make_shared<UnaryOpExpr>();
+                    notLeft->op = UnaryOperator::Not;
+                    notLeft->operand = binOp->left;
+                    
+                    auto notRight = std::make_shared<UnaryOpExpr>();
+                    notRight->op = UnaryOperator::Not;
+                    notRight->operand = binOp->right;
+                    
+                    auto orExpr = std::make_shared<BinaryOpExpr>();
+                    orExpr->op = BinaryOperator::Or;
+                    orExpr->left = notLeft;
+                    orExpr->right = notRight;
+                    
+                    return convertToDNF(orExpr, table, error);
+                }
+                
+                // NOT (A == B) becomes (A != B)
+                if (binOp->op == BinaryOperator::Eq) {
+                    // NEQ is converted to: (A < B) OR (A > B)
+                    // This allows index usage via DisjunctiveQuery
+                    auto ltExpr = std::make_shared<BinaryOpExpr>();
+                    ltExpr->op = BinaryOperator::Lt;
+                    ltExpr->left = binOp->left;
+                    ltExpr->right = binOp->right;
+                    
+                    auto gtExpr = std::make_shared<BinaryOpExpr>();
+                    gtExpr->op = BinaryOperator::Gt;
+                    gtExpr->left = binOp->left;
+                    gtExpr->right = binOp->right;
+                    
+                    auto orExpr = std::make_shared<BinaryOpExpr>();
+                    orExpr->op = BinaryOperator::Or;
+                    orExpr->left = ltExpr;
+                    orExpr->right = gtExpr;
+                    
+                    return convertToDNF(orExpr, table, error);
+                }
+                
+                // NOT (A != B) becomes (A == B)
+                if (binOp->op == BinaryOperator::Neq) {
+                    auto eqExpr = std::make_shared<BinaryOpExpr>();
+                    eqExpr->op = BinaryOperator::Eq;
+                    eqExpr->left = binOp->left;
+                    eqExpr->right = binOp->right;
+                    return convertToDNF(eqExpr, table, error);
+                }
+                
+                // NOT (A < B) becomes (A >= B)
+                if (binOp->op == BinaryOperator::Lt) {
+                    auto gteExpr = std::make_shared<BinaryOpExpr>();
+                    gteExpr->op = BinaryOperator::Gte;
+                    gteExpr->left = binOp->left;
+                    gteExpr->right = binOp->right;
+                    return convertToDNF(gteExpr, table, error);
+                }
+                
+                // NOT (A > B) becomes (A <= B)
+                if (binOp->op == BinaryOperator::Gt) {
+                    auto lteExpr = std::make_shared<BinaryOpExpr>();
+                    lteExpr->op = BinaryOperator::Lte;
+                    lteExpr->left = binOp->left;
+                    lteExpr->right = binOp->right;
+                    return convertToDNF(lteExpr, table, error);
+                }
+                
+                // NOT (A <= B) becomes (A > B)
+                if (binOp->op == BinaryOperator::Lte) {
+                    auto gtExpr = std::make_shared<BinaryOpExpr>();
+                    gtExpr->op = BinaryOperator::Gt;
+                    gtExpr->left = binOp->left;
+                    gtExpr->right = binOp->right;
+                    return convertToDNF(gtExpr, table, error);
+                }
+                
+                // NOT (A >= B) becomes (A < B)
+                if (binOp->op == BinaryOperator::Gte) {
+                    auto ltExpr = std::make_shared<BinaryOpExpr>();
+                    ltExpr->op = BinaryOperator::Lt;
+                    ltExpr->left = binOp->left;
+                    ltExpr->right = binOp->right;
+                    return convertToDNF(ltExpr, table, error);
+                }
+            }
+            
+            // NOT of NOT - double negation elimination
+            if (operand->getType() == ASTNodeType::UnaryOp) {
+                auto innerUnary = std::static_pointer_cast<UnaryOpExpr>(operand);
+                if (innerUnary->op == UnaryOperator::Not) {
+                    return convertToDNF(innerUnary->operand, table, error);
+                }
+            }
+            
+            // NOT of literal/variable - can't convert to index predicate
+            // This would require full scan with negation filter
+            error = "NOT of non-comparison expression not yet supported for index queries";
+            return {};
+        }
+    }
+    
     // Base case: Single predicate (leaf node)
     if (expr->getType() == ASTNodeType::BinaryOp) {
         auto binOp = std::static_pointer_cast<BinaryOpExpr>(expr);
@@ -556,7 +690,28 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
             return result;
         }
         
-        // Leaf comparison (==, <, >, etc.)
+        // Leaf comparison (==, <, >, !=, etc.)
+        // Special handling for NEQ: convert to (< value) OR (> value)
+        if (binOp->op == BinaryOperator::Neq) {
+            // A != B is converted to: (A < B) OR (A > B)
+            auto ltExpr = std::make_shared<BinaryOpExpr>();
+            ltExpr->op = BinaryOperator::Lt;
+            ltExpr->left = binOp->left;
+            ltExpr->right = binOp->right;
+            
+            auto gtExpr = std::make_shared<BinaryOpExpr>();
+            gtExpr->op = BinaryOperator::Gt;
+            gtExpr->left = binOp->left;
+            gtExpr->right = binOp->right;
+            
+            auto orExpr = std::make_shared<BinaryOpExpr>();
+            orExpr->op = BinaryOperator::Or;
+            orExpr->left = ltExpr;
+            orExpr->right = gtExpr;
+            
+            return convertToDNF(orExpr, table, error);
+        }
+        
         // Create single-predicate conjunctive query
         ConjunctiveQuery conj;
         conj.table = table;
