@@ -226,9 +226,9 @@ spatial:documents:45678901 → ["content/doc1", "content/doc2"]      # Content
 
 ---
 
-#### 0.3 AQL ST_* Functions (Priorität: KRITISCH) ✅ **5/17 IMPLEMENTIERT**
+#### 0.3 AQL ST_* Functions (Priorität: KRITISCH) ✅ **9/17 IMPLEMENTIERT**
 
-**Status:** Core-Funktionen implementiert in `feature/aql-st-functions` (commit `ead621b`).
+**Status:** Erweiterte Implementierung in `feature/aql-st-functions` (commits `ead621b`, `80d3d4a`).
 
 **Universelle Geo-Funktionen für alle Modelle:**
 ```sql
@@ -265,56 +265,90 @@ FOR reading IN sensor_data
 
 **17 ST_* Functions - Implementierungsstatus:**
 
-| Kategorie | Funktion | Status | Datei |
-|-----------|----------|--------|-------|
-| **Constructors** | ST_Point(x, y) | ✅ Implementiert | let_evaluator.cpp:422 |
-| | ST_GeomFromGeoJSON(json) | ⏳ TODO | - |
+| Kategorie | Funktion | Status | Commit/Zeile |
+|-----------|----------|--------|--------------|
+| **Constructors** | ST_Point(x, y) | ✅ Implementiert | ead621b:422 |
+| | ST_GeomFromGeoJSON(json) | ✅ Implementiert | 80d3d4a:656 |
 | | ST_GeomFromText(wkt) | ⏳ TODO | - |
-| **Converters** | ST_AsGeoJSON(geom) | ✅ Implementiert | let_evaluator.cpp:433 |
+| **Converters** | ST_AsGeoJSON(geom) | ✅ Implementiert | ead621b:433 |
 | | ST_AsText(geom) | ⏳ TODO | - |
-| **Predicates** | ST_Intersects(g1, g2) | ✅ Implementiert | let_evaluator.cpp:535 |
-| | ST_Within(g1, g2) | ✅ Implementiert | let_evaluator.cpp:566 |
-| | ST_Contains(g1, g2) | ⏳ TODO | - |
-| **Distance** | ST_Distance(g1, g2) | ✅ Implementiert | let_evaluator.cpp:501 |
-| | ST_DWithin(g1, g2, dist) | ⏳ TODO | - |
+| **Predicates** | ST_Intersects(g1, g2) | ✅ Implementiert | ead621b:535 |
+| | ST_Within(g1, g2) | ✅ Implementiert | ead621b:566 |
+| | ST_Contains(g1, g2) | ✅ Implementiert | 80d3d4a:686 |
+| **Distance** | ST_Distance(g1, g2) | ✅ Implementiert | ead621b:501 |
+| | ST_DWithin(g1, g2, dist) | ✅ Implementiert | 80d3d4a:755 |
 | | ST_3DDistance(g1, g2) | ⏳ TODO | - |
-| **3D Support** | ST_HasZ(geom) | ⏳ TODO | - |
-| | ST_Z(point) | ⏳ TODO | - |
-| | ST_ZMin(geom) | ⏳ TODO | - |
-| | ST_ZMax(geom) | ⏳ TODO | - |
+| **3D Support** | ST_HasZ(geom) | ✅ Implementiert | 80d3d4a:791 |
+| | ST_Z(point) | ✅ Implementiert | 80d3d4a:820 |
+| | ST_ZMin(geom) | ✅ Implementiert | 80d3d4a:839 |
+| | ST_ZMax(geom) | ✅ Implementiert | 80d3d4a:880 |
 | | ST_Force2D(geom) | ⏳ TODO | - |
 | | ST_ZBetween(geom, zmin, zmax) | ⏳ TODO | - |
 
-**Implementierte Funktionen (5/17):**
+**Progress:** 9/17 (53%) ✅ | Remaining: 8/17 (47%) ⏳
+
+**Implementierte Funktionen (9/17 - 53%):**
 
 ```cpp
-// src/query/let_evaluator.cpp (commit ead621b)
+// src/query/let_evaluator.cpp (commits ead621b, 80d3d4a)
 
 // 1. ST_Point(x, y) - Create Point geometry
 LET point = ST_Point(13.405, 52.52)
 → {"type": "Point", "coordinates": [13.405, 52.52]}
 
-// 2. ST_AsGeoJSON(geom) - Convert EWKB to GeoJSON
+// 2. ST_GeomFromGeoJSON(json) - Parse GeoJSON string NEW ✨
+LET geom = ST_GeomFromGeoJSON('{"type":"Point","coordinates":[13.405,52.52]}')
+→ {"type": "Point", "coordinates": [13.405, 52.52]}
+
+// 3. ST_AsGeoJSON(geom) - Convert EWKB to GeoJSON
 LET json = ST_AsGeoJSON(doc.geometry)
 → "{\"type\":\"Point\",\"coordinates\":[13.405,52.52]}"
 
-// 3. ST_Distance(g1, g2) - Euclidean distance
+// 4. ST_Distance(g1, g2) - Euclidean distance
 LET dist = ST_Distance(
     ST_Point(13.405, 52.52),  // Berlin
     ST_Point(2.35, 48.86)      // Paris
 )
 → 14.87 (degrees, ~1654 km)
 
-// 4. ST_Intersects(g1, g2) - Spatial intersection (Point-Point)
+// 5. ST_DWithin(g1, g2, distance) - Proximity check NEW ✨
+LET nearby = ST_DWithin(
+    doc.location,
+    ST_Point(13.405, 52.52),
+    0.1  // within 0.1 degrees (~11km)
+)
+→ true/false
+
+// 6. ST_Intersects(g1, g2) - Spatial intersection (Point-Point)
 LET intersects = ST_Intersects(point1, point2)
 → true/false (epsilon-based comparison)
 
-// 5. ST_Within(g1, g2) - Point within Polygon/MBR
+// 7. ST_Within(g1, g2) - Point within Polygon/MBR
 LET within = ST_Within(
     ST_Point(13.405, 52.52),
     polygonBoundary
 )
 → true/false (MBR-based test)
+
+// 8. ST_Contains(g1, g2) - Containment test NEW ✨
+LET contains = ST_Contains(boundary, point)
+→ true/false (MBR-based, inverse of ST_Within)
+
+// 9. ST_HasZ(geom) - Check for 3D coordinates NEW ✨
+LET is3d = ST_HasZ(ST_Point(13.405, 52.52, 35.0))
+→ true
+
+// 10. ST_Z(point) - Extract Z coordinate NEW ✨
+LET elevation = ST_Z(ST_Point(13.405, 52.52, 35.0))
+→ 35.0
+
+// 11. ST_ZMin(geom) - Minimum Z value NEW ✨
+LET min_elevation = ST_ZMin(terrain_polygon)
+→ 12.5 (or null if 2D)
+
+// 12. ST_ZMax(geom) - Maximum Z value NEW ✨
+LET max_elevation = ST_ZMax(terrain_polygon)
+→ 156.8 (or null if 2D)
 ```
 
 **Implementierte Dateien:**
@@ -322,14 +356,14 @@ LET within = ST_Within(
 - ✅ `include/utils/geo/ewkb.h` - MBR, Coordinate, GeometryInfo
 - ✅ Windows-Kompatibilität: M_PI definition, GeoSidecar include
 
-**Remaining Work (12/17 functions):**
-- ⏳ ST_GeomFromGeoJSON, ST_GeomFromText (Constructors)
-- ⏳ ST_AsText (WKT converter)
-- ⏳ ST_Contains (predicate)
-- ⏳ ST_DWithin, ST_3DDistance (distance functions)
-- ⏳ 6x 3D support functions (ST_HasZ, ST_Z, ST_ZMin/Max, ST_Force2D, ST_ZBetween)
+**Remaining Work (8/17 functions - 47%):**
+- ⏳ ST_GeomFromText(wkt) - WKT parser (constructor)
+- ⏳ ST_AsText(geom) - WKT converter
+- ⏳ ST_3DDistance(g1, g2) - 3D Euclidean distance
+- ⏳ ST_Force2D(geom) - Remove Z coordinates
+- ⏳ ST_ZBetween(geom, zmin, zmax) - Z-range filter
 
-**Geschätzt:** 0.5 Tage (verbleibend für 12 Funktionen)
+**Geschätzt:** 0.3 Tage (verbleibend für 5 Funktionen - WKT, 3D, Z-manipulation)
 FOR doc IN documents
   FILTER FULLTEXT(doc.text, "hotel")
     AND ST_DWithin(doc.location, @myLocation, 2000)
