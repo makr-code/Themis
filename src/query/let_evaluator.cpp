@@ -652,6 +652,284 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
         return within;
     }
 
+    // ST_GeomFromGeoJSON(json_string) - Parse GeoJSON string to geometry object
+    // Returns: GeoJSON object (same as ST_Point returns)
+    if (funcName == "ST_GeomFromGeoJSON") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_GeomFromGeoJSON expects 1 argument: ST_GeomFromGeoJSON(json_string)");
+        }
+        
+        auto jsonArg = evaluateExpression(args[0], currentDoc);
+        
+        // If already a GeoJSON object, return as-is
+        if (jsonArg.is_object() && jsonArg.contains("type") && jsonArg.contains("coordinates")) {
+            return jsonArg;
+        }
+        
+        // If string, parse it
+        if (jsonArg.is_string()) {
+            std::string jsonStr = jsonArg.get<std::string>();
+            try {
+                nlohmann::json geojson = nlohmann::json::parse(jsonStr);
+                
+                // Validate GeoJSON structure
+                if (!geojson.is_object() || !geojson.contains("type") || !geojson.contains("coordinates")) {
+                    throw std::runtime_error("Invalid GeoJSON: must have 'type' and 'coordinates'");
+                }
+                
+                return geojson;
+            } catch (const std::exception& e) {
+                throw std::runtime_error("ST_GeomFromGeoJSON: Failed to parse JSON: " + std::string(e.what()));
+            }
+        }
+        
+        throw std::runtime_error("ST_GeomFromGeoJSON: Argument must be GeoJSON object or JSON string");
+    }
+
+    // ST_Contains(g1, g2) - Test if g1 completely contains g2
+    // Returns: Boolean true if g1 contains g2 (inverse of ST_Within)
+    if (funcName == "ST_Contains") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Contains expects 2 arguments: ST_Contains(geom1, geom2)");
+        }
+        
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        
+        // Simplified: MBR containment check
+        // g1 contains g2 if g2's MBR is completely inside g1's MBR
+        
+        auto extractMBR = [](const nlohmann::json& geojson) -> utils::geo::MBR {
+            if (geojson.is_object() && geojson.contains("type")) {
+                std::string type = geojson["type"];
+                if (type == "Point" && geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
+                    double x = geojson["coordinates"][0].get<double>();
+                    double y = geojson["coordinates"][1].get<double>();
+                    return utils::geo::MBR{x, y, x, y};
+                }
+                if (type == "Polygon" && geojson.contains("coordinates")) {
+                    const auto& rings = geojson["coordinates"];
+                    if (rings.is_array() && !rings.empty()) {
+                        const auto& exteriorRing = rings[0];
+                        if (exteriorRing.is_array() && !exteriorRing.empty()) {
+                            double minx = std::numeric_limits<double>::max();
+                            double miny = std::numeric_limits<double>::max();
+                            double maxx = std::numeric_limits<double>::lowest();
+                            double maxy = std::numeric_limits<double>::lowest();
+                            
+                            for (const auto& coord : exteriorRing) {
+                                if (coord.is_array() && coord.size() >= 2) {
+                                    double x = coord[0].get<double>();
+                                    double y = coord[1].get<double>();
+                                    minx = std::min(minx, x);
+                                    miny = std::min(miny, y);
+                                    maxx = std::max(maxx, x);
+                                    maxy = std::max(maxy, y);
+                                }
+                            }
+                            
+                            return utils::geo::MBR{minx, miny, maxx, maxy};
+                        }
+                    }
+                }
+            }
+            throw std::runtime_error("ST_Contains: Could not extract MBR from geometry");
+        };
+        
+        auto mbr1 = extractMBR(g1);
+        auto mbr2 = extractMBR(g2);
+        
+        // MBR containment: g1 contains g2 if g2's bounds are within g1's bounds
+        bool contains = (mbr2.minx >= mbr1.minx && mbr2.maxx <= mbr1.maxx &&
+                        mbr2.miny >= mbr1.miny && mbr2.maxy <= mbr1.maxy);
+        
+        return contains;
+    }
+
+    // ST_DWithin(g1, g2, distance) - Check if geometries are within distance
+    // Returns: Boolean true if distance between g1 and g2 <= distance
+    if (funcName == "ST_DWithin") {
+        if (args.size() != 3) {
+            throw std::runtime_error("ST_DWithin expects 3 arguments: ST_DWithin(geom1, geom2, distance)");
+        }
+        
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        auto distArg = evaluateExpression(args[2], currentDoc);
+        
+        double maxDistance = toNumber(distArg);
+        
+        // Extract Point coordinates (simplified for Point-Point distance)
+        auto extractPoint = [](const nlohmann::json& geojson) -> std::pair<double, double> {
+            if (geojson.is_object() && geojson.contains("type") && geojson["type"] == "Point") {
+                if (geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
+                    double x = geojson["coordinates"][0].get<double>();
+                    double y = geojson["coordinates"][1].get<double>();
+                    return {x, y};
+                }
+            }
+            throw std::runtime_error("ST_DWithin: Expected Point geometry");
+        };
+        
+        auto [x1, y1] = extractPoint(g1);
+        auto [x2, y2] = extractPoint(g2);
+        
+        // Euclidean distance
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double distance = std::sqrt(dx * dx + dy * dy);
+        
+        return distance <= maxDistance;
+    }
+
+    // ST_HasZ(geom) - Check if geometry has Z coordinate
+    // Returns: Boolean true if geometry is 3D
+    if (funcName == "ST_HasZ") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_HasZ expects 1 argument");
+        }
+        
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        if (geom.is_object() && geom.contains("type") && geom.contains("coordinates")) {
+            const auto& coords = geom["coordinates"];
+            std::string type = geom["type"];
+            
+            if (type == "Point" && coords.is_array() && coords.size() >= 3) {
+                return true;
+            }
+            if ((type == "LineString" || type == "MultiPoint") && coords.is_array() && !coords.empty()) {
+                if (coords[0].is_array() && coords[0].size() >= 3) {
+                    return true;
+                }
+            }
+            if (type == "Polygon" && coords.is_array() && !coords.empty()) {
+                const auto& ring = coords[0];
+                if (ring.is_array() && !ring.empty() && ring[0].is_array() && ring[0].size() >= 3) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    // ST_Z(point) - Extract Z coordinate from Point
+    // Returns: Z value or null if no Z
+    if (funcName == "ST_Z") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_Z expects 1 argument");
+        }
+        
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        if (geom.is_object() && geom.contains("type") && geom["type"] == "Point") {
+            if (geom.contains("coordinates") && geom["coordinates"].is_array() && geom["coordinates"].size() >= 3) {
+                return geom["coordinates"][2];
+            }
+        }
+        
+        return nlohmann::json(nullptr);
+    }
+
+    // ST_ZMin(geom) - Extract minimum Z value from geometry
+    // Returns: Minimum Z or null if 2D
+    if (funcName == "ST_ZMin") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_ZMin expects 1 argument");
+        }
+        
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        if (!geom.is_object() || !geom.contains("type") || !geom.contains("coordinates")) {
+            return nlohmann::json(nullptr);
+        }
+        
+        std::string type = geom["type"];
+        const auto& coords = geom["coordinates"];
+        double zmin = std::numeric_limits<double>::max();
+        bool hasZ = false;
+        
+        if (type == "Point" && coords.is_array() && coords.size() >= 3) {
+            return coords[2];
+        }
+        
+        if ((type == "LineString" || type == "MultiPoint") && coords.is_array()) {
+            for (const auto& pt : coords) {
+                if (pt.is_array() && pt.size() >= 3) {
+                    double z = pt[2].get<double>();
+                    zmin = std::min(zmin, z);
+                    hasZ = true;
+                }
+            }
+        }
+        
+        if (type == "Polygon" && coords.is_array()) {
+            for (const auto& ring : coords) {
+                if (ring.is_array()) {
+                    for (const auto& pt : ring) {
+                        if (pt.is_array() && pt.size() >= 3) {
+                            double z = pt[2].get<double>();
+                            zmin = std::min(zmin, z);
+                            hasZ = true;
+                        }
+                    }
+                }
+            }
+        }
+        
+        return hasZ ? nlohmann::json(zmin) : nlohmann::json(nullptr);
+    }
+
+    // ST_ZMax(geom) - Extract maximum Z value from geometry
+    // Returns: Maximum Z or null if 2D
+    if (funcName == "ST_ZMax") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_ZMax expects 1 argument");
+        }
+        
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        if (!geom.is_object() || !geom.contains("type") || !geom.contains("coordinates")) {
+            return nlohmann::json(nullptr);
+        }
+        
+        std::string type = geom["type"];
+        const auto& coords = geom["coordinates"];
+        double zmax = std::numeric_limits<double>::lowest();
+        bool hasZ = false;
+        
+        if (type == "Point" && coords.is_array() && coords.size() >= 3) {
+            return coords[2];
+        }
+        
+        if ((type == "LineString" || type == "MultiPoint") && coords.is_array()) {
+            for (const auto& pt : coords) {
+                if (pt.is_array() && pt.size() >= 3) {
+                    double z = pt[2].get<double>();
+                    zmax = std::max(zmax, z);
+                    hasZ = true;
+                }
+            }
+        }
+        
+        if (type == "Polygon" && coords.is_array()) {
+            for (const auto& ring : coords) {
+                if (ring.is_array()) {
+                    for (const auto& pt : ring) {
+                        if (pt.is_array() && pt.size() >= 3) {
+                            double z = pt[2].get<double>();
+                            zmax = std::max(zmax, z);
+                            hasZ = true;
+                        }
+                    }
+                }
+            }
+        }
+        
+        return hasZ ? nlohmann::json(zmax) : nlohmann::json(nullptr);
+    }
+
     throw std::runtime_error("Unknown function: " + funcName);
 }
 
