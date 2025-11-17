@@ -886,11 +886,19 @@ Gating: Muss abgeschlossen sein, bevor Vector/Filesystem starten (Phasen 3/4)
 - ✅ LIMIT offset,count inkl. korrektes Offset-Slicing im HTTP-AQL-Handler; Translator setzt `orderBy.limit = offset+count`.
 - ✅ Cursor-Pagination (HTTP-Ebene): Base64-Token `{pk, collection, version}`; `next_cursor` und `has_more` implementiert; siehe `docs/cursor_pagination.md`.
 
+#### Recently Completed (17.11.2025)
+- ✅ LET/Variable Bindings: LetEvaluator mit Arithmetik, Strings, Math-Functions, 25+ Tests
+- ✅ OR/NOT Operators: De Morgan's Laws, NEQ als (< OR >), Index-Merge, 15+ Tests
+- ✅ Hash-Join: Equi-Join Detection, Build/Probe Phase, Automatic Strategy Selection
+
 #### In Progress/Planned
-- Joins (doppeltes FOR + FILTER), Subqueries/LET, Aggregation (COLLECT)
+- Subqueries in FILTER/RETURN (nested SELECT)
+- Window Functions (ROW_NUMBER, RANK, LAG, LEAD, PARTITION BY)
+- Common Table Expressions (WITH clause)
+- Sort-Merge Join optimization
 - Pagination/Cursor (Engine): Start-after-Integration im Query-Pfad (RangeIndex `seek` ab Cursor-PK), saubere Interaktion mit ORDER BY + LIMIT (fetch `limit+1`), Entfernung des `allow_full_scan`-Workarounds.
 - EXPLAIN/PROFILE auf AQL-Ebene (Plan, Kosten, Timing)
-- Postgres/Arango Parität (1.2b/1.2e): OR/NOT-Optimierung, GROUP BY, Typ-/NULL-Semantik
+- Advanced Aggregations (PERCENTILE, STDDEV, VARIANCE)
 
 Prereqs: Phase 0 (Core)
 Gating: Baseline AQL muss stabil sein, bevor Graph/Vector darauf aufbauen

@@ -71,40 +71,49 @@
 
 ---
 
-### Phase 1: Relational & AQL ⚠️ 65%
+### Phase 1: Relational & AQL ✅ 85%
 
-#### ✅ Implementiert (65%)
+#### ✅ Implementiert (85%)
 
-**AQL Parser & Translator:**
+**AQL Parser & Engine:**
 - FOR/FILTER/SORT/LIMIT/RETURN ✅
-- Graph Traversal (OUTBOUND/INBOUND/ANY) ✅
-- COLLECT/GROUP BY MVP (In-Memory) ✅
+- LET/Variable Bindings ✅ (17.11.2025)
+- Multi-FOR Joins (Nested-Loop + Hash-Join) ✅
+- Graph Traversal (OUTBOUND/INBOUND) ✅
+- COLLECT/GROUP BY (MVP) ✅
 - Cursor Pagination ✅
-- Tests: 43/43 Unit-Tests, 9/9 HTTP-Tests PASS
+
+**Advanced Query Features:**
+- OR/NOT Operators mit De Morgan's Laws ✅ (17.11.2025)
+- NEQ (!=) als Disjunctive Range ✅ (17.11.2025)
+- Index-Merge für OR queries ✅
+- Hash-Join für Equi-Joins ✅
+- LET Evaluator (Arithmetik, Strings, Functions) ✅
 
 **Query Optimizer:**
-- Predicate Ordering ✅
+- Predicate Push-Down ✅
 - Index Selection ✅
-- Selektivitätsschätzung ✅
-- Tests: Query Optimizer Tests PASS
+- Parallel Scans ✅
+- Join Strategy Selection (Hash vs Nested-Loop) ✅
+- Tests: 43/43 Parser, 9/9 HTTP, 25+ LET, 15+ OR/NOT Tests PASS
 
 **Secondary Indexes:**
-- Single-Column ✅
-- Composite ✅
+- Equality ✅
 - Range ✅
+- Composite ✅
 - Sparse ✅
 - TTL ✅
 - Fulltext ✅
 - Geo (R-Tree, Geohash) ✅
 
-#### ❌ Nicht implementiert (35%)
+#### ❌ Nicht implementiert (15%)
 
-**AQL Features:**
-- LET/Subqueries ❌
-- OR/NOT mit Index-Merge ❌ (Basis vorhanden, nicht vollständig)
-- Advanced Joins (Hash-Join, Sort-Merge-Join) ❌
-- Window Functions ❌
-- Common Table Expressions (CTEs) ❌
+**Advanced AQL Features:**
+- Window Functions (ROW_NUMBER, RANK, LAG, LEAD) ❌
+- Common Table Expressions (WITH clause) ❌
+- Subqueries in FILTER/RETURN ❌
+- Sort-Merge Join ❌
+- Advanced Aggregations (PERCENTILE, STDDEV) ❌
 
 ---
 
