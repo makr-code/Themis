@@ -255,7 +255,7 @@ Invoke-WebRequest -Uri http://127.0.0.1:8001/ingest/file `
 - `DELETE /entities/{key}` - Entity löschen
 - `POST /entities/batch` - Batch-Operationen
 
-**Dokumentation:** [apis/entity_api.md](entity_api.md) - Geplant
+**Dokumentation:** [apis/rest_api.md](apis/rest_api.md) - Geplant
 
 ---
 
@@ -275,8 +275,8 @@ POST /query
 ```
 
 **Dokumentation:** 
-- [aql_syntax.md](../aql_syntax.md)
-- [query_engine_aql.md](../query_engine_aql.md)
+- [aql_syntax.md](aql_syntax.md)
+- [query_engine_aql.md](query_engine_aql.md)
 
 ---
 
@@ -291,7 +291,7 @@ POST /query
 - `GET /vector/index/config` - Konfiguration abrufen
 - `PUT /vector/index/config` - Konfiguration ändern
 
-**Dokumentation:** [vector_ops.md](../vector_ops.md)
+**Dokumentation:** [vector_ops.md](vector_ops.md)
 
 ---
 
@@ -303,7 +303,7 @@ POST /query
 - `POST /ts/aggregate` - Aggregationen berechnen
 - `GET /ts/config` - Konfiguration abrufen
 
-**Dokumentation:** [time_series.md](../time_series.md)
+**Dokumentation:** [time_series.md](time_series.md)
 
 ---
 
@@ -316,7 +316,7 @@ POST /query
 - `GET /api/audit/export/csv` - Audit-Logs als CSV
 
 **Dokumentation:** 
-- [deployment.md](../deployment.md#backup--recovery)
+- [deployment.md](deployment.md#backup--recovery)
 - [tools/README.md](../tools/README.md) - Audit API
 
 ---
@@ -381,7 +381,7 @@ POST /query
 }
 ```
 
-**Dokumentation:** [deployment.md](../deployment.md)
+**Dokumentation:** [deployment.md](deployment.md)
 
 ---
 
@@ -450,14 +450,14 @@ Siehe Hauptprojekt-Lizenz
 
 | Komponente | Dokumentation | Status |
 |-----------|---------------|--------|
-| Core Database | [deployment.md](../deployment.md) | ✅ Produktiv |
+| Core Database | [deployment.md](deployment.md) | ✅ Produktiv |
 | Python SDK | [clients/python/README.md](../clients/python/README.md) | ✅ MVP |
 | Admin Tools | [tools/README.md](../tools/README.md) | ✅ MVP |
 | Covina Adapter | [adapters/covina_fastapi_ingestion/README.md](../adapters/covina_fastapi_ingestion/README.md) | ✅ Produktiv |
-| Vector Search | [vector_ops.md](../vector_ops.md) | ✅ Produktiv |
-| Time-Series | [time_series.md](../time_series.md) | ✅ Produktiv |
+| Vector Search | [vector_ops.md](vector_ops.md) | ✅ Produktiv |
+| Time-Series | [time_series.md](time_series.md) | ✅ Produktiv |
 | Prometheus Metrics | [observability/prometheus_metrics.md](observability/prometheus_metrics.md) | ✅ Produktiv |
-| AQL Syntax | [aql_syntax.md](../aql_syntax.md) | ✅ Produktiv |
+| AQL Syntax | [aql_syntax.md](aql_syntax.md) | ✅ Produktiv |
 
 ---
 
