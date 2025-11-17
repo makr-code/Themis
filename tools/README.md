@@ -12,6 +12,17 @@ Gemeinsam genutzte Bibliothek mit:
 - **Modelle**: DTOs für Audit-Logs, Konfiguration, API-Antworten
 - **Utilities**: Wiederverwendbare Hilfsfunktionen
 
+### Themis.AqlQueryBuilder
+Visueller Query Builder/Editor für AQL (Advanced Query Language).
+
+**Features:**
+- Visuelle Konstruktion von AQL-Queries ohne Code-Schreiben
+- FOR, LET, FILTER, SORT, LIMIT, RETURN Klauseln
+- Echtzeit-Query-Vorschau
+- Query-Ausführung gegen Themis Server
+- Beispiel-Queries zum Lernen
+- MVVM-Architektur mit OOP Best Practices
+
 ### Themis.AuditLogViewer
 WPF-Anwendung zur Anzeige und Analyse von Audit-Logs.
 

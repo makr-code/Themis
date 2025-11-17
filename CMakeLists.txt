@@ -585,6 +585,12 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
 endif()
 
+# Admin Tools (.NET)
+option(THEMIS_BUILD_ADMIN_TOOLS "Build .NET admin tools (requires .NET SDK 8.0+)" OFF)
+if(THEMIS_BUILD_ADMIN_TOOLS)
+    add_subdirectory(tools)
+endif()
+
 # Installation
 install(TARGETS themis_server themis_core
     RUNTIME DESTINATION bin
