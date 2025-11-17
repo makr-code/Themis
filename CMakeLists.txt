@@ -201,6 +201,9 @@ set(THEMIS_CORE_SOURCES
     src/query/aql_parser.cpp
     src/query/aql_translator.cpp
     src/query/let_evaluator.cpp
+    src/query/window_evaluator.cpp
+    src/query/cte_subquery.cpp
+    src/query/statistical_aggregator.cpp
     src/query/semantic_cache.cpp
     
     src/server/http_server.cpp

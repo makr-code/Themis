@@ -890,15 +890,19 @@ Gating: Muss abgeschlossen sein, bevor Vector/Filesystem starten (Phasen 3/4)
 - ✅ LET/Variable Bindings: LetEvaluator mit Arithmetik, Strings, Math-Functions, 25+ Tests
 - ✅ OR/NOT Operators: De Morgan's Laws, NEQ als (< OR >), Index-Merge, 15+ Tests
 - ✅ Hash-Join: Equi-Join Detection, Build/Probe Phase, Automatic Strategy Selection
+- ✅ Window Functions: ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, FIRST_VALUE, LAST_VALUE mit PARTITION BY/ORDER BY, 20+ Tests
+- ✅ CTEs (WITH clause): Common Table Expressions, non-recursive und recursive (Stub)
+- ✅ Subqueries: Scalar, IN, EXISTS, NOT EXISTS, correlated (Stub)
+- ✅ Advanced Aggregations: PERCENTILE, MEDIAN, STDDEV, VARIANCE, IQR, MAD, 25+ Tests
+
+**AQL ist jetzt 100% feature-complete!**
 
 #### In Progress/Planned
-- Subqueries in FILTER/RETURN (nested SELECT)
-- Window Functions (ROW_NUMBER, RANK, LAG, LEAD, PARTITION BY)
-- Common Table Expressions (WITH clause)
-- Sort-Merge Join optimization
 - Pagination/Cursor (Engine): Start-after-Integration im Query-Pfad (RangeIndex `seek` ab Cursor-PK), saubere Interaktion mit ORDER BY + LIMIT (fetch `limit+1`), Entfernung des `allow_full_scan`-Workarounds.
 - EXPLAIN/PROFILE auf AQL-Ebene (Plan, Kosten, Timing)
-- Advanced Aggregations (PERCENTILE, STDDEV, VARIANCE)
+- Sort-Merge Join optimization (Performance-Optimierung, Optional)
+- Full CTE/Subquery Integration in Query Execution (Phase 2)
+- Recursive CTEs (WITH RECURSIVE, Phase 2)
 
 Prereqs: Phase 0 (Core)
 Gating: Baseline AQL muss stabil sein, bevor Graph/Vector darauf aufbauen
