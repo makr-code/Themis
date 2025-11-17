@@ -267,8 +267,88 @@ public:
         return key_provider_; 
     }
 
+    /**
+     * @brief Decrypt and optionally re-encrypt with current key version (lazy re-encryption)
+     * 
+     * This method implements lazy key rotation: if the blob was encrypted with an
+     * outdated key version, it will be re-encrypted with the current key version.
+     * 
+     * Process:
+     * 1. Decrypt blob with original key version
+     * 2. Check if blob.key_version < current_version
+     * 3. If outdated: re-encrypt with current key version
+     * 4. Return decrypted plaintext + optional updated blob
+     * 
+     * @param blob Encrypted blob (may be outdated)
+     * @param key_id Logical key identifier
+     * @param updated_blob [out] If re-encryption occurred, contains new blob
+     * @return Decrypted plaintext
+     * @throws DecryptionException if decryption fails
+     */
+    std::string decryptAndReEncrypt(const EncryptedBlob& blob,
+                                     const std::string& key_id,
+                                     std::optional<EncryptedBlob>& updated_blob);
+
+    /**
+     * @brief Check if a blob needs re-encryption (key version is outdated)
+     * 
+     * @param blob Encrypted blob to check
+     * @param key_id Logical key identifier
+     * @return true if blob.key_version < latest_version, false otherwise
+     */
+    bool needsReEncryption(const EncryptedBlob& blob, const std::string& key_id);
+
+    /**
+     * @brief Metrics for monitoring encryption operations
+     * 
+     * Thread-safe metrics exposed for Prometheus/monitoring.
+     */
+    struct Metrics {
+        // Operation counters
+        std::atomic<uint64_t> encrypt_operations_total{0};
+        std::atomic<uint64_t> decrypt_operations_total{0};
+        std::atomic<uint64_t> reencrypt_operations_total{0};
+        std::atomic<uint64_t> reencrypt_skipped_total{0};  // Already latest version
+        
+        // Error counters
+        std::atomic<uint64_t> encrypt_errors_total{0};
+        std::atomic<uint64_t> decrypt_errors_total{0};
+        std::atomic<uint64_t> reencrypt_errors_total{0};
+        
+        // Key version tracking (per key_id)
+        // Note: In production, use thread-safe map or registry pattern
+        std::atomic<uint64_t> key_rotation_events_total{0};
+        
+        // Performance metrics (duration buckets in microseconds)
+        std::atomic<uint64_t> encrypt_duration_le_100us{0};
+        std::atomic<uint64_t> encrypt_duration_le_500us{0};
+        std::atomic<uint64_t> encrypt_duration_le_1ms{0};
+        std::atomic<uint64_t> encrypt_duration_le_5ms{0};
+        std::atomic<uint64_t> encrypt_duration_le_10ms{0};
+        std::atomic<uint64_t> encrypt_duration_gt_10ms{0};
+        
+        std::atomic<uint64_t> decrypt_duration_le_100us{0};
+        std::atomic<uint64_t> decrypt_duration_le_500us{0};
+        std::atomic<uint64_t> decrypt_duration_le_1ms{0};
+        std::atomic<uint64_t> decrypt_duration_le_5ms{0};
+        std::atomic<uint64_t> decrypt_duration_le_10ms{0};
+        std::atomic<uint64_t> decrypt_duration_gt_10ms{0};
+        
+        // Bytes processed
+        std::atomic<uint64_t> encrypt_bytes_total{0};
+        std::atomic<uint64_t> decrypt_bytes_total{0};
+    };
+
+    /**
+     * @brief Get encryption metrics
+     * 
+     * @return Reference to metrics structure
+     */
+    const Metrics& getMetrics() const { return metrics_; }
+
 private:
     std::shared_ptr<KeyProvider> key_provider_;
+    mutable Metrics metrics_;  // Thread-safe atomic counters
     
     // Internal helpers
     std::vector<uint8_t> generateIV() const;

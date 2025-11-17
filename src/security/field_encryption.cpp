@@ -285,11 +285,42 @@ EncryptedBlob FieldEncryption::encrypt(const std::string& plaintext, const std::
 }
 
 EncryptedBlob FieldEncryption::encrypt(const std::vector<uint8_t>& plaintext, const std::string& key_id) {
-    // Get active key
-    auto key = key_provider_->getKey(key_id);
-    auto metadata = key_provider_->getKeyMetadata(key_id);
+    auto start_time = std::chrono::high_resolution_clock::now();
     
-    return encryptInternal(plaintext, key_id, metadata.version, key);
+    try {
+        // Get active key
+        auto key = key_provider_->getKey(key_id);
+        auto metadata = key_provider_->getKeyMetadata(key_id);
+        
+        auto result = encryptInternal(plaintext, key_id, metadata.version, key);
+        
+        // Update metrics
+        metrics_.encrypt_operations_total.fetch_add(1, std::memory_order_relaxed);
+        metrics_.encrypt_bytes_total.fetch_add(plaintext.size(), std::memory_order_relaxed);
+        
+        // Track duration
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        
+        if (duration_us <= 100) {
+            metrics_.encrypt_duration_le_100us.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 500) {
+            metrics_.encrypt_duration_le_500us.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 1000) {
+            metrics_.encrypt_duration_le_1ms.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 5000) {
+            metrics_.encrypt_duration_le_5ms.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 10000) {
+            metrics_.encrypt_duration_le_10ms.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            metrics_.encrypt_duration_gt_10ms.fetch_add(1, std::memory_order_relaxed);
+        }
+        
+        return result;
+    } catch (...) {
+        metrics_.encrypt_errors_total.fetch_add(1, std::memory_order_relaxed);
+        throw;
+    }
 }
 
 std::string FieldEncryption::decryptToString(const EncryptedBlob& blob) {
@@ -298,10 +329,41 @@ std::string FieldEncryption::decryptToString(const EncryptedBlob& blob) {
 }
 
 std::vector<uint8_t> FieldEncryption::decryptToBytes(const EncryptedBlob& blob) {
-    // Get specific key version
-    auto key = key_provider_->getKey(blob.key_id, blob.key_version);
+    auto start_time = std::chrono::high_resolution_clock::now();
     
-    return decryptInternal(blob, key);
+    try {
+        // Get specific key version
+        auto key = key_provider_->getKey(blob.key_id, blob.key_version);
+        
+        auto result = decryptInternal(blob, key);
+        
+        // Update metrics
+        metrics_.decrypt_operations_total.fetch_add(1, std::memory_order_relaxed);
+        metrics_.decrypt_bytes_total.fetch_add(result.size(), std::memory_order_relaxed);
+        
+        // Track duration
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        
+        if (duration_us <= 100) {
+            metrics_.decrypt_duration_le_100us.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 500) {
+            metrics_.decrypt_duration_le_500us.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 1000) {
+            metrics_.decrypt_duration_le_1ms.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 5000) {
+            metrics_.decrypt_duration_le_5ms.fetch_add(1, std::memory_order_relaxed);
+        } else if (duration_us <= 10000) {
+            metrics_.decrypt_duration_le_10ms.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            metrics_.decrypt_duration_gt_10ms.fetch_add(1, std::memory_order_relaxed);
+        }
+        
+        return result;
+    } catch (...) {
+        metrics_.decrypt_errors_total.fetch_add(1, std::memory_order_relaxed);
+        throw;
+    }
 }
 
 EncryptedBlob FieldEncryption::encryptWithKey(const std::string& plaintext,
@@ -473,6 +535,78 @@ std::vector<uint8_t> FieldEncryption::decryptInternal(const EncryptedBlob& blob,
     } catch (...) {
         EVP_CIPHER_CTX_free(ctx);
         throw;
+    }
+}
+
+// ===== Lazy Re-Encryption Implementation =====
+
+std::string FieldEncryption::decryptAndReEncrypt(const EncryptedBlob& blob,
+                                                  const std::string& key_id,
+                                                  std::optional<EncryptedBlob>& updated_blob) {
+    // 1. Decrypt with original key version
+    auto key_old = key_provider_->getKey(key_id, blob.key_version);
+    auto plaintext_bytes = decryptInternal(blob, key_old);
+    std::string plaintext(plaintext_bytes.begin(), plaintext_bytes.end());
+    
+    // 2. Check if re-encryption is needed
+    if (needsReEncryption(blob, key_id)) {
+        try {
+            // 3. Re-encrypt with current key version
+            auto new_blob = encrypt(plaintext, key_id);
+            updated_blob = new_blob;
+            
+            // Update metrics
+            metrics_.reencrypt_operations_total.fetch_add(1, std::memory_order_relaxed);
+            
+            THEMIS_INFO("Lazy re-encryption: key_id={}, old_version={}, new_version={}", 
+                       key_id, blob.key_version, new_blob.key_version);
+        } catch (const std::exception& e) {
+            // If re-encryption fails, still return decrypted data
+            // but log the failure for monitoring
+            metrics_.reencrypt_errors_total.fetch_add(1, std::memory_order_relaxed);
+            THEMIS_ERROR("Lazy re-encryption failed for key_id={}: {}", key_id, e.what());
+            updated_blob = std::nullopt;
+        }
+    } else {
+        // No re-encryption needed
+        metrics_.reencrypt_skipped_total.fetch_add(1, std::memory_order_relaxed);
+        updated_blob = std::nullopt;
+    }
+    
+    return plaintext;
+}
+
+bool FieldEncryption::needsReEncryption(const EncryptedBlob& blob, const std::string& key_id) {
+    try {
+        // Get current key version
+        auto current_key = key_provider_->getKey(key_id);
+        
+        // Check if there's a version mismatch
+        // Note: KeyProvider should track version numbers, but as a fallback
+        // we can also check if the key_id has a newer version available
+        
+        // Simple heuristic: if we can get a key without specifying version,
+        // compare the blob's version with what we assume is latest
+        
+        // For now, assume getKey without version returns latest
+        // We need a way to get the version number from the key itself
+        // This is a simplified implementation - in production, KeyProvider
+        // should expose a getCurrentVersion(key_id) method
+        
+        // Workaround: Try to get a key with version+1 and see if it exists
+        try {
+            auto next_key = key_provider_->getKey(key_id, blob.key_version + 1);
+            // If we can get version+1, then current blob is outdated
+            return true;
+        } catch (...) {
+            // Version+1 doesn't exist, so current version is latest
+            return false;
+        }
+        
+    } catch (const std::exception& e) {
+        THEMIS_WARN("needsReEncryption check failed for key_id={}: {}", key_id, e.what());
+        // On error, assume no re-encryption needed (safe default)
+        return false;
     }
 }
 

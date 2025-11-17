@@ -200,6 +200,10 @@ set(THEMIS_CORE_SOURCES
     src/query/query_optimizer.cpp
     src/query/aql_parser.cpp
     src/query/aql_translator.cpp
+    src/query/let_evaluator.cpp
+    src/query/window_evaluator.cpp
+    src/query/cte_subquery.cpp
+    src/query/statistical_aggregator.cpp
     src/query/semantic_cache.cpp
     
     src/server/http_server.cpp
@@ -237,6 +241,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/tracing.cpp
     src/utils/zstd_codec.cpp
     src/utils/pki_client.cpp
+    src/utils/input_validator.cpp
     src/utils/audit_logger.cpp
     src/utils/pii_detection_engine.cpp
     src/utils/regex_detection_engine.cpp
@@ -250,8 +255,16 @@ set(THEMIS_CORE_SOURCES
     src/utils/stopwords.cpp
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
+    
+    # Geo utilities
+    src/utils/geo/ewkb.cpp
+    
+    # Spatial index
+    src/index/spatial_index.cpp
     src/security/pki_key_provider.cpp
     src/security/cms_signing.cpp
+    src/security/secrets_manager.cpp
+    src/security/rbac.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
     # Geo scaffolding (headers + stubs; safe no-ops until used)
@@ -418,6 +431,10 @@ if(THEMIS_BUILD_TESTS)
     tests/test_stemming.cpp
         tests/test_stopwords.cpp
         tests/test_http_governance.cpp
+        
+        # Geo tests
+        tests/geo/test_geo_ewkb.cpp
+        tests/geo/test_spatial_index.cpp
         tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
@@ -470,9 +487,10 @@ if(THEMIS_BUILD_TESTS)
     tests/test_http_pii_manager_new.cpp
     tests/test_jwt_validator.cpp
     tests/test_jwt_integration.cpp
-    tests/test_jwt_rotation_unit.cpp
-    tests/test_pki_client_rest.cpp
+        tests/test_jwt_rotation_unit.cpp
+        tests/test_pki_client_rest.cpp
         tests/test_group_dek.cpp
+        tests/test_input_validator.cpp
     )
     
     target_link_libraries(themis_tests

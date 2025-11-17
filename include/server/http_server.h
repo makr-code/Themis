@@ -9,7 +9,9 @@
 #endif
 
 #include <boost/asio.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/beast.hpp>
+#include <boost/beast/ssl.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -32,11 +34,13 @@
 #include "server/pki_api_handler.h"
 #include "server/classification_api_handler.h"
 #include "server/reports_api_handler.h"
+#include "server/rate_limiter.h"
 #include "server/auth_middleware.h"
 #include "server/policy_engine.h"
 #include "server/ranger_adapter.h"
 #include "utils/pii_pseudonymizer.h"
 #include "security/encryption.h"
+#include "utils/input_validator.h"
 
 namespace themis {
 // Forward declarations
@@ -93,6 +97,15 @@ public:
         uint32_t sse_max_events_per_second = 0; // 0 = unlimited; server-side rate limit per connection
         // API rate limits
         uint32_t audit_rate_limit_per_minute = 100; // 0 = unlimited
+        
+        // TLS/SSL Configuration
+        bool enable_tls = false; // Enable HTTPS (TLS)
+        std::string tls_cert_path; // Server certificate path (PEM format)
+        std::string tls_key_path; // Private key path (PEM format)
+        std::string tls_ca_cert_path; // CA certificate for mTLS client verification (optional)
+        bool tls_require_client_cert = false; // Enforce mutual TLS (mTLS)
+        std::string tls_min_version = "TLSv1.3"; // Minimum TLS version (TLSv1.2 or TLSv1.3)
+        std::string tls_cipher_list; // OpenSSL cipher list (empty = secure defaults)
         
         Config() = default;
         Config(std::string h, uint16_t p, size_t threads = 0) 
@@ -155,6 +168,29 @@ private:
         void onWrite(bool close, beast::error_code ec, std::size_t bytes_transferred);
 
         tcp::socket socket_;
+        HttpServer* server_;
+        beast::flat_buffer buffer_;
+        http::request<http::string_body> request_;
+        http::response<http::string_body> response_;
+    };
+
+    // SSL Session class for handling TLS connections
+    class SslSession : public std::enable_shared_from_this<SslSession> {
+    public:
+        SslSession(tcp::socket socket, boost::asio::ssl::context& ssl_ctx, HttpServer* server);
+        void start();
+
+    private:
+        void doHandshake();
+        void onHandshake(beast::error_code ec);
+        void doRead();
+        void onRead(beast::error_code ec, std::size_t bytes_transferred);
+        void processRequest();
+        void doWrite();
+        void onWrite(bool close, beast::error_code ec, std::size_t bytes_transferred);
+        void doShutdown();
+
+        beast::ssl_stream<tcp::socket> stream_;
         HttpServer* server_;
         beast::flat_buffer buffer_;
         http::request<http::string_body> request_;
@@ -296,6 +332,17 @@ private:
     // PKI endpoints (sign/verify)
     http::response<http::string_body> handlePkiSign(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePkiVerify(const http::request<http::string_body>& req);
+    
+    // PKI HSM, TSA, eIDAS endpoints
+    http::response<http::string_body> handlePkiHsmSign(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiHsmKeys(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiTimestamp(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiTimestampVerify(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiEidasSign(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiEidasVerify(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiCertificates(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiCertificate(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiStatus(const http::request<http::string_body>& req);
 
     // Classification API endpoints (Skeleton)
     http::response<http::string_body> handleClassificationListRules(const http::request<http::string_body>& req);
@@ -441,10 +488,17 @@ private:
 
     // Authorization middleware
     std::unique_ptr<themis::AuthMiddleware> auth_;
+    
+    // Rate Limiter for DoS protection
+    std::unique_ptr<RateLimiter> rate_limiter_;
+
+    // Input validation & sanitization
+    std::unique_ptr<themis::utils::InputValidator> validator_;
 
     // Networking
     net::io_context ioc_;
     tcp::acceptor acceptor_;
+    std::unique_ptr<boost::asio::ssl::context> ssl_ctx_; // SSL context for TLS connections
     
     // Thread pool
     std::vector<std::thread> threads_;
@@ -477,6 +531,29 @@ private:
     
     // Helper to record latency
     void recordLatency(std::chrono::microseconds duration);
+    
+    // Extract client IP from request
+    std::string extractClientIP(const http::request<http::string_body>& req) const;
+    
+    // Check rate limit and return error response if exceeded
+    std::optional<http::response<http::string_body>> checkRateLimit(
+        const http::request<http::string_body>& req
+    );
+
+    // Preflight response for CORS (OPTIONS)
+    http::response<http::string_body> makePreflightResponse(
+        const http::request<http::string_body>& req
+    );
+
+    // CORS configuration (loaded from environment at startup)
+    bool cors_allow_all_{false};
+    bool cors_allow_credentials_{false};
+    std::vector<std::string> cors_allowed_origins_{}; // exact match list
+    std::string cors_allowed_methods_{"GET,POST,PUT,DELETE,OPTIONS"};
+    std::string cors_allowed_headers_{"Authorization,Content-Type,X-Requested-With"};
+
+    // Input validation: hard limit for request body
+    size_t max_body_bytes_{10 * 1024 * 1024}; // 10 MB default
 
     // Page Fetch (Cursor) Histogram in Millisekunden: 1,5,10,25,50,100,250,500,1000,5000,+Inf
     std::atomic<uint64_t> page_bucket_1ms_{0};

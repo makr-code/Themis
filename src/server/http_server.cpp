@@ -10,6 +10,11 @@
 #include <windows.h>
 #endif
 
+// OpenSSL headers for TLS/SSL support
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+
 // Windows macros undefine - MUST be before any includes
 #ifdef ERROR
 #undef ERROR
@@ -90,6 +95,7 @@ static inline void portable_gmtime_r_impl(const time_t* t, std::tm* out) {
 #include "query/aql_translator.h"
 
 #include "security/signing.h"
+#include "utils/input_validator.h"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -485,6 +491,168 @@ HttpServer::HttpServer(
             THEMIS_WARN("Failed to initialize Ranger client; integration disabled");
         }
     }
+    
+    // Initialize Rate Limiter for DoS protection
+    RateLimitConfig rate_config;
+    rate_config.bucket_capacity = 100;
+    rate_config.refill_rate = 100.0 / 60.0; // 100 req/min default
+    rate_config.per_ip_enabled = true;
+    rate_config.per_user_enabled = true;
+    
+    // Whitelist localhost for development
+    rate_config.whitelist_ips = {"127.0.0.1", "::1"};
+    
+    // Load custom limits from environment
+    if (auto limit_str = get_env("THEMIS_RATE_LIMIT_PER_MINUTE")) {
+        try {
+            uint32_t limit = std::stoul(*limit_str);
+            rate_config.bucket_capacity = limit;
+            rate_config.refill_rate = static_cast<double>(limit) / 60.0;
+            THEMIS_INFO("Rate limit set to {} req/min from environment", limit);
+        } catch (...) {
+            THEMIS_WARN("Invalid THEMIS_RATE_LIMIT_PER_MINUTE value, using default");
+        }
+    }
+    
+    rate_limiter_ = std::make_unique<RateLimiter>(rate_config);
+    THEMIS_INFO("Rate Limiter initialized: {} req/min", rate_config.refill_rate * 60.0);
+
+    // ----------------------------------------------------------------------------
+    // CORS configuration (from environment)
+    // ----------------------------------------------------------------------------
+    cors_allow_all_ = false;
+    cors_allow_credentials_ = false;
+    cors_allowed_origins_.clear();
+    cors_allowed_methods_ = "GET,POST,PUT,DELETE,OPTIONS";
+    cors_allowed_headers_ = "Authorization,Content-Type,X-Requested-With";
+
+    if (auto v = get_env("THEMIS_CORS_ALLOW_ALL")) {
+        cors_allow_all_ = (*v == "1" || *v == "true" || *v == "TRUE");
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOW_CREDENTIALS")) {
+        cors_allow_credentials_ = (*v == "1" || *v == "true" || *v == "TRUE");
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOWED_ORIGINS")) {
+        // Comma-separated exact origins, e.g. https://app.example.com,https://admin.example.com
+        std::istringstream iss(*v);
+        std::string origin;
+        while (std::getline(iss, origin, ',')) {
+            if (!origin.empty()) cors_allowed_origins_.push_back(origin);
+        }
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOWED_METHODS")) {
+        if (!v->empty()) cors_allowed_methods_ = *v;
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOWED_HEADERS")) {
+        if (!v->empty()) cors_allowed_headers_ = *v;
+    }
+    if (cors_allow_all_) {
+        THEMIS_INFO("CORS: allowing all origins (Access-Control-Allow-Origin: *)");
+    } else if (!cors_allowed_origins_.empty()) {
+        THEMIS_INFO("CORS: allowed origins configured ({} entries)", cors_allowed_origins_.size());
+    } else {
+        THEMIS_INFO("CORS: no origins allowed by default (set THEMIS_CORS_ALLOW_ALL=1 for dev)");
+    }
+
+    // Initialize Input Validator (schema dir from env or default config/schemas)
+    std::string schema_dir = "config/schemas";
+    if (auto v = get_env("THEMIS_SCHEMAS_DIR")) {
+        if (!v->empty()) schema_dir = *v;
+    }
+    validator_ = std::make_unique<themis::utils::InputValidator>(schema_dir);
+    THEMIS_INFO("InputValidator initialized with schema dir: {}", schema_dir);
+
+    // ----------------------------------------------------------------------------
+    // Input validation limits
+    // ----------------------------------------------------------------------------
+    if (auto v = get_env("THEMIS_MAX_BODY_BYTES")) {
+        try { max_body_bytes_ = static_cast<size_t>(std::stoull(*v)); }
+        catch (...) { THEMIS_WARN("Invalid THEMIS_MAX_BODY_BYTES value, using default 10MB"); }
+    } else {
+        // fall back to config max_request_size_mb if provided
+        if (config_.max_request_size_mb > 0) {
+            max_body_bytes_ = config_.max_request_size_mb * 1024ull * 1024ull;
+        }
+    }
+    THEMIS_INFO("Max request body set to {} bytes", max_body_bytes_);
+
+    // ----------------------------------------------------------------------------
+    // TLS/SSL Configuration
+    // ----------------------------------------------------------------------------
+    if (config_.enable_tls) {
+        try {
+            // Create SSL context
+            ssl_ctx_ = std::make_unique<boost::asio::ssl::context>(
+                boost::asio::ssl::context::tlsv13_server // TLS 1.3 by default
+            );
+
+            // Set minimum TLS version
+            if (config_.tls_min_version == "TLSv1.2") {
+                ssl_ctx_ = std::make_unique<boost::asio::ssl::context>(
+                    boost::asio::ssl::context::tlsv12_server
+                );
+                THEMIS_INFO("TLS: minimum version set to TLSv1.2");
+            } else {
+                THEMIS_INFO("TLS: minimum version set to TLSv1.3 (recommended)");
+            }
+
+            // Load server certificate and private key
+            if (config_.tls_cert_path.empty() || config_.tls_key_path.empty()) {
+                throw std::runtime_error("TLS enabled but cert/key paths not configured");
+            }
+            ssl_ctx_->use_certificate_chain_file(config_.tls_cert_path);
+            ssl_ctx_->use_private_key_file(config_.tls_key_path, boost::asio::ssl::context::pem);
+            THEMIS_INFO("TLS: loaded certificate from {} and private key from {}", 
+                config_.tls_cert_path, config_.tls_key_path);
+
+            // Configure strong cipher suites (if custom list provided)
+            if (!config_.tls_cipher_list.empty()) {
+                SSL_CTX_set_cipher_list(ssl_ctx_->native_handle(), config_.tls_cipher_list.c_str());
+                THEMIS_INFO("TLS: custom cipher list configured: {}", config_.tls_cipher_list);
+            } else {
+                // Default: use strong ciphers only (ECDHE with AES256-GCM, ChaCha20)
+                // For TLS 1.3, ciphersuites are configured separately
+                SSL_CTX_set_cipher_list(ssl_ctx_->native_handle(), 
+                    "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-CHACHA20-POLY1305");
+                THEMIS_INFO("TLS: using default strong cipher suites (ECDHE-RSA-AES256-GCM-SHA384, etc.)");
+            }
+
+            // Disable weak protocols and ciphers
+            ssl_ctx_->set_options(
+                boost::asio::ssl::context::default_workarounds |
+                boost::asio::ssl::context::no_sslv2 |
+                boost::asio::ssl::context::no_sslv3 |
+                boost::asio::ssl::context::no_tlsv1 |
+                boost::asio::ssl::context::no_tlsv1_1 |
+                boost::asio::ssl::context::single_dh_use
+            );
+            THEMIS_INFO("TLS: disabled weak protocols (SSLv2/v3, TLSv1.0/1.1)");
+
+            // Mutual TLS (mTLS) configuration
+            if (config_.tls_require_client_cert) {
+                if (config_.tls_ca_cert_path.empty()) {
+                    throw std::runtime_error("mTLS enabled but CA cert path not configured");
+                }
+                ssl_ctx_->load_verify_file(config_.tls_ca_cert_path);
+                ssl_ctx_->set_verify_mode(
+                    boost::asio::ssl::verify_peer | 
+                    boost::asio::ssl::verify_fail_if_no_peer_cert
+                );
+                THEMIS_INFO("mTLS: client certificate verification enabled (CA: {})", 
+                    config_.tls_ca_cert_path);
+            } else {
+                ssl_ctx_->set_verify_mode(boost::asio::ssl::verify_none);
+                THEMIS_INFO("mTLS: client certificate verification disabled (one-way TLS)");
+            }
+
+            THEMIS_INFO("HTTPS server enabled (TLS configured successfully)");
+        } catch (const std::exception& e) {
+            THEMIS_ERROR("Failed to initialize TLS: {}", e.what());
+            throw std::runtime_error(std::string("TLS initialization failed: ") + e.what());
+        }
+    } else {
+        THEMIS_INFO("HTTP server running without TLS (plaintext mode)");
+    }
 }
 
 HttpServer::~HttpServer() {
@@ -610,8 +778,12 @@ void HttpServer::onAccept(beast::error_code ec, tcp::socket socket) {
     if (ec) {
         THEMIS_ERROR("Accept error: {}", ec.message());
     } else {
-        // Create new session for this connection
-        std::make_shared<Session>(std::move(socket), this)->start();
+        // Create new session for this connection (SSL or plain based on config)
+        if (config_.enable_tls && ssl_ctx_) {
+            std::make_shared<SslSession>(std::move(socket), *ssl_ctx_, this)->start();
+        } else {
+            std::make_shared<Session>(std::move(socket), this)->start();
+        }
     }
 
     // Accept next connection
@@ -705,6 +877,15 @@ namespace {
         // Keys / Classification / Reports
     PkiSignPost,
     PkiVerifyPost,
+    PkiHsmSignPost,
+    PkiHsmKeysGet,
+    PkiTimestampPost,
+    PkiTimestampVerifyPost,
+    PkiEidasSignPost,
+    PkiEidasVerifyPost,
+    PkiCertificatesGet,
+    PkiCertificateGet,
+    PkiStatusGet,
         KeysListGet,
         KeysRotatePost,
         ClassificationRulesGet,
@@ -805,6 +986,16 @@ namespace {
             if (path_only.size() >= 5 && path_only.compare(path_only.size() - 5, 5, "/sign") == 0) return Route::PkiSignPost;
             if (path_only.size() >= 7 && path_only.compare(path_only.size() - 7, 7, "/verify") == 0) return Route::PkiVerifyPost;
         }
+        // New PKI HSM, TSA, eIDAS endpoints
+        if (path_only == "/api/pki/hsm/sign" && method == http::verb::post) return Route::PkiHsmSignPost;
+        if (path_only == "/api/pki/hsm/keys" && method == http::verb::get) return Route::PkiHsmKeysGet;
+        if (path_only == "/api/pki/timestamp" && method == http::verb::post) return Route::PkiTimestampPost;
+        if (path_only == "/api/pki/timestamp/verify" && method == http::verb::post) return Route::PkiTimestampVerifyPost;
+        if (path_only == "/api/pki/eidas/sign" && method == http::verb::post) return Route::PkiEidasSignPost;
+        if (path_only == "/api/pki/eidas/verify" && method == http::verb::post) return Route::PkiEidasVerifyPost;
+        if (path_only == "/api/pki/certificates" && method == http::verb::get) return Route::PkiCertificatesGet;
+        if (path_only.rfind("/api/pki/certificates/", 0) == 0 && method == http::verb::get) return Route::PkiCertificateGet;
+        if (path_only == "/api/pki/status" && method == http::verb::get) return Route::PkiStatusGet;
         // Keys API
         if (path_only == "/keys" && method == http::verb::get) return Route::KeysListGet;
         if (path_only == "/keys/rotate" && method == http::verb::post) return Route::KeysRotatePost;
@@ -882,6 +1073,58 @@ http::response<http::string_body> HttpServer::routeRequest(
 
     // Increment request counter
     request_count_.fetch_add(1, std::memory_order_relaxed);
+    
+    // Handle CORS preflight early
+    if (method == http::verb::options) {
+        return makePreflightResponse(req);
+    }
+
+    // Enforce request body size limit (after OPTIONS preflight)
+    if (req.body().size() > max_body_bytes_) {
+        http::response<http::string_body> res{http::status::payload_too_large, req.version()};
+        res.set(http::field::content_type, "application/json");
+        nlohmann::json body = {
+            {"error", "Payload Too Large"},
+            {"message", "Request body exceeds maximum size"},
+            {"max_bytes", max_body_bytes_},
+            {"actual_bytes", req.body().size()},
+            {"status_code", 413}
+        };
+        res.body() = body.dump();
+        applyGovernanceHeaders(req, res);
+        res.prepare_payload();
+        recordLatency(std::chrono::microseconds(0)); // negligible work
+        return res;
+    }
+
+    // Path traversal checks for entity paths
+    {
+        std::string path_only = target;
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (path_only.rfind("/entities/", 0) == 0 && validator_) {
+            std::string key = path_only.substr(std::string("/entities/").size());
+            if (!validator_->validatePathSegment(key)) {
+                http::response<http::string_body> res{http::status::bad_request, req.version()};
+                res.set(http::field::content_type, "application/json");
+                nlohmann::json body = {{"error", true},{"message","invalid entity key"},{"status_code",400}};
+                res.body() = body.dump();
+                applyGovernanceHeaders(req, res);
+                res.prepare_payload();
+                recordLatency(std::chrono::microseconds(0));
+                return res;
+            }
+        }
+    }
+
+    // Check rate limit BEFORE processing request
+    if (auto rate_limit_response = checkRateLimit(req)) {
+        auto end = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        recordLatency(duration);
+        span.setStatus(false, "rate_limited");
+        return *rate_limit_response;
+    }
 
     http::response<http::string_body> response;
 
@@ -927,9 +1170,24 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::QueryPost:
             response = handleQuery(req);
             break;
-        case Route::QueryAqlPost:
+        case Route::QueryAqlPost: {
+            // AQL payload validation before handling
+            if (validator_) {
+                try {
+                    nlohmann::json j = nlohmann::json::object();
+                    if (!req.body().empty()) j = nlohmann::json::parse(req.body());
+                    if (auto err = validator_->validateAqlRequest(j)) {
+                        auto res = makeErrorResponse(http::status::bad_request, *err, req);
+                        return res;
+                    }
+                } catch (const std::exception& ex) {
+                    auto res = makeErrorResponse(http::status::bad_request, std::string("invalid JSON: ") + ex.what(), req);
+                    return res;
+                }
+            }
             response = handleQueryAql(req);
             break;
+        }
         case Route::IndexCreatePost:
             response = handleCreateIndex(req);
             break;
@@ -1056,6 +1314,33 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::PkiVerifyPost:
             response = handlePkiVerify(req);
             break;
+        case Route::PkiHsmSignPost:
+            response = handlePkiHsmSign(req);
+            break;
+        case Route::PkiHsmKeysGet:
+            response = handlePkiHsmKeys(req);
+            break;
+        case Route::PkiTimestampPost:
+            response = handlePkiTimestamp(req);
+            break;
+        case Route::PkiTimestampVerifyPost:
+            response = handlePkiTimestampVerify(req);
+            break;
+        case Route::PkiEidasSignPost:
+            response = handlePkiEidasSign(req);
+            break;
+        case Route::PkiEidasVerifyPost:
+            response = handlePkiEidasVerify(req);
+            break;
+        case Route::PkiCertificatesGet:
+            response = handlePkiCertificates(req);
+            break;
+        case Route::PkiCertificateGet:
+            response = handlePkiCertificate(req);
+            break;
+        case Route::PkiStatusGet:
+            response = handlePkiStatus(req);
+            break;
         case Route::KeysRotatePost:
             response = handleKeysRotateKey(req);
             break;
@@ -1108,7 +1393,22 @@ http::response<http::string_body> HttpServer::routeRequest(
             response = handleTransactionStats(req);
             break;
         case Route::ContentImportPost:
-            response = handleContentImport(req);
+            {
+                if (validator_) {
+                    try {
+                        nlohmann::json j = nlohmann::json::object();
+                        if (!req.body().empty()) j = nlohmann::json::parse(req.body());
+                        if (auto err = validator_->validateJsonStub(j, "content_import")) {
+                            response = makeErrorResponse(http::status::bad_request, *err, req);
+                            break;
+                        }
+                    } catch (const std::exception& ex) {
+                        response = makeErrorResponse(http::status::bad_request, std::string("invalid JSON: ") + ex.what(), req);
+                        break;
+                    }
+                }
+                response = handleContentImport(req);
+            }
             break;
         case Route::ContentGet:
             response = handleGetContent(req);
@@ -1214,9 +1514,18 @@ http::response<http::string_body> HttpServer::handlePkiSign(
             key_id = key_id.substr(0, key_id.size() - 5);
         }
         if (key_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+        if (validator_ && !validator_->validatePathSegment(key_id)) {
+            return makeErrorResponse(http::status::bad_request, "Invalid key_id", req);
+        }
 
         nlohmann::json body = nlohmann::json::object();
         if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        if (validator_) {
+            if (auto err = validator_->validateJsonStub(body, "pki_sign")) {
+                return makeErrorResponse(http::status::bad_request, *err, req);
+            }
+        }
 
         auto result = pki_api_->sign(key_id, body);
         if (result.contains("status_code")) {
@@ -1245,11 +1554,209 @@ http::response<http::string_body> HttpServer::handlePkiVerify(
             key_id = key_id.substr(0, key_id.size() - 7);
         }
         if (key_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+        if (validator_ && !validator_->validatePathSegment(key_id)) {
+            return makeErrorResponse(http::status::bad_request, "Invalid key_id", req);
+        }
 
         nlohmann::json body = nlohmann::json::object();
         if (!req.body().empty()) body = nlohmann::json::parse(req.body());
 
+        if (validator_) {
+            if (auto err = validator_->validateJsonStub(body, "pki_verify")) {
+                return makeErrorResponse(http::status::bad_request, *err, req);
+            }
+        }
+
         auto result = pki_api_->verify(key_id, body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// ============================================================================
+// New PKI HSM, TSA, eIDAS Handlers
+// ============================================================================
+
+http::response<http::string_body> HttpServer::handlePkiHsmSign(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:sign", "pki.hsm.sign", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->hsmSign(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiHsmKeys(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.hsm.read", "/api/pki")) return *resp;
+
+        auto result = pki_api_->hsmListKeys();
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiTimestamp(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:timestamp", "pki.timestamp", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->getTimestamp(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiTimestampVerify(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:verify", "pki.timestamp.verify", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->verifyTimestamp(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiEidasSign(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:eidas", "pki.eidas.sign", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->eidasSign(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiEidasVerify(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:verify", "pki.eidas.verify", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->eidasVerify(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiCertificates(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.certificates.read", "/api/pki")) return *resp;
+
+        auto result = pki_api_->listCertificates();
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiCertificate(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.certificates.read", "/api/pki")) return *resp;
+
+        // Extract cert_id from path: /api/pki/certificates/:cert_id
+        auto path = std::string(req.target());
+        auto cert_id = extractPathParam(path, "/api/pki/certificates/");
+        if (cert_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing cert_id", req);
+        if (validator_ && !validator_->validatePathSegment(cert_id)) {
+            return makeErrorResponse(http::status::bad_request, "Invalid cert_id", req);
+        }
+
+        auto result = pki_api_->getCertificate(cert_id);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiStatus(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.status", "/api/pki")) return *resp;
+
+        auto result = pki_api_->getStatus();
         if (result.contains("status_code")) {
             int sc = result.value("status_code", 500);
             return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
@@ -1475,6 +1982,107 @@ http::response<http::string_body> HttpServer::handleMetrics(const http::request<
         out << "# TYPE themis_content_blob_compression_skipped_total counter\n";
         out << "# HELP themis_content_blob_compression_ratio Histogram of compression ratios (original_size / compressed_size) per upload\n";
         out << "# TYPE themis_content_blob_compression_ratio histogram\n";
+
+        // Encryption metrics
+        out << "# HELP themis_encryption_operations_total Total number of encryption operations\n";
+        out << "# TYPE themis_encryption_operations_total counter\n";
+        out << "# HELP themis_decryption_operations_total Total number of decryption operations\n";
+        out << "# TYPE themis_decryption_operations_total counter\n";
+        out << "# HELP themis_reencryption_operations_total Total number of successful lazy re-encryptions\n";
+        out << "# TYPE themis_reencryption_operations_total counter\n";
+        out << "# HELP themis_reencryption_skipped_total Number of re-encryption checks that found data already using latest key\n";
+        out << "# TYPE themis_reencryption_skipped_total counter\n";
+        out << "# HELP themis_encryption_errors_total Total number of encryption failures\n";
+        out << "# TYPE themis_encryption_errors_total counter\n";
+        out << "# HELP themis_decryption_errors_total Total number of decryption failures\n";
+        out << "# TYPE themis_decryption_errors_total counter\n";
+        out << "# HELP themis_reencryption_errors_total Total number of lazy re-encryption failures\n";
+        out << "# TYPE themis_reencryption_errors_total counter\n";
+        out << "# HELP themis_encryption_bytes_total Total bytes encrypted\n";
+        out << "# TYPE themis_encryption_bytes_total counter\n";
+        out << "# HELP themis_decryption_bytes_total Total bytes decrypted\n";
+        out << "# TYPE themis_decryption_bytes_total counter\n";
+        out << "# HELP themis_encryption_duration_seconds Encryption operation latency histogram\n";
+        out << "# TYPE themis_encryption_duration_seconds histogram\n";
+        out << "# HELP themis_decryption_duration_seconds Decryption operation latency histogram\n";
+        out << "# TYPE themis_decryption_duration_seconds histogram\n";
+
+        // Encryption metrics (if field_encryption_ available)
+        if (field_encryption_) {
+            const auto& em = field_encryption_->getMetrics();
+            
+            // Operation counters
+            out << "themis_encryption_operations_total " << em.encrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_decryption_operations_total " << em.decrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_reencryption_operations_total " << em.reencrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_reencryption_skipped_total " << em.reencrypt_skipped_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Error counters
+            out << "themis_encryption_errors_total " << em.encrypt_errors_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_decryption_errors_total " << em.decrypt_errors_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_reencryption_errors_total " << em.reencrypt_errors_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Bytes processed
+            out << "themis_encryption_bytes_total " << em.encrypt_bytes_total.load(std::memory_order_relaxed) << "\n";
+            out << "themis_decryption_bytes_total " << em.decrypt_bytes_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Encryption duration histogram (cumulative buckets)
+            uint64_t enc_le_100us = em.encrypt_duration_le_100us.load(std::memory_order_relaxed);
+            uint64_t enc_le_500us = em.encrypt_duration_le_500us.load(std::memory_order_relaxed);
+            uint64_t enc_le_1ms = em.encrypt_duration_le_1ms.load(std::memory_order_relaxed);
+            uint64_t enc_le_5ms = em.encrypt_duration_le_5ms.load(std::memory_order_relaxed);
+            uint64_t enc_le_10ms = em.encrypt_duration_le_10ms.load(std::memory_order_relaxed);
+            uint64_t enc_gt_10ms = em.encrypt_duration_gt_10ms.load(std::memory_order_relaxed);
+            
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0001\"} " << enc_le_100us << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0005\"} " << (enc_le_100us + enc_le_500us) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.001\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.005\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms + enc_le_5ms) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.01\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms + enc_le_5ms + enc_le_10ms) << "\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"+Inf\"} " << (enc_le_100us + enc_le_500us + enc_le_1ms + enc_le_5ms + enc_le_10ms + enc_gt_10ms) << "\n";
+            out << "themis_encryption_duration_seconds_count " << em.encrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+            
+            // Decryption duration histogram (cumulative buckets)
+            uint64_t dec_le_100us = em.decrypt_duration_le_100us.load(std::memory_order_relaxed);
+            uint64_t dec_le_500us = em.decrypt_duration_le_500us.load(std::memory_order_relaxed);
+            uint64_t dec_le_1ms = em.decrypt_duration_le_1ms.load(std::memory_order_relaxed);
+            uint64_t dec_le_5ms = em.decrypt_duration_le_5ms.load(std::memory_order_relaxed);
+            uint64_t dec_le_10ms = em.decrypt_duration_le_10ms.load(std::memory_order_relaxed);
+            uint64_t dec_gt_10ms = em.decrypt_duration_gt_10ms.load(std::memory_order_relaxed);
+            
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0001\"} " << dec_le_100us << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0005\"} " << (dec_le_100us + dec_le_500us) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.001\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.005\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms + dec_le_5ms) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.01\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms + dec_le_5ms + dec_le_10ms) << "\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"+Inf\"} " << (dec_le_100us + dec_le_500us + dec_le_1ms + dec_le_5ms + dec_le_10ms + dec_gt_10ms) << "\n";
+            out << "themis_decryption_duration_seconds_count " << em.decrypt_operations_total.load(std::memory_order_relaxed) << "\n";
+        } else {
+            // No encryption configured: emit zeros
+            out << "themis_encryption_operations_total 0\n";
+            out << "themis_decryption_operations_total 0\n";
+            out << "themis_reencryption_operations_total 0\n";
+            out << "themis_reencryption_skipped_total 0\n";
+            out << "themis_encryption_errors_total 0\n";
+            out << "themis_decryption_errors_total 0\n";
+            out << "themis_reencryption_errors_total 0\n";
+            out << "themis_encryption_bytes_total 0\n";
+            out << "themis_decryption_bytes_total 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0001\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.0005\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.001\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.005\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"0.01\"} 0\n";
+            out << "themis_encryption_duration_seconds_bucket{le=\"+Inf\"} 0\n";
+            out << "themis_encryption_duration_seconds_count 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0001\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.0005\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.001\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.005\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"0.01\"} 0\n";
+            out << "themis_decryption_duration_seconds_bucket{le=\"+Inf\"} 0\n";
+            out << "themis_decryption_duration_seconds_count 0\n";
+        }
 
         // Content metrics (if available)
         if (content_manager_) {
@@ -2373,6 +2981,30 @@ http::response<http::string_body> HttpServer::handleMetricsJson(
             out += "# HELP vccdb_sse_dropped_events_total Total buffered SSE events dropped due to backpressure\n";
             out += "# TYPE vccdb_sse_dropped_events_total counter\n";
             out += "vccdb_sse_dropped_events_total " + std::to_string(sstats.total_dropped_events) + "\n";
+        }
+        
+        // Rate Limiter metrics
+        if (rate_limiter_) {
+            auto rl_stats = rate_limiter_->getStatistics();
+            out += "# HELP vccdb_rate_limit_requests_total Total requests processed by rate limiter\n";
+            out += "# TYPE vccdb_rate_limit_requests_total counter\n";
+            out += "vccdb_rate_limit_requests_total " + std::to_string(rl_stats.total_requests) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_allowed_total Requests allowed by rate limiter\n";
+            out += "# TYPE vccdb_rate_limit_allowed_total counter\n";
+            out += "vccdb_rate_limit_allowed_total " + std::to_string(rl_stats.allowed_requests) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_rejected_total Requests rejected by rate limiter (429)\n";
+            out += "# TYPE vccdb_rate_limit_rejected_total counter\n";
+            out += "vccdb_rate_limit_rejected_total " + std::to_string(rl_stats.rejected_requests) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_active_ip_buckets Active IP rate limit buckets\n";
+            out += "# TYPE vccdb_rate_limit_active_ip_buckets gauge\n";
+            out += "vccdb_rate_limit_active_ip_buckets " + std::to_string(rl_stats.active_ip_buckets) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_active_user_buckets Active user rate limit buckets\n";
+            out += "# TYPE vccdb_rate_limit_active_user_buckets gauge\n";
+            out += "vccdb_rate_limit_active_user_buckets " + std::to_string(rl_stats.active_user_buckets) + "\n";
         }
 
         // Build plain text response with proper content-type
@@ -8512,6 +9144,68 @@ http::response<http::string_body> HttpServer::makeErrorResponse(
     return makeResponse(status, error_body.dump(), req);
 }
 
+http::response<http::string_body> HttpServer::makePreflightResponse(
+    const http::request<http::string_body>& req
+) {
+    // Determine request origin
+    std::string origin;
+    if (auto it = req.find(http::field::origin); it != req.end()) {
+        origin = std::string(it->value());
+    }
+
+    // Decide allowed origin
+    std::string allow_origin;
+    if (cors_allow_all_) {
+        allow_origin = "*";
+    } else if (!origin.empty()) {
+        bool allowed = false;
+        for (const auto& o : cors_allowed_origins_) {
+            if (o == origin) { allowed = true; break; }
+        }
+        if (allowed) allow_origin = origin;
+    }
+
+    // If not allowed, respond 403 without exposing CORS headers
+    if (allow_origin.empty()) {
+        http::response<http::string_body> res{http::status::forbidden, req.version()};
+        res.set(http::field::server, "THEMIS/0.1.0");
+        res.set(http::field::content_type, "application/json");
+        res.keep_alive(req.keep_alive());
+        nlohmann::json body = {
+            {"error", true},
+            {"message", "CORS origin not allowed"},
+            {"status_code", 403}
+        };
+        res.body() = body.dump();
+        applyGovernanceHeaders(req, res);
+        res.prepare_payload();
+        return res;
+    }
+
+    // Build successful preflight response (204 No Content)
+    http::response<http::string_body> res{http::status::no_content, req.version()};
+    res.set(http::field::server, "THEMIS/0.1.0");
+    res.keep_alive(req.keep_alive());
+
+    // CORS headers
+    res.set("Access-Control-Allow-Origin", allow_origin);
+    // Ensure caches vary on relevant request headers
+    res.set("Vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+    res.set("Access-Control-Allow-Methods", cors_allowed_methods_);
+    res.set("Access-Control-Allow-Headers", cors_allowed_headers_);
+    if (cors_allow_credentials_ && allow_origin != "*") {
+        res.set("Access-Control-Allow-Credentials", "true");
+    }
+    // Cache preflight for 10 minutes
+    res.set("Access-Control-Max-Age", "600");
+
+    // Apply security/governance headers consistently
+    applyGovernanceHeaders(req, res);
+
+    res.prepare_payload();
+    return res;
+}
+
 void HttpServer::applyGovernanceHeaders(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res
@@ -8577,13 +9271,60 @@ void HttpServer::applyGovernanceHeaders(
     // Compose policy summary
     std::string policy_summary = "classification=" + classification + ";mode=" + mode + ";encrypt_logs=" + (encrypt_logs?"true":"false") + ";redaction=" + redaction;
 
-    // Write headers
+    // Write governance headers
     res.set("X-Themis-Policy", policy_summary);
     res.set("X-Themis-ANN", ann);
     res.set("X-Themis-Content-Enc", content_enc);
     res.set("X-Themis-Export", export_perm);
     res.set("X-Themis-Cache", cache_perm);
     res.set("X-Themis-Retention-Days", retention_days);
+
+    // ------------------------------------------------------------------------
+    // Security Headers (global defaults, safe for JSON APIs)
+    // ------------------------------------------------------------------------
+    res.set("X-Frame-Options", "DENY");
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("Referrer-Policy", "no-referrer");
+    // Strict CSP for API-only responses; adjust in UI-serving endpoints if needed
+    res.set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    // Modern browsers ignore X-XSS-Protection; set to 0 to avoid legacy behavior
+    res.set("X-XSS-Protection", "0");
+
+    // ------------------------------------------------------------------------
+    // CORS Headers
+    // ------------------------------------------------------------------------
+    // Determine origin
+    std::string origin;
+    auto it = req.find(http::field::origin);
+    if (it != req.end()) {
+        origin = std::string(it->value());
+    }
+
+    auto set_cors_common = [&](const std::string& allow_origin) {
+        res.set("Access-Control-Allow-Origin", allow_origin);
+        // Preserve existing Vary if already set (e.g., by preflight)
+        if (res.find(http::field::vary) == res.end()) {
+            res.set(http::field::vary, "Origin");
+        }
+        res.set("Access-Control-Allow-Methods", cors_allowed_methods_);
+        res.set("Access-Control-Allow-Headers", cors_allowed_headers_);
+        if (cors_allow_credentials_ && allow_origin != "*") {
+            res.set("Access-Control-Allow-Credentials", "true");
+        }
+    };
+
+    if (cors_allow_all_) {
+        set_cors_common("*");
+    } else if (!origin.empty()) {
+        // Exact-match allowlist
+        bool allowed = false;
+        for (const auto& o : cors_allowed_origins_) {
+            if (o == origin) { allowed = true; break; }
+        }
+        if (allowed) {
+            set_cors_common(origin);
+        }
+    }
 }
 
 void HttpServer::recordLatency(std::chrono::microseconds duration) {
@@ -8743,6 +9484,141 @@ void HttpServer::Session::onWrite(
 
     // Read next request
     doRead();
+}
+
+// ============================================================================
+// SSL Session Implementation
+// ============================================================================
+
+HttpServer::SslSession::SslSession(tcp::socket socket, boost::asio::ssl::context& ssl_ctx, HttpServer* server)
+    : stream_(std::move(socket), ssl_ctx)
+    , server_(server)
+{
+}
+
+void HttpServer::SslSession::start() {
+    doHandshake();
+}
+
+void HttpServer::SslSession::doHandshake() {
+    stream_.async_handshake(
+        boost::asio::ssl::stream_base::server,
+        beast::bind_front_handler(&SslSession::onHandshake, shared_from_this())
+    );
+}
+
+void HttpServer::SslSession::onHandshake(beast::error_code ec) {
+    if (ec) {
+        THEMIS_ERROR("TLS handshake error: {}", ec.message());
+        return;
+    }
+
+    // Log successful TLS connection with client certificate info (mTLS)
+    if (server_->config_.tls_require_client_cert) {
+        try {
+            X509* cert = SSL_get_peer_certificate(stream_.native_handle());
+            if (cert) {
+                char subject_name[256];
+                X509_NAME_oneline(X509_get_subject_name(cert), subject_name, sizeof(subject_name));
+                THEMIS_INFO("mTLS: client authenticated with certificate: {}", subject_name);
+                X509_free(cert);
+            } else {
+                THEMIS_WARN("mTLS: no client certificate presented despite requirement");
+            }
+        } catch (const std::exception& e) {
+            THEMIS_ERROR("mTLS: failed to extract client certificate info: {}", e.what());
+        }
+    }
+
+    doRead();
+}
+
+void HttpServer::SslSession::doRead() {
+    request_ = {};
+
+    http::async_read(
+        stream_,
+        buffer_,
+        request_,
+        beast::bind_front_handler(&SslSession::onRead, shared_from_this())
+    );
+}
+
+void HttpServer::SslSession::onRead(
+    beast::error_code ec,
+    std::size_t bytes_transferred
+) {
+    boost::ignore_unused(bytes_transferred);
+
+    if (ec == http::error::end_of_stream) {
+        doShutdown();
+        return;
+    }
+
+    if (ec) {
+        THEMIS_ERROR("SSL read error: {}", ec.message());
+        return;
+    }
+
+    processRequest();
+}
+
+void HttpServer::SslSession::processRequest() {
+    // Route request to appropriate handler
+    response_ = server_->routeRequest(request_);
+    
+    // Add HSTS header for HTTPS connections
+    if (server_->config_.enable_tls) {
+        response_.set(http::field::strict_transport_security, "max-age=31536000; includeSubDomains");
+    }
+    
+    doWrite();
+}
+
+void HttpServer::SslSession::doWrite() {
+    bool close = response_.need_eof();
+    http::async_write(
+        stream_,
+        response_,
+        beast::bind_front_handler(
+            &SslSession::onWrite,
+            shared_from_this(),
+            close
+        )
+    );
+}
+
+void HttpServer::SslSession::onWrite(
+    bool close,
+    beast::error_code ec,
+    std::size_t bytes_transferred
+) {
+    boost::ignore_unused(bytes_transferred);
+
+    if (ec) {
+        THEMIS_ERROR("SSL write error: {}", ec.message());
+        return;
+    }
+
+    if (close) {
+        doShutdown();
+        return;
+    }
+
+    // Read next request (keep-alive)
+    doRead();
+}
+
+void HttpServer::SslSession::doShutdown() {
+    stream_.async_shutdown(
+        beast::bind_front_handler(
+            [self = shared_from_this()](beast::error_code ec) {
+                if (ec && ec != boost::asio::error::eof) {
+                    THEMIS_ERROR("SSL shutdown error: {}", ec.message());
+                }
+            }
+        )
+    );
 }
 
 http::response<http::string_body> HttpServer::handleIndexStats(
@@ -9582,6 +10458,90 @@ http::response<http::string_body> HttpServer::handleIndexClearPatterns(
         span.setStatus(false, "error");
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
+}
+
+// ============================================================================
+// Rate Limiting Helper Methods
+// ============================================================================
+
+std::string HttpServer::extractClientIP(const http::request<http::string_body>& req) const {
+    // Try X-Forwarded-For header first (for proxied requests)
+    if (req.find("X-Forwarded-For") != req.end()) {
+        std::string xff = std::string(req["X-Forwarded-For"]);
+        // Take first IP in comma-separated list
+        auto comma_pos = xff.find(',');
+        if (comma_pos != std::string::npos) {
+            return xff.substr(0, comma_pos);
+        }
+        return xff;
+    }
+    
+    // Try X-Real-IP header
+    if (req.find("X-Real-IP") != req.end()) {
+        return std::string(req["X-Real-IP"]);
+    }
+    
+    // Fallback: would need to extract from socket (not directly available in Beast)
+    // For now, return empty string which will be handled by rate limiter
+    return ""; // In production, extract from Session's socket remote_endpoint()
+}
+
+std::optional<http::response<http::string_body>> HttpServer::checkRateLimit(
+    const http::request<http::string_body>& req
+) {
+    if (!rate_limiter_) {
+        return std::nullopt; // Rate limiting disabled
+    }
+    
+    std::string client_ip = extractClientIP(req);
+    std::string user_id;
+    
+    // Extract user ID from JWT token if authenticated
+    if (auth_ && auth_->isEnabled()) {
+        if (req.find("Authorization") != req.end()) {
+            std::string auth_header = std::string(req["Authorization"]);
+            if (auth_header.size() > 7 && auth_header.substr(0, 7) == "Bearer ") {
+                std::string token = auth_header.substr(7);
+                auto ctx = auth_->extractContext(token);
+                if (ctx) {
+                    user_id = ctx->user_id;
+                }
+            }
+        }
+    }
+    
+    // Check rate limit
+    if (!rate_limiter_->allowRequest(client_ip, user_id)) {
+        uint32_t retry_after = rate_limiter_->getRetryAfter(client_ip, user_id);
+        
+        THEMIS_WARN("Rate limit exceeded: ip={}, user={}, retry_after={}s", 
+            client_ip.empty() ? "<unknown>" : client_ip, 
+            user_id.empty() ? "<anonymous>" : user_id,
+            retry_after);
+        
+        http::response<http::string_body> response;
+        response.result(http::status::too_many_requests);
+        response.set(http::field::content_type, "application/json");
+        response.set("Retry-After", std::to_string(retry_after));
+        response.set("X-RateLimit-Limit", "100");
+        response.set("X-RateLimit-Remaining", "0");
+        
+        json error_body = {
+            {"error", "Too Many Requests"},
+            {"message", "Rate limit exceeded. Please retry after " + std::to_string(retry_after) + " seconds."},
+            {"retry_after_seconds", retry_after},
+            {"status_code", 429}
+        };
+        
+        response.body() = error_body.dump();
+        // Apply governance and security headers as with normal responses
+        applyGovernanceHeaders(req, response);
+        response.prepare_payload();
+        
+        return response;
+    }
+    
+    return std::nullopt; // Rate limit OK
 }
 
 } // namespace server
