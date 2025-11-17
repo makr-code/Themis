@@ -48,13 +48,89 @@ public partial class MainViewModel : ObservableObject
         "COUNT", "SUM", "AVG", "MIN", "MAX"
     };
 
+    public ObservableCollection<SchemaCollection> SchemaCollections { get; } = new();
+
+    [ObservableProperty]
+    private QueryType _selectedQueryType = QueryType.Relational;
+
     public MainViewModel()
     {
         _httpClient = new HttpClient();
         _query = new AqlQueryModel();
         
+        // Initialize schema with sample collections
+        LoadSampleSchema();
+        
         // Initialize with a sample query
         AddSampleQuery();
+    }
+
+    private void LoadSampleSchema()
+    {
+        // Sample schema - in real app, this would be loaded from API
+        SchemaCollections.Add(new SchemaCollection
+        {
+            Name = "users",
+            Type = CollectionType.Relational,
+            EstimatedDocumentCount = 1250,
+            Fields = new List<SchemaField>
+            {
+                new() { Name = "_key", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "name", DataType = FieldDataType.String },
+                new() { Name = "email", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "age", DataType = FieldDataType.Integer },
+                new() { Name = "city", DataType = FieldDataType.String },
+                new() { Name = "created_at", DataType = FieldDataType.DateTime }
+            }
+        });
+
+        SchemaCollections.Add(new SchemaCollection
+        {
+            Name = "products",
+            Type = CollectionType.Hybrid,
+            EstimatedDocumentCount = 5000,
+            HasVectorIndex = true,
+            Fields = new List<SchemaField>
+            {
+                new() { Name = "_key", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "name", DataType = FieldDataType.String },
+                new() { Name = "description", DataType = FieldDataType.String },
+                new() { Name = "price", DataType = FieldDataType.Float },
+                new() { Name = "category", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "embedding", DataType = FieldDataType.Vector, IsVectorField = true, VectorDimension = 384 }
+            }
+        });
+
+        SchemaCollections.Add(new SchemaCollection
+        {
+            Name = "stores",
+            Type = CollectionType.Geo,
+            EstimatedDocumentCount = 150,
+            HasGeoIndex = true,
+            Fields = new List<SchemaField>
+            {
+                new() { Name = "_key", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "name", DataType = FieldDataType.String },
+                new() { Name = "address", DataType = FieldDataType.String },
+                new() { Name = "location", DataType = FieldDataType.GeoPoint, IsGeoField = true },
+                new() { Name = "service_area", DataType = FieldDataType.GeoPolygon, IsGeoField = true }
+            }
+        });
+
+        SchemaCollections.Add(new SchemaCollection
+        {
+            Name = "follows",
+            Type = CollectionType.Graph,
+            EstimatedDocumentCount = 8500,
+            HasGraphEdges = true,
+            Fields = new List<SchemaField>
+            {
+                new() { Name = "_from", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "_to", DataType = FieldDataType.String, IsIndexed = true },
+                new() { Name = "_type", DataType = FieldDataType.String },
+                new() { Name = "since", DataType = FieldDataType.Date }
+            }
+        });
     }
 
     [RelayCommand]
