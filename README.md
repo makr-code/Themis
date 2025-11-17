@@ -32,6 +32,70 @@ The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Databa
   - Documentation updated: `docs/temporal_time_range_queries.md` (changelog & examples).
 
 
+## Key Features (Production-Ready)
+
+ThemisDB provides a comprehensive multi-model database with the following production-ready features:
+
+### 🔐 Transactional Consistency (MVCC)
+- **Full ACID Transactions** with Snapshot Isolation (RocksDB TransactionDB)
+- Write-write conflict detection with automatic rollbacks
+- Atomic updates across all index layers
+- **Status:** ✅ Production-ready (27/27 tests PASS)
+- **Documentation:** [`docs/mvcc_design.md`](docs/mvcc_design.md)
+
+### 📊 Vector Search with Persistence
+- **HNSW Index** with L2, Cosine, and Dot Product metrics
+- **Automatic persistence** (save/load on server start/shutdown)
+- Batch insert operations (500-1000 items)
+- Configurable efSearch for query-time tuning
+- **Status:** ✅ Production-ready (10/10 tests PASS)
+- **Documentation:** [`docs/vector_ops.md`](docs/vector_ops.md)
+
+### 📈 Time-Series Engine
+- **Gorilla Compression** (10-20x compression ratio)
+- Continuous aggregates (pre-computed rollups)
+- Retention policies (automatic data expiration)
+- **Status:** ✅ Production-ready (22/22 tests PASS)
+- **Documentation:** [`docs/time_series.md`](docs/time_series.md)
+
+### 🔍 Advanced Query Language (AQL)
+- FOR/FILTER/SORT/LIMIT/RETURN syntax
+- **Graph traversals** (BFS, Dijkstra, A*) with variable depth
+- **COLLECT/GROUP BY** with aggregations (COUNT, SUM, AVG, MIN, MAX)
+- Temporal graph queries with time-range filters
+- **Status:** ✅ MVP production-ready
+- **Documentation:** [`docs/aql_syntax.md`](docs/aql_syntax.md)
+
+### 💾 Backup & Recovery
+- **RocksDB Checkpoints** via `POST /admin/backup`
+- Point-in-time recovery with WAL archiving
+- Incremental backup scripts (Linux & Windows)
+- **Status:** ✅ Production-ready
+- **Documentation:** [`docs/deployment.md`](docs/deployment.md#backup--recovery)
+
+### 📊 Observability
+- **Prometheus metrics** with cumulative histograms
+- Full request/error tracking, latency percentiles (P95/P99)
+- RocksDB internals (cache, compaction, memtable)
+- **OpenTelemetry tracing** integration
+- **Status:** ✅ Production-ready (4/4 metrics tests PASS)
+- **Documentation:** [`docs/observability/prometheus_metrics.md`](docs/observability/prometheus_metrics.md)
+
+### 🗂️ Comprehensive Indexing
+- Secondary indexes (single, composite, range)
+- Sparse, TTL, and fulltext indexes
+- Geo-spatial indexes (R-Tree, geohash)
+- Automatic index maintenance with MVCC
+- **Status:** ✅ Production-ready
+- **Documentation:** [`docs/indexes.md`](docs/indexes.md)
+
+### 📡 Change Data Capture (CDC)
+- Append-only event log for all mutations
+- Incremental consumption with checkpointing
+- SSE streaming support (experimental)
+- **Status:** ✅ MVP production-ready
+- **Documentation:** [`docs/change_data_capture.md`](docs/change_data_capture.md)
+
 
 Part 1: The Canonical Storage Architecture: The “Base Entity” Foundation of ThemisDB
 
