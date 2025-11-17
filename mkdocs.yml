@@ -103,6 +103,7 @@ nav:
   - Deployment & Betrieb:
       - Deployment: deployment.md
       - Tracing & Observability: tracing.md
+      - Prometheus Metrics: observability/prometheus_metrics.md
       - Change Data Capture (CDC): change_data_capture.md
       - Operations Runbook: operations_runbook.md
   - Entwicklung:
