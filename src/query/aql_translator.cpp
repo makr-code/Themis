@@ -1,4 +1,5 @@
 ﻿#include "query/aql_translator.h"
+#include "query/subquery_optimizer.h"
 #include <sstream>
 #include <variant>
 
@@ -7,6 +8,31 @@ namespace themis {
 AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<Query>& ast) {
     if (!ast) {
         return TranslationResult::Error("Null AST provided");
+    }
+    
+    // Phase 4.1: WITH clause processing
+    // Analyze CTEs and prepare execution metadata before translating main query
+    std::vector<TranslationResult::CTEExecution> cte_executions;
+    if (ast->with_clause) {
+        query::SubqueryOptimizer optimizer;
+        
+        for (const auto& cte_def : ast->with_clause->ctes) {
+            if (!cte_def.subquery) {
+                return TranslationResult::Error("CTE '" + cte_def.name + "' has null query");
+            }
+            
+            // Determine materialization strategy using optimizer heuristics
+            // Count references in main query to decide if materialization is beneficial
+            size_t ref_count = countCTEReferences(ast, cte_def.name);
+            bool should_materialize = optimizer.shouldMaterializeCTE(cte_def.subquery, ref_count);
+            
+            TranslationResult::CTEExecution cte_exec;
+            cte_exec.name = cte_def.name;
+            cte_exec.subquery = cte_def.subquery;
+            cte_exec.should_materialize = should_materialize;
+            
+            cte_executions.push_back(std::move(cte_exec));
+        }
     }
     
     // Graph-Traversal Unterstützung: Wenn Traversal-Klausel vorhanden ist,
@@ -24,11 +50,59 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
         }
         tq.startVertex = ast->traversal->startVertex;
         tq.graphName = ast->traversal->graphName;
-        return TranslationResult::SuccessTraversal(std::move(tq));
+        if (ast->traversal->shortestPath) {
+            tq.shortestPath = true;
+            tq.endVertex = ast->traversal->shortestPathTarget;
+        }
+        auto tr_result = TranslationResult::SuccessTraversal(std::move(tq));
+        attachCTEs(tr_result, std::move(cte_executions));
+        return tr_result;
     }
     
     // Multi-FOR Join: Wenn mehr als eine FOR-Klausel vorhanden ist, als Join behandeln
     if (ast->for_nodes.size() > 1 || !ast->let_nodes.empty() || ast->collect) {
+        // Sonderfall: Single LET mit Similarity/Proximity für Hybrid-Erkennung
+        if (ast->for_nodes.size()==1 && ast->let_nodes.size()==1 && !ast->collect && ast->sort && ast->sort->specifications.size()==1) {
+            auto letNode = ast->let_nodes[0];
+            auto sortExpr = ast->sort->specifications[0].expression;
+            // Variable in SORT?
+            if (sortExpr->getType()==ASTNodeType::Variable) {
+                auto varName = std::static_pointer_cast<VariableExpr>(sortExpr)->name;
+                if (varName == letNode.variable) {
+                    // Prüfe ob LET Ausdruck SimilarityCall/ProximityCall ist
+                    if (letNode.expression->getType()==ASTNodeType::SimilarityCall) {
+                        auto sim = std::static_pointer_cast<SimilarityCallExpr>(letNode.expression);
+                        if (sim->arguments.size()>=2) {
+                            // Reuse existing Similarity translation path
+                            std::vector<std::shared_ptr<Expression>> fakeArgs = sim->arguments; // [field, vector, optional k]
+                            // Erzeuge temporäre SortNode ohne LET für reguläre Pfadlogik -> dupliziere Code minimal
+                            // Direkt übersetzen ähnlich wie oben (Refactoring vermeiden hier)
+                            if (sim->arguments[0]->getType()!=ASTNodeType::FieldAccess) return TranslationResult::Error("SIMILARITY() LET first arg must be field access");
+                            std::string vectorField = extractColumnName(sim->arguments[0]);
+                            if (sim->arguments[1]->getType()!=ASTNodeType::ArrayLiteral) return TranslationResult::Error("SIMILARITY() LET second arg must be array literal");
+                            auto arr = std::static_pointer_cast<ArrayLiteralExpr>(sim->arguments[1]);
+                            std::vector<float> queryVec; queryVec.reserve(arr->elements.size());
+                            for (auto &el : arr->elements) { if (el->getType()!=ASTNodeType::Literal) return TranslationResult::Error("SIMILARITY() vector elements must be literals"); auto lit=std::static_pointer_cast<LiteralExpr>(el); if (std::holds_alternative<int64_t>(lit->value)) queryVec.push_back((float)std::get<int64_t>(lit->value)); else if (std::holds_alternative<double>(lit->value)) queryVec.push_back((float)std::get<double>(lit->value)); else return TranslationResult::Error("SIMILARITY() vector must be numeric"); }
+                            size_t k = 10; if (sim->arguments.size()==3) { auto kLit=std::static_pointer_cast<LiteralExpr>(sim->arguments[2]); if (!std::holds_alternative<int64_t>(kLit->value)) return TranslationResult::Error("SIMILARITY() k must be int"); k=(size_t)std::get<int64_t>(kLit->value); } else if (ast->limit) { k=(size_t)std::max<int64_t>(0, ast->limit->count); }
+                            std::shared_ptr<Expression> spatialExpr; std::vector<std::shared_ptr<Expression>> extraPreds; for (auto &f: ast->filters){ if (!f||!f->condition) continue; auto cond=f->condition; if(!spatialExpr && cond->getType()==ASTNodeType::FunctionCall){ auto fc=std::static_pointer_cast<FunctionCallExpr>(cond); std::string nm=fc->name; std::transform(nm.begin(),nm.end(),nm.begin(),::tolower); if(nm.rfind("st_",0)==0){ spatialExpr=cond; continue; } } extraPreds.push_back(cond);} VectorGeoQuery vq; vq.table=ast->for_node.collection; vq.vector_field=vectorField; vq.query_vector=std::move(queryVec); vq.k=k; vq.spatial_filter=spatialExpr; vq.extra_filters=std::move(extraPreds); auto vg_result = TranslationResult::SuccessVectorGeo(std::move(vq)); attachCTEs(vg_result, std::move(cte_executions)); return vg_result;
+                        }
+                    }
+                    if (letNode.expression->getType()==ASTNodeType::ProximityCall) {
+                        auto prox = std::static_pointer_cast<ProximityCallExpr>(letNode.expression);
+                        if (prox->arguments.size()==2) {
+                            if (prox->arguments[0]->getType()!=ASTNodeType::FieldAccess) return TranslationResult::Error("PROXIMITY() LET first arg must be field access");
+                            std::string geomField = extractColumnName(prox->arguments[0]);
+                            if (prox->arguments[1]->getType()!=ASTNodeType::ArrayLiteral) return TranslationResult::Error("PROXIMITY() LET second arg must array literal");
+                            auto arr=std::static_pointer_cast<ArrayLiteralExpr>(prox->arguments[1]); if (arr->elements.size()<2) return TranslationResult::Error("PROXIMITY() point needs 2 elements");
+                            std::vector<float> point; for(size_t i=0;i<2;i++){ auto el=arr->elements[i]; if(el->getType()!=ASTNodeType::Literal) return TranslationResult::Error("PROXIMITY() point elements must literal"); auto lit=std::static_pointer_cast<LiteralExpr>(el); if(std::holds_alternative<int64_t>(lit->value)) point.push_back((float)std::get<int64_t>(lit->value)); else if(std::holds_alternative<double>(lit->value)) point.push_back((float)std::get<double>(lit->value)); else return TranslationResult::Error("PROXIMITY() numeric only"); }
+                            std::shared_ptr<Expression> spatialExpr; std::string fulltextQuery; std::string fulltextField; size_t fulltextLimit=1000; for (auto &f: ast->filters){ if(!f||!f->condition) continue; auto cond=f->condition; if(cond->getType()==ASTNodeType::FunctionCall){ auto fc=std::static_pointer_cast<FunctionCallExpr>(cond); std::string nm=fc->name; std::transform(nm.begin(),nm.end(),nm.begin(),::tolower); if(nm.rfind("st_",0)==0 && !spatialExpr){ spatialExpr=cond; continue;} if(nm=="fulltext" && fulltextQuery.empty()){ if(fc->arguments.size()<2||fc->arguments.size()>3) return TranslationResult::Error("FULLTEXT() requires 2-3 args"); if(fc->arguments[0]->getType()!=ASTNodeType::FieldAccess) return TranslationResult::Error("FULLTEXT() first arg field access"); fulltextField=extractColumnName(fc->arguments[0]); if(fc->arguments[1]->getType()!=ASTNodeType::Literal) return TranslationResult::Error("FULLTEXT() second arg string literal"); auto litq=std::static_pointer_cast<LiteralExpr>(fc->arguments[1]); if(!std::holds_alternative<std::string>(litq->value)) return TranslationResult::Error("FULLTEXT() query must string"); fulltextQuery=std::get<std::string>(litq->value); if(fc->arguments.size()==3){ auto limLit=std::static_pointer_cast<LiteralExpr>(fc->arguments[2]); if(std::holds_alternative<int64_t>(limLit->value)) fulltextLimit=(size_t)std::get<int64_t>(limLit->value); } continue; } } }
+                            if (fulltextQuery.empty()) return TranslationResult::Error("PROXIMITY LET requires FULLTEXT filter");
+                            ContentGeoQuery cq; cq.table=ast->for_node.collection; cq.geom_field=geomField; cq.spatial_filter=spatialExpr; cq.boost_by_distance=true; cq.center_point=std::vector<float>{point[0], point[1]}; cq.limit=ast->limit? (size_t)std::max<int64_t>(0, ast->limit->count) : 100; cq.text_field=fulltextField; cq.fulltext_query=fulltextQuery; cq.limit=std::min(cq.limit, fulltextLimit); auto cg_result1 = TranslationResult::SuccessContentGeo(std::move(cq)); attachCTEs(cg_result1, std::move(cte_executions)); return cg_result1;
+                        }
+                    }
+                }
+            }
+        }
         TranslationResult::JoinQuery jq;
         jq.for_nodes = ast->for_nodes;
         jq.filters = ast->filters;
@@ -37,7 +111,232 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
         jq.sort = ast->sort;
         jq.limit = ast->limit;
         jq.collect = ast->collect;
-        return TranslationResult::SuccessJoin(std::move(jq));
+        auto result = TranslationResult::SuccessJoin(std::move(jq));
+        attachCTEs(result, std::move(cte_executions));
+        return result;
+    }
+
+    // ---------------------------------------------------------------------
+    // Hybrid Vector+Geo Query Erkennung (Phase 2 Syntax Sugar)
+    // Muster: SORT SIMILARITY(doc.embedding, [..vector..] [, k]) DESC/ASC
+    // Optional: FILTER mit ST_* Funktion (z.B. ST_WITHIN(doc.location, ...))
+    // LIMIT kann k überschreiben, falls drittes Argument nicht gesetzt ist.
+    // Aktuell: Zusätzliche Nicht-Spatial FILTER werden noch nicht unterstützt.
+    // ---------------------------------------------------------------------
+    if (ast->sort && ast->sort->specifications.size() == 1 && ast->for_nodes.empty()) {
+        const auto& spec = ast->sort->specifications[0];
+        if (spec.expression) {
+            // Prefer specialized node types first
+            if (spec.expression->getType() == ASTNodeType::SimilarityCall) {
+                auto sim = std::static_pointer_cast<SimilarityCallExpr>(spec.expression);
+                auto &args = sim->arguments;
+                if (args.size() < 2 || args.size() > 3) {
+                    return TranslationResult::Error("SIMILARITY() requires 2-3 arguments: SIMILARITY(doc.embedding, [vector] [, k])");
+                }
+                if (args[0]->getType() != ASTNodeType::FieldAccess) {
+                    return TranslationResult::Error("SIMILARITY() first argument must be field access (e.g. doc.embedding)");
+                }
+                std::string vectorField = extractColumnName(args[0]);
+                if (args[1]->getType() != ASTNodeType::ArrayLiteral) {
+                    return TranslationResult::Error("SIMILARITY() second argument must be an array literal of numbers");
+                }
+                auto arr = std::static_pointer_cast<ArrayLiteralExpr>(args[1]);
+                std::vector<float> queryVec; queryVec.reserve(arr->elements.size());
+                for (const auto &el : arr->elements) {
+                    if (el->getType() != ASTNodeType::Literal) return TranslationResult::Error("SIMILARITY() vector elements must be numeric literals");
+                    auto lit = std::static_pointer_cast<LiteralExpr>(el);
+                    if (std::holds_alternative<int64_t>(lit->value)) queryVec.push_back(static_cast<float>(std::get<int64_t>(lit->value)));
+                    else if (std::holds_alternative<double>(lit->value)) queryVec.push_back(static_cast<float>(std::get<double>(lit->value)));
+                    else return TranslationResult::Error("SIMILARITY() vector elements must be numeric (int or double)");
+                }
+                size_t k = 10;
+                if (args.size() == 3) {
+                    if (args[2]->getType() != ASTNodeType::Literal) return TranslationResult::Error("SIMILARITY() third argument k must be integer literal");
+                    auto kLit = std::static_pointer_cast<LiteralExpr>(args[2]);
+                    if (std::holds_alternative<int64_t>(kLit->value)) k = static_cast<size_t>(std::get<int64_t>(kLit->value)); else return TranslationResult::Error("SIMILARITY() k must be integer literal");
+                } else if (ast->limit) {
+                    k = static_cast<size_t>(std::max<int64_t>(0, ast->limit->count));
+                }
+                std::shared_ptr<Expression> spatialExpr; std::vector<std::shared_ptr<Expression>> extraPreds;
+                for (const auto &f : ast->filters) {
+                    if (!f || !f->condition) continue; auto cond = f->condition;
+                    if (!spatialExpr && cond->getType()==ASTNodeType::FunctionCall) {
+                        auto fc = std::static_pointer_cast<FunctionCallExpr>(cond); std::string nm = fc->name; std::transform(nm.begin(), nm.end(), nm.begin(), ::tolower); if (nm.rfind("st_",0)==0) { spatialExpr = cond; continue; }
+                    }
+                    extraPreds.push_back(cond);
+                }
+                VectorGeoQuery vq; vq.table = ast->for_node.collection; vq.vector_field = vectorField; vq.query_vector = std::move(queryVec); vq.k = k; vq.spatial_filter = spatialExpr; vq.extra_filters = std::move(extraPreds); auto vg_result2 = TranslationResult::SuccessVectorGeo(std::move(vq)); attachCTEs(vg_result2, std::move(cte_executions)); return vg_result2;
+            }
+            if (spec.expression->getType() == ASTNodeType::ProximityCall) {
+                auto prox = std::static_pointer_cast<ProximityCallExpr>(spec.expression);
+                auto &args = prox->arguments;
+                if (args.size() != 2) return TranslationResult::Error("PROXIMITY() requires exactly 2 arguments: PROXIMITY(doc.location, [lon,lat])");
+                if (args[0]->getType()!=ASTNodeType::FieldAccess) return TranslationResult::Error("PROXIMITY() first argument must be field access (e.g. doc.location)");
+                std::string geomField = extractColumnName(args[0]);
+                if (args[1]->getType()!=ASTNodeType::ArrayLiteral) return TranslationResult::Error("PROXIMITY() second argument must be array literal [lon, lat]");
+                auto arr = std::static_pointer_cast<ArrayLiteralExpr>(args[1]); if (arr->elements.size()<2) return TranslationResult::Error("PROXIMITY() point array must have at least 2 numeric elements [lon, lat]");
+                std::vector<float> point; for (size_t i=0;i<2;i++){ auto el=arr->elements[i]; if (el->getType()!=ASTNodeType::Literal) return TranslationResult::Error("PROXIMITY() point elements must be numeric literals"); auto lit=std::static_pointer_cast<LiteralExpr>(el); if (std::holds_alternative<int64_t>(lit->value)) point.push_back(static_cast<float>(std::get<int64_t>(lit->value))); else if (std::holds_alternative<double>(lit->value)) point.push_back(static_cast<float>(std::get<double>(lit->value))); else return TranslationResult::Error("PROXIMITY() point elements must be numeric"); }
+                std::shared_ptr<Expression> spatialExpr; std::string fulltextQuery; std::string fulltextField; size_t fulltextLimit=1000;
+                for (const auto &f : ast->filters) { if (!f || !f->condition) continue; auto cond=f->condition; if (cond->getType()==ASTNodeType::FunctionCall) { auto fc=std::static_pointer_cast<FunctionCallExpr>(cond); std::string nm=fc->name; std::transform(nm.begin(), nm.end(), nm.begin(), ::tolower); if (nm.rfind("st_",0)==0 && !spatialExpr){ spatialExpr=cond; continue;} if (nm=="fulltext" && fulltextQuery.empty()) { if (fc->arguments.size()<2 || fc->arguments.size()>3) return TranslationResult::Error("FULLTEXT() requires 2-3 arguments inside PROXIMITY hybrid"); if (fc->arguments[0]->getType()!=ASTNodeType::FieldAccess) return TranslationResult::Error("FULLTEXT() first argument must be field access"); fulltextField=extractColumnName(fc->arguments[0]); if (fc->arguments[1]->getType()!=ASTNodeType::Literal) return TranslationResult::Error("FULLTEXT() second argument must be literal string"); auto litq=std::static_pointer_cast<LiteralExpr>(fc->arguments[1]); if (!std::holds_alternative<std::string>(litq->value)) return TranslationResult::Error("FULLTEXT() query must be string"); fulltextQuery=std::get<std::string>(litq->value); if (fc->arguments.size()==3){ if (fc->arguments[2]->getType()!=ASTNodeType::Literal) return TranslationResult::Error("FULLTEXT() limit must be integer"); auto lim=std::static_pointer_cast<LiteralExpr>(fc->arguments[2]); if (std::holds_alternative<int64_t>(lim->value)) fulltextLimit=static_cast<size_t>(std::get<int64_t>(lim->value)); } continue; } } }
+                ContentGeoQuery cq; cq.table=ast->for_node.collection; cq.geom_field=geomField; cq.spatial_filter=spatialExpr; cq.boost_by_distance=true; cq.center_point=std::vector<float>{point[0], point[1]}; cq.limit=ast->limit? static_cast<size_t>(std::max<int64_t>(0, ast->limit->count)) : 100; if (!fulltextQuery.empty()) { cq.text_field=fulltextField; cq.fulltext_query=fulltextQuery; cq.limit=std::min(cq.limit, fulltextLimit); } else { return TranslationResult::Error("PROXIMITY() requires a FULLTEXT() filter for Content+Geo hybrid"); } auto cg_result2 = TranslationResult::SuccessContentGeo(std::move(cq)); attachCTEs(cg_result2, std::move(cte_executions)); return cg_result2;
+            }
+            // Backward compatibility: function call sugar
+            if (spec.expression->getType() == ASTNodeType::FunctionCall) {
+                auto func = std::static_pointer_cast<FunctionCallExpr>(spec.expression);
+                std::string nameLower = func->name; std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+                if (nameLower == "similarity") {
+                // Erwartet mind. 2 Argumente: Feld, Vektor; optional k
+                if (func->arguments.size() < 2 || func->arguments.size() > 3) {
+                    return TranslationResult::Error("SIMILARITY() requires 2-3 arguments: SIMILARITY(doc.embedding, [vector] [, k])");
+                }
+                // Erstes Argument: FieldAccess (Vektorspaltenname)
+                if (func->arguments[0]->getType() != ASTNodeType::FieldAccess) {
+                    return TranslationResult::Error("SIMILARITY() first argument must be field access (e.g. doc.embedding)");
+                }
+                std::string vectorField = extractColumnName(func->arguments[0]);
+                // Zweites Argument: ArrayLiteral mit numerischen Werten
+                if (func->arguments[1]->getType() != ASTNodeType::ArrayLiteral) {
+                    return TranslationResult::Error("SIMILARITY() second argument must be an array literal of numbers");
+                }
+                auto arr = std::static_pointer_cast<ArrayLiteralExpr>(func->arguments[1]);
+                std::vector<float> queryVec;
+                queryVec.reserve(arr->elements.size());
+                for (const auto& el : arr->elements) {
+                    if (el->getType() != ASTNodeType::Literal) {
+                        return TranslationResult::Error("SIMILARITY() vector elements must be numeric literals");
+                    }
+                    auto lit = std::static_pointer_cast<LiteralExpr>(el);
+                    if (std::holds_alternative<int64_t>(lit->value)) {
+                        queryVec.push_back(static_cast<float>(std::get<int64_t>(lit->value)));
+                    } else if (std::holds_alternative<double>(lit->value)) {
+                        queryVec.push_back(static_cast<float>(std::get<double>(lit->value)));
+                    } else {
+                        return TranslationResult::Error("SIMILARITY() vector elements must be numeric (int or double)");
+                    }
+                }
+                size_t k = 10; // default
+                if (func->arguments.size() == 3) {
+                    if (func->arguments[2]->getType() != ASTNodeType::Literal) {
+                        return TranslationResult::Error("SIMILARITY() third argument k must be integer literal");
+                    }
+                    auto kLit = std::static_pointer_cast<LiteralExpr>(func->arguments[2]);
+                    if (std::holds_alternative<int64_t>(kLit->value)) {
+                        k = static_cast<size_t>(std::get<int64_t>(kLit->value));
+                    } else {
+                        return TranslationResult::Error("SIMILARITY() k must be integer literal");
+                    }
+                } else if (ast->limit) {
+                    // LIMIT count als top-k wenn nicht explizit angegeben
+                    k = static_cast<size_t>(std::max<int64_t>(0, ast->limit->count));
+                }
+                // Spatial Filter suchen + zusätzliche Prädikate sammeln (nur einfache Vergleiche zunächst)
+                std::shared_ptr<Expression> spatialExpr;
+                std::vector<std::shared_ptr<Expression>> extraPreds;
+                for (const auto& f : ast->filters) {
+                    if (!f || !f->condition) continue;
+                    auto cond = f->condition;
+                    if (cond->getType() == ASTNodeType::FunctionCall) {
+                        auto fc = std::static_pointer_cast<FunctionCallExpr>(cond);
+                        std::string fcNameLower = fc->name;
+                        std::transform(fcNameLower.begin(), fcNameLower.end(), fcNameLower.begin(), ::tolower);
+                        if (!spatialExpr && fcNameLower.rfind("st_", 0) == 0) {
+                            spatialExpr = cond;
+                            continue;
+                        }
+                    }
+                    // Nur einfache BinaryOp Vergleiche (==,<,>,<=,>=) und AND-Ketten akzeptieren
+                    // Vereinfachung: wir akzeptieren Ausdruck direkt; spätere Optimierung extrahiert Prädikate.
+                    extraPreds.push_back(cond);
+                }
+                VectorGeoQuery vq;
+                vq.table = ast->for_node.collection;
+                vq.vector_field = vectorField; // nur Feldname (embedding oder nested)
+                vq.query_vector = std::move(queryVec);
+                vq.k = k;
+                vq.spatial_filter = spatialExpr; // kann null sein -> reine Vektorabfrage über Syntax-Sugar
+                vq.extra_filters = std::move(extraPreds);
+                auto vg_result3 = TranslationResult::SuccessVectorGeo(std::move(vq));
+                attachCTEs(vg_result3, std::move(cte_executions));
+                return vg_result3;
+            }
+                }
+                if (nameLower == "proximity") {
+                if (func->arguments.size() != 2) {
+                    return TranslationResult::Error("PROXIMITY() requires exactly 2 arguments: PROXIMITY(doc.location, [lon,lat])");
+                }
+                // geo field access
+                if (func->arguments[0]->getType() != ASTNodeType::FieldAccess) {
+                    return TranslationResult::Error("PROXIMITY() first argument must be field access (e.g. doc.location)");
+                }
+                std::string geomField = extractColumnName(func->arguments[0]);
+                // point array literal [lon, lat]
+                if (func->arguments[1]->getType() != ASTNodeType::ArrayLiteral) {
+                    return TranslationResult::Error("PROXIMITY() second argument must be array literal [lon, lat]");
+                }
+                auto arr = std::static_pointer_cast<ArrayLiteralExpr>(func->arguments[1]);
+                if (arr->elements.size() < 2) {
+                    return TranslationResult::Error("PROXIMITY() point array must have at least 2 numeric elements [lon, lat]");
+                }
+                std::vector<float> point;
+                for (size_t i=0;i<2;i++) {
+                    auto el = arr->elements[i];
+                    if (el->getType() != ASTNodeType::Literal) return TranslationResult::Error("PROXIMITY() point elements must be numeric literals");
+                    auto lit = std::static_pointer_cast<LiteralExpr>(el);
+                    if (std::holds_alternative<int64_t>(lit->value)) point.push_back(static_cast<float>(std::get<int64_t>(lit->value)));
+                    else if (std::holds_alternative<double>(lit->value)) point.push_back(static_cast<float>(std::get<double>(lit->value)));
+                    else return TranslationResult::Error("PROXIMITY() point elements must be numeric");
+                }
+                // Extract FULLTEXT filter (if present) & spatial ST_* filter & other predicates (extra for future)
+                std::shared_ptr<Expression> spatialExpr;
+                std::string fulltextQuery;
+                std::string fulltextField;
+                size_t fulltextLimit = 1000;
+                for (const auto& f : ast->filters) {
+                    if (!f || !f->condition) continue;
+                    if (f->condition->getType() == ASTNodeType::FunctionCall) {
+                        auto fc = std::static_pointer_cast<FunctionCallExpr>(f->condition);
+                        std::string fcNameLower = fc->name; std::transform(fcNameLower.begin(), fcNameLower.end(), fcNameLower.begin(), ::tolower);
+                        if (fcNameLower.rfind("st_",0)==0 && !spatialExpr) { spatialExpr = f->condition; continue; }
+                        if (fcNameLower == "fulltext" && fulltextQuery.empty()) {
+                            if (fc->arguments.size() < 2 || fc->arguments.size() > 3) return TranslationResult::Error("FULLTEXT() requires 2-3 arguments inside PROXIMITY hybrid");
+                            if (fc->arguments[0]->getType() != ASTNodeType::FieldAccess) return TranslationResult::Error("FULLTEXT() first argument must be field access");
+                            fulltextField = extractColumnName(fc->arguments[0]);
+                            if (fc->arguments[1]->getType() != ASTNodeType::Literal) return TranslationResult::Error("FULLTEXT() second argument must be literal string");
+                            auto litq = std::static_pointer_cast<LiteralExpr>(fc->arguments[1]);
+                            if (!std::holds_alternative<std::string>(litq->value)) return TranslationResult::Error("FULLTEXT() query must be string");
+                            fulltextQuery = std::get<std::string>(litq->value);
+                            if (fc->arguments.size()==3) {
+                                if (fc->arguments[2]->getType()!=ASTNodeType::Literal) return TranslationResult::Error("FULLTEXT() limit must be integer");
+                                auto lim = std::static_pointer_cast<LiteralExpr>(fc->arguments[2]);
+                                if (std::holds_alternative<int64_t>(lim->value)) fulltextLimit = static_cast<size_t>(std::get<int64_t>(lim->value));
+                            }
+                            continue;
+                        }
+                    }
+                }
+                // Build ContentGeoQuery
+                ContentGeoQuery cq;
+                cq.table = ast->for_node.collection;
+                cq.geom_field = geomField;
+                cq.spatial_filter = spatialExpr; // optional
+                cq.boost_by_distance = true; // PROXIMITY implies ranking by distance
+                cq.center_point = std::vector<float>{point[0], point[1]};
+                cq.limit = ast->limit ? static_cast<size_t>(std::max<int64_t>(0, ast->limit->count)) : 100;
+                if (!fulltextQuery.empty()) {
+                    cq.text_field = fulltextField;
+                    cq.fulltext_query = fulltextQuery;
+                    // Use explicit fulltext limit if smaller than overall cq.limit
+                    cq.limit = std::min(cq.limit, fulltextLimit);
+                } else {
+                    // Without FULLTEXT we must specify a default text_field; treat as error for now
+                    return TranslationResult::Error("PROXIMITY() requires a FULLTEXT() filter for Content+Geo hybrid");
+                }
+                    auto cg_result3 = TranslationResult::SuccessContentGeo(std::move(cq));
+                    attachCTEs(cg_result3, std::move(cte_executions));
+                    return cg_result3;
+                }
+            }
+        }
     }
 
     // Single-FOR Query: Standard ConjunctiveQuery für einfache Queries
@@ -89,7 +388,9 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
             disjQuery.orderBy = extractOrderBy(ast->sort, ast->limit);
         }
         
-        return TranslationResult::SuccessDisjunctive(std::move(disjQuery));
+        auto result = TranslationResult::SuccessDisjunctive(std::move(disjQuery));
+        attachCTEs(result, std::move(cte_executions));
+        return result;
     }
     
     // No OR: Standard conjunctive query
@@ -267,7 +568,9 @@ AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<
         query.orderBy = extractOrderBy(ast->sort, ast->limit);
     }
     
-    return TranslationResult::Success(std::move(query));
+    auto result = TranslationResult::Success(std::move(query));
+    attachCTEs(result, std::move(cte_executions));
+    return result;
 }
 
 bool AQLTranslator::extractPredicates(
@@ -786,4 +1089,102 @@ std::vector<ConjunctiveQuery> AQLTranslator::convertToDNF(
     return {};
 }
 
+// Phase 4.1: Count CTE references in query AST
+size_t AQLTranslator::countCTEReferences(
+    const std::shared_ptr<Query>& ast,
+    const std::string& cte_name
+) {
+    if (!ast) return 0;
+    
+    size_t count = 0;
+    
+    // Count references in FOR nodes
+    for (const auto& for_node : ast->for_nodes) {
+        if (for_node.collection == cte_name) {
+            count++;
+        }
+    }
+    
+    // Single FOR node (legacy compatibility)
+    if (ast->for_node.collection == cte_name) {
+        count++;
+    }
+    
+    // Recursively check nested queries in LET expressions
+    // (e.g., LET x = (FOR ... FROM cte ...))
+    for (const auto& let_node : ast->let_nodes) {
+        if (let_node.expression && let_node.expression->getType() == ASTNodeType::SubqueryExpr) {
+            auto subq = std::static_pointer_cast<query::SubqueryExpr>(let_node.expression);
+            count += countCTEReferences(subq->query, cte_name);
+        }
+    }
+    
+    // Check subqueries in FILTER conditions (ANY/ALL)
+    for (const auto& filter : ast->filters) {
+        if (!filter || !filter->condition) continue;
+        count += countCTEReferencesInExpr(filter->condition, cte_name);
+    }
+    
+    return count;
+}
+
+// Helper: recursively count CTE references in expressions
+size_t AQLTranslator::countCTEReferencesInExpr(
+    const std::shared_ptr<Expression>& expr,
+    const std::string& cte_name
+) {
+    if (!expr) return 0;
+    
+    size_t count = 0;
+    
+    switch (expr->getType()) {
+        case ASTNodeType::SubqueryExpr: {
+            auto subq = std::static_pointer_cast<query::SubqueryExpr>(expr);
+            count += countCTEReferences(subq->query, cte_name);
+            break;
+        }
+        case ASTNodeType::AnyExpr: {
+            auto any = std::static_pointer_cast<query::AnyExpr>(expr);
+            count += countCTEReferences(any->query, cte_name);
+            count += countCTEReferencesInExpr(any->condition, cte_name);
+            break;
+        }
+        case ASTNodeType::AllExpr: {
+            auto all = std::static_pointer_cast<query::AllExpr>(expr);
+            count += countCTEReferences(all->query, cte_name);
+            count += countCTEReferencesInExpr(all->condition, cte_name);
+            break;
+        }
+        case ASTNodeType::BinaryOp: {
+            auto binop = std::static_pointer_cast<query::BinaryOpExpr>(expr);
+            count += countCTEReferencesInExpr(binop->left, cte_name);
+            count += countCTEReferencesInExpr(binop->right, cte_name);
+            break;
+        }
+        case ASTNodeType::FunctionCall: {
+            auto func = std::static_pointer_cast<query::FunctionCallExpr>(expr);
+            for (const auto& arg : func->arguments) {
+                count += countCTEReferencesInExpr(arg, cte_name);
+            }
+            break;
+        }
+        default:
+            // Other expression types don't contain subqueries
+            break;
+    }
+    
+    return count;
+}
+
+// Phase 4.1: Attach CTEs to translation result
+void AQLTranslator::attachCTEs(
+    TranslationResult& result,
+    std::vector<TranslationResult::CTEExecution> ctes
+) {
+    if (!ctes.empty() && result.success) {
+        result.ctes = std::move(ctes);
+    }
+}
+
 } // namespace themis
+

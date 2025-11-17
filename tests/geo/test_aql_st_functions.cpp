@@ -673,6 +673,93 @@ TEST_F(STFunctionsTest, ST_HasZ_InvalidGeometry) {
 }
 
 // ============================================================================
+// ST_ZBetween
+// ============================================================================
+
+TEST_F(STFunctionsTest, ST_ZBetween_PointInRange) {
+    json p = {{"type", "Point"}, {"coordinates", {1.0, 2.0, 5.0}}};
+    json result = callFunction("ST_ZBetween", {p, 4.0, 6.0});
+    ASSERT_TRUE(result.is_boolean());
+    EXPECT_TRUE(result.get<bool>());
+}
+
+TEST_F(STFunctionsTest, ST_ZBetween_PointOutOfRange) {
+    json p = {{"type", "Point"}, {"coordinates", {1.0, 2.0, 3.9}}};
+    json result = callFunction("ST_ZBetween", {p, 4.0, 6.0});
+    ASSERT_TRUE(result.is_boolean());
+    EXPECT_FALSE(result.get<bool>());
+}
+
+TEST_F(STFunctionsTest, ST_ZBetween_LineStringAnyInRange) {
+    json line = {{"type", "LineString"}, {"coordinates", {{0.0, 0.0, 1.0}, {1.0, 1.0, 5.0}, {2.0, 2.0, 10.0}}}};
+    json result = callFunction("ST_ZBetween", {line, 4.0, 6.0});
+    ASSERT_TRUE(result.is_boolean());
+    EXPECT_TRUE(result.get<bool>());
+}
+
+TEST_F(STFunctionsTest, ST_ZBetween_PolygonNoZ) {
+    json polygon = { {"type", "Polygon"}, {"coordinates", {{{0.0,0.0},{4.0,0.0},{4.0,4.0},{0.0,4.0},{0.0,0.0}}}} };
+    json result = callFunction("ST_ZBetween", {polygon, -10.0, 10.0});
+    ASSERT_TRUE(result.is_boolean());
+    EXPECT_FALSE(result.get<bool>());
+}
+
+// ============================================================================
+// ST_Buffer (MVP) & ST_Union (MVP)
+// ============================================================================
+
+TEST_F(STFunctionsTest, ST_Buffer_PointSquare)
+{
+    json point = callFunction("ST_Point", {1.0, 2.0});
+    json buffered = callFunction("ST_Buffer", {point, 0.5});
+
+    ASSERT_TRUE(buffered.is_object());
+    EXPECT_EQ(buffered["type"], "Polygon");
+    ASSERT_TRUE(buffered["coordinates"].is_array());
+    ASSERT_FALSE(buffered["coordinates"].empty());
+    const auto& ring = buffered["coordinates"][0];
+    ASSERT_EQ(ring.size(), 5); // closed square
+    EXPECT_DOUBLE_EQ(ring[0][0], 0.5); EXPECT_DOUBLE_EQ(ring[0][1], 1.5);
+    EXPECT_DOUBLE_EQ(ring[1][0], 1.5); EXPECT_DOUBLE_EQ(ring[1][1], 1.5);
+    EXPECT_DOUBLE_EQ(ring[2][0], 1.5); EXPECT_DOUBLE_EQ(ring[2][1], 2.5);
+    EXPECT_DOUBLE_EQ(ring[3][0], 0.5); EXPECT_DOUBLE_EQ(ring[3][1], 2.5);
+    EXPECT_DOUBLE_EQ(ring[4][0], 0.5); EXPECT_DOUBLE_EQ(ring[4][1], 1.5);
+}
+
+TEST_F(STFunctionsTest, ST_Buffer_PolygonExpandMBR)
+{
+    json poly = callFunction("ST_GeomFromText", {"POLYGON((0 0, 2 0, 2 2, 0 2, 0 0))"});
+    json buffered = callFunction("ST_Buffer", {poly, 1.0});
+
+    ASSERT_TRUE(buffered.is_object());
+    EXPECT_EQ(buffered["type"], "Polygon");
+    const auto& ring = buffered["coordinates"][0];
+    ASSERT_EQ(ring.size(), 5);
+    EXPECT_DOUBLE_EQ(ring[0][0], -1.0); EXPECT_DOUBLE_EQ(ring[0][1], -1.0);
+    EXPECT_DOUBLE_EQ(ring[1][0],  3.0); EXPECT_DOUBLE_EQ(ring[1][1], -1.0);
+    EXPECT_DOUBLE_EQ(ring[2][0],  3.0); EXPECT_DOUBLE_EQ(ring[2][1],  3.0);
+    EXPECT_DOUBLE_EQ(ring[3][0], -1.0); EXPECT_DOUBLE_EQ(ring[3][1],  3.0);
+    EXPECT_DOUBLE_EQ(ring[4][0], -1.0); EXPECT_DOUBLE_EQ(ring[4][1], -1.0);
+}
+
+TEST_F(STFunctionsTest, ST_Union_PointPolygonMBR)
+{
+    json p = callFunction("ST_Point", {0.0, 0.0});
+    json q = callFunction("ST_GeomFromText", {"POLYGON((1 1, 2 1, 2 2, 1 2, 1 1))"});
+    json uni = callFunction("ST_Union", {p, q});
+
+    ASSERT_TRUE(uni.is_object());
+    EXPECT_EQ(uni["type"], "Polygon");
+    const auto& ring = uni["coordinates"][0];
+    ASSERT_EQ(ring.size(), 5);
+    EXPECT_DOUBLE_EQ(ring[0][0], 0.0); EXPECT_DOUBLE_EQ(ring[0][1], 0.0);
+    EXPECT_DOUBLE_EQ(ring[1][0], 2.0); EXPECT_DOUBLE_EQ(ring[1][1], 0.0);
+    EXPECT_DOUBLE_EQ(ring[2][0], 2.0); EXPECT_DOUBLE_EQ(ring[2][1], 2.0);
+    EXPECT_DOUBLE_EQ(ring[3][0], 0.0); EXPECT_DOUBLE_EQ(ring[3][1], 2.0);
+    EXPECT_DOUBLE_EQ(ring[4][0], 0.0); EXPECT_DOUBLE_EQ(ring[4][1], 0.0);
+}
+
+// ============================================================================
 // INTEGRATION TESTS
 // ============================================================================
 

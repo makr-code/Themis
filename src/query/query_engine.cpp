@@ -3,7 +3,9 @@
 #include "query/query_engine.h"
 #include "query/query_optimizer.h"
 #include "query/aql_parser.h"
+#include "query/aql_translator.h"
 #include "query/let_evaluator.h"
+#include "query/cte_cache.h"
 #include "index/secondary_index.h"
 #include "index/graph_index.h"
 #include "index/spatial_index.h"
@@ -12,6 +14,7 @@
 #include "storage/key_schema.h"
 #include "utils/logger.h"
 #include "utils/tracing.h"
+#include "utils/simd_distance.h"
 #include <sstream>
 #include <cmath>
 
@@ -23,6 +26,7 @@
 #include <set>
 #include <map>
 #include <queue>
+#include <thread>
 
 namespace themis {
 
@@ -1706,6 +1710,173 @@ nlohmann::json QueryEngine::evaluateExpression(
 			return nullptr;
 		}
 		
+		// Phase 3.2: Scalar Subquery Evaluation
+		case ASTNodeType::SubqueryExpr: {
+			auto subquery = std::static_pointer_cast<SubqueryExpr>(expr);
+			
+			if (!subquery->query) {
+				return nullptr;
+			}
+			
+			// Phase 4.2: Execute subquery with proper context isolation
+			// Translate subquery AST to executable form
+			auto translation = AQLTranslator::translate(subquery->query);
+			if (!translation.success) {
+				THEMIS_WARN("Subquery translation failed: {}", translation.error_message);
+				return nullptr;
+			}
+			
+			// Phase 4.2: Execute any CTEs in the subquery first
+			EvaluationContext subCtx = ctx.createChild(); // Inherit parent bindings for correlation
+			if (!translation.ctes.empty()) {
+				auto cteStatus = executeCTEs(translation.ctes, subCtx);
+				if (!cteStatus.ok()) {
+					THEMIS_WARN("Subquery CTE execution failed: {}", cteStatus.message());
+					return nullptr;
+				}
+			}
+			
+			// Execute subquery based on query type
+			std::vector<nlohmann::json> subquery_results;
+			
+			if (translation.join.has_value()) {
+				// JOIN query
+				auto& join = translation.join.value();
+				auto [status, results] = executeJoin(
+					join.for_nodes,
+					join.filters,
+					join.let_nodes,
+					join.return_node,
+					join.sort,
+					join.limit,
+					&subCtx  // Pass context for correlation
+				);
+				if (!status.ok()) {
+					THEMIS_WARN("Subquery JOIN execution failed: {}", status.message());
+					return nullptr;
+				}
+				subquery_results = std::move(results);
+				
+			} else if (translation.query.has_value()) {
+				// Conjunctive query
+				auto [status, entities] = executeAndEntitiesWithFallback(translation.query.value());
+				if (!status.ok()) {
+					THEMIS_WARN("Subquery conjunctive execution failed: {}", status.message());
+					return nullptr;
+				}
+				subquery_results.reserve(entities.size());
+				for (auto& entity : entities) {
+					subquery_results.push_back(entity.toJSON());
+				}
+				
+			} else if (translation.disjunctive.has_value()) {
+				// Disjunctive query
+				auto [status, entities] = executeOrEntitiesWithFallback(translation.disjunctive.value());
+				if (!status.ok()) {
+					THEMIS_WARN("Subquery disjunctive execution failed: {}", status.message());
+					return nullptr;
+				}
+				subquery_results.reserve(entities.size());
+				for (auto& entity : entities) {
+					subquery_results.push_back(entity.toJSON());
+				}
+				
+			} else if (translation.vector_geo.has_value()) {
+				// Vector+Geo hybrid
+				auto [status, results] = executeVectorGeo(translation.vector_geo.value());
+				if (!status.ok()) {
+					THEMIS_WARN("Subquery vector+geo execution failed: {}", status.message());
+					return nullptr;
+				}
+				subquery_results.reserve(results.size());
+				for (auto& result : results) {
+					subquery_results.push_back(result.entity);
+				}
+				
+			} else if (translation.content_geo.has_value()) {
+				// Content+Geo hybrid
+				auto [status, results] = executeContentGeo(translation.content_geo.value());
+				if (!status.ok()) {
+					THEMIS_WARN("Subquery content+geo execution failed: {}", status.message());
+					return nullptr;
+				}
+				subquery_results.reserve(results.size());
+				for (auto& result : results) {
+					subquery_results.push_back(result.entity);
+				}
+				
+			} else {
+				THEMIS_WARN("Subquery: Unknown query type");
+				return nullptr;
+			}
+			
+			// Phase 4.2: Return scalar or array based on result count
+			// Scalar subquery: Return first element or null
+			// Array context (e.g., in ANY/ALL): Would be handled by caller
+			if (subquery_results.empty()) {
+				return nullptr;
+			} else if (subquery_results.size() == 1) {
+				return subquery_results[0]; // Scalar result
+			} else {
+				// Multiple results: Return as array
+				// Note: In strict SQL, scalar subquery with >1 row is error
+				// We're more lenient and return array
+				return nlohmann::json(subquery_results);
+			}
+		}
+		
+		// Phase 3.3: ANY quantifier evaluation
+		case ASTNodeType::AnyExpr: {
+			auto anyExpr = std::static_pointer_cast<AnyExpr>(expr);
+			
+			// Evaluate array expression
+			auto arrayVal = evaluateExpression(anyExpr->arrayExpr, ctx);
+			if (!arrayVal.is_array()) {
+				return false;
+			}
+			
+			// Test if ANY element satisfies condition
+			for (const auto& elem : arrayVal) {
+				// Phase 3.4: Use child context for proper variable scoping
+				auto iterCtx = ctx.createChild();
+				iterCtx.bind(anyExpr->variable, elem);
+				
+				if (evaluateCondition(anyExpr->condition, iterCtx)) {
+					return true;
+				}
+			}
+			
+			return false;
+		}
+		
+		// Phase 3.3: ALL quantifier evaluation
+		case ASTNodeType::AllExpr: {
+			auto allExpr = std::static_pointer_cast<AllExpr>(expr);
+			
+			// Evaluate array expression
+			auto arrayVal = evaluateExpression(allExpr->arrayExpr, ctx);
+			if (!arrayVal.is_array()) {
+				return true; // Vacuous truth for non-arrays
+			}
+			
+			if (arrayVal.empty()) {
+				return true; // Vacuous truth for empty arrays
+			}
+			
+			// Test if ALL elements satisfy condition
+			for (const auto& elem : arrayVal) {
+				// Phase 3.4: Use child context for proper variable scoping
+				auto iterCtx = ctx.createChild();
+				iterCtx.bind(allExpr->variable, elem);
+				
+				if (!evaluateCondition(allExpr->condition, iterCtx)) {
+					return false;
+				}
+			}
+			
+			return true;
+		}
+		
 		default:
 			return nullptr;
 	}
@@ -1835,7 +2006,8 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 	const std::vector<query::LetNode>& let_nodes,
 	const std::shared_ptr<query::ReturnNode>& return_node,
 	const std::shared_ptr<query::SortNode>& sort,
-	const std::shared_ptr<query::LimitNode>& limit
+	const std::shared_ptr<query::LimitNode>& limit,
+	const EvaluationContext* parent_context  // Phase 4.1
 ) const {
 	auto span = Tracer::startSpan("QueryEngine.executeJoin");
 	span.setAttribute("join.for_count", static_cast<int64_t>(for_nodes.size()));
@@ -1845,6 +2017,24 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 	}
 	
 	std::vector<nlohmann::json> results;
+	
+	// Phase 4.1: Initialize context with parent CTEs if provided
+	EvaluationContext initial_context;
+	if (parent_context) {
+		initial_context.cte_results = parent_context->cte_results;
+		initial_context.bm25_scores = parent_context->bm25_scores;
+		initial_context.cte_cache = parent_context->cte_cache;
+	}
+	
+	// Phase 4.3: Initialize CTE cache if not inherited from parent
+	if (!initial_context.cte_cache) {
+		query::CTECache::Config cache_config;
+		cache_config.max_memory_bytes = 100 * 1024 * 1024; // 100MB default
+		cache_config.spill_directory = "./themis_cte_spill";
+		cache_config.enable_compression = false;
+		cache_config.auto_cleanup = true;
+		initial_context.cte_cache = std::make_shared<query::CTECache>(cache_config);
+	}
 	
 	// OPTIMIZATION: Predicate Push-down
 	// Classify filters by which variables they reference
@@ -1877,22 +2067,16 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 			// Build phase: Create hash table from first collection
 			std::unordered_map<std::string, std::vector<nlohmann::json>> hash_table;
 			const auto& build_for = for_nodes[0];
-			const std::string build_prefix = build_for.collection + ":";
 			
-			// Apply pushed-down filters for build side
-			auto build_filters = single_var_filters.find(build_for.variable);
-			
-			db_.scanPrefix(build_prefix, [&](std::string_view key, std::string_view value) -> bool {
-				std::string pk = KeySchema::extractPrimaryKey(key);
-				std::vector<uint8_t> blob(value.begin(), value.end());
-				try {
-					BaseEntity entity = BaseEntity::deserialize(pk, blob);
-					nlohmann::json doc = nlohmann::json::parse(entity.toJson());
-					doc["_key"] = pk;
-					
+			// Phase 4.4: Check if build side is a CTE
+			auto build_cte = initial_context.getCTE(build_for.collection);
+			if (build_cte.has_value()) {
+				// Build from CTE results
+				for (const auto& doc : build_cte.value()) {
 					// Apply pushed-down filters
+					auto build_filters = single_var_filters.find(build_for.variable);
 					if (build_filters != single_var_filters.end()) {
-						EvaluationContext filter_ctx;
+						EvaluationContext filter_ctx = initial_context;
 						filter_ctx.bind(build_for.variable, doc);
 						bool pass = true;
 						for (const auto& filter : build_filters->second) {
@@ -1901,7 +2085,7 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 								break;
 							}
 						}
-						if (!pass) return true; // Skip this document
+						if (!pass) continue;
 					}
 					
 					// Extract join key
@@ -1913,58 +2097,91 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 						std::string join_key = doc[join_key_field].dump();
 						hash_table[join_key].push_back(doc);
 					}
-				} catch (...) {}
-				return true;
-			});
+				}
+			} else {
+				// Build from table scan
+				const std::string build_prefix = build_for.collection + ":";
+				
+				// Apply pushed-down filters for build side
+				auto build_filters = single_var_filters.find(build_for.variable);
+				
+				db_.scanPrefix(build_prefix, [&](std::string_view key, std::string_view value) -> bool {
+					std::string pk = KeySchema::extractPrimaryKey(key);
+					std::vector<uint8_t> blob(value.begin(), value.end());
+					try {
+						BaseEntity entity = BaseEntity::deserialize(pk, blob);
+						nlohmann::json doc = nlohmann::json::parse(entity.toJson());
+						doc["_key"] = pk;
+						
+						// Apply pushed-down filters
+						if (build_filters != single_var_filters.end()) {
+							EvaluationContext filter_ctx = initial_context;
+							filter_ctx.bind(build_for.variable, doc);
+							bool pass = true;
+							for (const auto& filter : build_filters->second) {
+								if (!evaluateCondition(filter->condition, filter_ctx)) {
+									pass = false;
+									break;
+								}
+							}
+							if (!pass) return true; // Skip this document
+						}
+						
+						// Extract join key
+						std::string join_key_field = (equiJoin.left_var == build_for.variable) 
+							? equiJoin.left_field 
+							: equiJoin.right_field;
+						
+						if (doc.contains(join_key_field)) {
+							std::string join_key = doc[join_key_field].dump();
+							hash_table[join_key].push_back(doc);
+						}
+					} catch (...) {}
+					return true;
+				});
+			}
 			
 			// Probe phase: Scan second collection and probe hash table
 			const auto& probe_for = for_nodes[1];
-			const std::string probe_prefix = probe_for.collection + ":";
 			
 			// Apply pushed-down filters for probe side
 			auto probe_filters = single_var_filters.find(probe_for.variable);
 			
-			db_.scanPrefix(probe_prefix, [&](std::string_view key, std::string_view value) -> bool {
-				std::string pk = KeySchema::extractPrimaryKey(key);
-				std::vector<uint8_t> blob(value.begin(), value.end());
-				try {
-					BaseEntity entity = BaseEntity::deserialize(pk, blob);
-					nlohmann::json doc = nlohmann::json::parse(entity.toJson());
-					doc["_key"] = pk;
-					
-					// Apply pushed-down filters
-					if (probe_filters != single_var_filters.end()) {
-						EvaluationContext filter_ctx;
-						filter_ctx.bind(probe_for.variable, doc);
-						bool pass = true;
-						for (const auto& filter : probe_filters->second) {
-							if (!evaluateCondition(filter->condition, filter_ctx)) {
-								pass = false;
-								break;
-							}
+			// Phase 4.4: Check if probe side is a CTE
+			auto probe_cte = initial_context.getCTE(probe_for.collection);
+			
+			auto processProbeDoc = [&](const nlohmann::json& doc) {
+				// Apply pushed-down filters
+				if (probe_filters != single_var_filters.end()) {
+					EvaluationContext filter_ctx = initial_context;
+					filter_ctx.bind(probe_for.variable, doc);
+					bool pass = true;
+					for (const auto& filter : probe_filters->second) {
+						if (!evaluateCondition(filter->condition, filter_ctx)) {
+							pass = false;
+							break;
 						}
-						if (!pass) return true; // Skip this document
 					}
-					
-					// Extract join key
-					std::string join_key_field = (equiJoin.right_var == probe_for.variable)
-						? equiJoin.right_field
-						: equiJoin.left_field;
-					
-					if (!doc.contains(join_key_field)) return true;
-					std::string join_key = doc[join_key_field].dump();
-					
-					// Probe hash table
-					auto it = hash_table.find(join_key);
-					if (it == hash_table.end()) return true;
-					
-					// For each matching row from build side
-					for (const auto& build_doc : it->second) {
-						EvaluationContext ctx;
-						ctx.bind(build_for.variable, build_doc);
-						ctx.bind(probe_for.variable, doc);
-						
-						// Process LET bindings using LetEvaluator
+					if (!pass) return;
+				}
+				
+				// Extract join key
+				std::string join_key_field = (equiJoin.right_var == probe_for.variable)
+					? equiJoin.right_field
+					: equiJoin.left_field;
+				
+				if (!doc.contains(join_key_field)) return;
+				std::string join_key = doc[join_key_field].dump();
+				
+				// Probe hash table
+				auto it = hash_table.find(join_key);
+				if (it == hash_table.end()) return;
+				
+				// For each matching row from build side
+				for (const auto& build_doc : it->second) {
+					EvaluationContext ctx = initial_context;
+					ctx.bind(build_for.variable, build_doc);
+					ctx.bind(probe_for.variable, doc);						// Process LET bindings using LetEvaluator
 						query::LetEvaluator letEval;
 						nlohmann::json currentDoc;
 						currentDoc[build_for.variable] = build_doc;
@@ -2020,9 +2237,30 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 							results.push_back(std::move(result));
 						}
 					}
-				} catch (...) {}
-				return true;
-			});
+				}
+			};
+			
+			// Execute probe based on CTE or table
+			if (probe_cte.has_value()) {
+				// Probe from CTE
+				for (const auto& doc : probe_cte.value()) {
+					processProbeDoc(doc);
+				}
+			} else {
+				// Probe from table scan
+				const std::string probe_prefix = probe_for.collection + ":";
+				db_.scanPrefix(probe_prefix, [&](std::string_view key, std::string_view value) -> bool {
+					std::string pk = KeySchema::extractPrimaryKey(key);
+					std::vector<uint8_t> blob(value.begin(), value.end());
+					try {
+						BaseEntity entity = BaseEntity::deserialize(pk, blob);
+						nlohmann::json doc = nlohmann::json::parse(entity.toJson());
+						doc["_key"] = pk;
+						processProbeDoc(doc);
+					} catch (...) {}
+					return true;
+				});
+			}
 			
 			// Apply SORT/LIMIT and return
 			goto apply_sort_limit;
@@ -2080,6 +2318,38 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 			
 			// Load all documents from current collection
 			const auto& for_node = for_nodes[depth];
+			
+			// Phase 4.4: Check if collection is a CTE
+			auto cte_data = ctx.getCTE(for_node.collection);
+			if (cte_data.has_value()) {
+				// Iterate over CTE results instead of table scan
+				for (const auto& doc : cte_data.value()) {
+					// Apply pushed-down filters
+					auto push_filters = single_var_filters.find(for_node.variable);
+					if (push_filters != single_var_filters.end()) {
+						EvaluationContext filter_ctx = ctx;
+						filter_ctx.bind(for_node.variable, doc);
+						bool pass = true;
+						for (const auto& filter : push_filters->second) {
+							if (!evaluateCondition(filter->condition, filter_ctx)) {
+								pass = false;
+								break;
+							}
+						}
+						if (!pass) continue; // Skip this result
+					}
+					
+					// Bind current variable
+					EvaluationContext newCtx = ctx;
+					newCtx.bind(for_node.variable, doc);
+					
+					// Recurse to next FOR level
+					nestedLoop(depth + 1, newCtx);
+				}
+				return; // CTE iteration complete
+			}
+			
+			// Regular table scan
 			const std::string prefix = for_node.collection + ":";
 			
 			// Get pushed-down filters for this variable
@@ -2123,8 +2393,7 @@ std::pair<QueryEngine::Status, std::vector<nlohmann::json>> QueryEngine::execute
 			});
 		};
 		
-		EvaluationContext rootCtx;
-		nestedLoop(0, rootCtx);
+		nestedLoop(0, initial_context);
 	}
 	
 apply_sort_limit:
@@ -2312,6 +2581,51 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 		return {Status::Error("start_node darf nicht leer sein"), {}};
 	}
 	
+	// Dynamische Branching-Faktor Schätzung (Sampling über erste 2 Tiefen)
+	size_t sampledEdges = 0; size_t sampledVertices = 0; double branchingEstimate = 0.0;
+	{
+		std::unordered_set<std::string> frontier{q.start_node};
+		for (size_t depth=0; depth<2 && !frontier.empty(); ++depth) {
+			std::unordered_set<std::string> next;
+			for (const auto &v : frontier) {
+				auto [st, adj] = graphIdx_->outAdjacency(v);
+				if (!st.ok) continue;
+				// Optional edge type filter
+				for (auto &ai : adj) {
+					if (!q.edge_type.empty() && ai.graphId != q.edge_type) continue; // simplistic match, adjust if edge_type stored differently
+					next.insert(ai.targetPk);
+				}
+				sampledVertices++;
+				sampledEdges += adj.size();
+			}
+			frontier.swap(next);
+		}
+		if (sampledVertices>0) branchingEstimate = static_cast<double>(sampledEdges) / static_cast<double>(sampledVertices);
+	}
+	if (branchingEstimate <= 0.0) branchingEstimate = 1.0;
+	// Räumliche Selektivität schätzen wenn Constraint vorhanden (vereinfachte Annahme: bboxRatio falls extrahierbar)
+	double spatialSelectivity = 1.0;
+	if (q.spatial_constraint && q.spatial_constraint->spatial_filter) {
+		auto bbox = extractBBoxFromFilter(q.spatial_constraint->spatial_filter);
+		if (bbox && spatialIdx_ && spatialIdx_->hasSpatialIndex("vertices")) { // Tabelle "vertices" hypothetisch
+			auto stats = spatialIdx_->getStats("vertices");
+			double totalArea = std::max((stats.total_bounds.maxx - stats.total_bounds.minx) * (stats.total_bounds.maxy - stats.total_bounds.miny), 1e-9);
+			double bboxArea = std::max((bbox->maxx - bbox->minx) * (bbox->maxy - bbox->miny), 0.0);
+			spatialSelectivity = std::min(std::max(bboxArea / totalArea, 0.0), 1.0);
+		}
+	}
+	QueryOptimizer::GraphPathCostInput gci; gci.maxDepth = q.max_depth; gci.branchingFactor = static_cast<size_t>(std::ceil(branchingEstimate)); gci.hasSpatialConstraint = q.spatial_constraint.has_value(); gci.spatialSelectivity = spatialSelectivity;
+	auto gcr = QueryOptimizer::estimateGraphPath(gci);
+	span.setAttribute("optimizer.graph.branching_estimate", branchingEstimate);
+	span.setAttribute("optimizer.graph.expanded_estimate", gcr.estimatedExpandedVertices);
+	span.setAttribute("optimizer.graph.time_ms_estimate", gcr.estimatedTimeMs);
+	// Frühabbruch bei sehr großer Expansion
+	const double ABORT_THRESHOLD = 1e6; // heuristisch
+	if (gcr.estimatedExpandedVertices > ABORT_THRESHOLD) {
+		span.setAttribute("optimizer.graph.aborted", true);
+		span.setStatus(true);
+		return {Status::OK(), {}}; // leere Pfadliste als Schutz vor Explosion
+	}
 	// Temporal filter setup
 	std::optional<int64_t> timestamp_ms;
 	if (q.valid_from.has_value() && q.valid_to.has_value()) {
@@ -2327,7 +2641,7 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 	
 	std::vector<std::vector<std::string>> allPaths;
 	
-	// If end_node is specified, use Dijkstra for single shortest path
+	// If end_node is specified, use Dijkstra for single shortest path (early exit optimizations)
 	if (!q.end_node.empty()) {
 		GraphIndexManager::PathResult pathResult;
 		GraphIndexManager::Status st;
@@ -2354,6 +2668,15 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 		if (!st.ok && st.message.find("Kein Pfad gefunden") == std::string::npos) {
 			span.setStatus(false, st.message);
 			return {Status::Error(st.message), {}};
+		}
+		// Early exit: if shortestPath flag set (from AQL sugar) and path found, skip spatial filtering unless required
+		bool needSpatial = q.spatial_constraint.has_value();
+		if (q.end_node == q.start_node) {
+			// Trivial path
+			allPaths.push_back({q.start_node});
+			span.setAttribute("query.path_count", 1);
+			span.setStatus(true);
+			return {Status::OK(), std::move(allPaths)};
 		}
 		
 		// Graph + Geo: Apply spatial filter to path vertices
@@ -2415,7 +2738,7 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 			allPaths.push_back(std::move(pathResult.path));
 		}
 	} else {
-		// No end_node: BFS to find all reachable nodes up to max_depth
+		// No end_node: BFS to find all reachable nodes up to max_depth; optimize with optional spatial constraint pruning
 		std::vector<std::string> reachableNodes;
 		GraphIndexManager::Status st;
 		
@@ -2442,7 +2765,7 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 			return {Status::Error(st.message), {}};
 		}
 		
-		// Graph + Geo: Apply spatial filter to reachable nodes
+		// Graph + Geo: Apply spatial filter to reachable nodes (early pruning)
 		if (q.spatial_constraint.has_value()) {
 			auto spatialSpan = Tracer::startSpan("spatial_filter_nodes");
 			const auto& sc = *q.spatial_constraint;
@@ -2451,28 +2774,34 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 			// Batch load all reachable vertices
 			auto vertexDataList = db_.multiGet(reachableNodes);
 			
-			// Evaluate spatial filter for each vertex
-			for (size_t i = 0; i < reachableNodes.size(); ++i) {
-				const auto& vertexPk = reachableNodes[i];
-				const auto& vertexDataOpt = vertexDataList[i];
-				
-				if (!vertexDataOpt.has_value()) continue;
-				
-				nlohmann::json vertex;
-				try {
-					std::string vertexData(vertexDataOpt->begin(), vertexDataOpt->end());
-					vertex = nlohmann::json::parse(vertexData);
-				} catch (...) {
-					continue;
-				}
-				
-				// Evaluate spatial filter
-				EvaluationContext ctx;
-				ctx.set("v", vertex);
-				
-				if (evaluateCondition(sc.spatial_filter, ctx)) {
-					filteredNodes.push_back(vertexPk);
-				}
+			// Evaluate spatial filter for each vertex (parallel)
+			const size_t n = reachableNodes.size();
+			const size_t T = std::max<unsigned>(1u, std::thread::hardware_concurrency());
+			const size_t CHUNK = std::max<std::size_t>(128, (n + T - 1) / T);
+			std::vector<std::vector<std::string>> buckets((n + CHUNK - 1) / CHUNK);
+			tbb::task_group tg3;
+			for (size_t bi = 0; bi < buckets.size(); ++bi) {
+				tg3.run([&, bi]() {
+					size_t start = bi * CHUNK;
+					size_t end = std::min(start + CHUNK, n);
+					std::vector<std::string> buf;
+					buf.reserve(end - start);
+					for (size_t i = start; i < end; ++i) {
+						const auto& vertexPk = reachableNodes[i];
+						const auto& vertexDataOpt = vertexDataList[i];
+						if (!vertexDataOpt.has_value()) continue;
+						nlohmann::json vertex;
+						try { std::string s(vertexDataOpt->begin(), vertexDataOpt->end()); vertex = nlohmann::json::parse(s); }
+						catch (...) { continue; }
+						EvaluationContext ctx; ctx.set("v", vertex);
+						if (evaluateCondition(sc.spatial_filter, ctx)) buf.push_back(vertexPk);
+					}
+					buckets[bi] = std::move(buf);
+				});
+			}
+			tg3.wait();
+			for (auto& b : buckets) {
+				filteredNodes.insert(filteredNodes.end(), std::make_move_iterator(b.begin()), std::make_move_iterator(b.end()));
 			}
 			
 			reachableNodes = std::move(filteredNodes);
@@ -2481,8 +2810,7 @@ QueryEngine::executeRecursivePathQuery(const RecursivePathQuery& q) const {
 			spatialSpan.setStatus(true);
 		}
 		
-		// For each reachable node, compute path from start
-		// This is a simplified version - in production, BFS already tracks paths
+		// For each reachable node, construct trivial 2-node path; future: enhance BFS to retain full paths.
 		for (const auto& node : reachableNodes) {
 			if (node != q.start_node) {
 				// For now, return single-node paths (path reconstruction would require BFS modification)
@@ -2580,12 +2908,168 @@ static std::optional<utils::geo::MBR> extractBBoxFromFilter(
     return std::nullopt;
 }
 
+// Hybrid plan tuning read from DB config; defaults are safe
+struct HybridVGConfig {
+	size_t overfetch = 5;              // multiplier for vector-first plan
+	double bbox_ratio_threshold = 0.25; // when bbox covers >= threshold of total area → prefer vector-first
+	size_t min_chunk_spatial_eval = 64; // parallel chunk size for spatial eval
+	size_t min_chunk_vector_bf = 128;   // parallel chunk size for brute-force vector
+};
+
+static HybridVGConfig loadHybridConfig_(RocksDBWrapper& db) {
+	HybridVGConfig cfg;
+	try {
+		auto [st, s] = db.get("config:hybrid_query");
+		if (st.ok) {
+			auto j = nlohmann::json::parse(s);
+			if (j.contains("vector_first_overfetch")) cfg.overfetch = std::max<size_t>(1, j.value("vector_first_overfetch", cfg.overfetch));
+			if (j.contains("bbox_ratio_threshold")) cfg.bbox_ratio_threshold = std::min(1.0, std::max(0.0, j.value("bbox_ratio_threshold", cfg.bbox_ratio_threshold)));
+			if (j.contains("min_chunk_spatial_eval")) cfg.min_chunk_spatial_eval = std::max<size_t>(16, j.value("min_chunk_spatial_eval", cfg.min_chunk_spatial_eval));
+			if (j.contains("min_chunk_vector_bf")) cfg.min_chunk_vector_bf = std::max<size_t>(64, j.value("min_chunk_vector_bf", cfg.min_chunk_vector_bf));
+		}
+	} catch (...) {
+		// keep defaults
+	}
+	return cfg;
+}
+
+// Simple cost model for Vector+Geo: decide whether to run spatial pre-filter first
+// or vector-first then spatial filter. Uses bbox/total_bounds ratio if available.
+enum class VGPlan { SpatialThenVector, VectorThenSpatial };
+
+static VGPlan chooseVGPlan(
+	const QueryEngine::VectorGeoQuery& q,
+	const index::SpatialIndexManager* spatialIdx,
+	const VectorIndexManager* vectorIdx,
+	double bbox_ratio_threshold,
+	const std::optional<std::vector<std::string>>& eqPrefilter
+) {
+	if (!vectorIdx) return VGPlan::SpatialThenVector;
+	// If we cannot parse a bbox, prefer vector-first (no good spatial mask)
+	auto bbox = extractBBoxFromFilter(q.spatial_filter);
+	if (!bbox.has_value()) return VGPlan::VectorThenSpatial;
+	if (!spatialIdx || !spatialIdx->hasSpatialIndex(q.table)) return VGPlan::SpatialThenVector;
+	// Estimate selectivity via bbox area ratio
+	auto stats = spatialIdx->getStats(q.table);
+	const auto& tb = stats.total_bounds;
+	double totalArea = std::max((tb.maxx - tb.minx) * (tb.maxy - tb.miny), 1e-9);
+	double bboxArea = std::max((bbox->maxx - bbox->minx) * (bbox->maxy - bbox->miny), 0.0);
+	double ratio = std::min(std::max(bboxArea / totalArea, 0.0), 1.0);
+	// Integrate equality prefilter cardinality: if strongly selective (< 5% of table estimated) prefer vector-first even if bbox small.
+		if (eqPrefilter && !eqPrefilter->empty()) {
+			// crude heuristic: treat prefilter size as candidate universe
+			if (eqPrefilter->size() < stats.entry_count * 0.05) return VGPlan::VectorThenSpatial;
+		}
+	// Heuristic: configurable threshold on bbox ratio
+	if (ratio >= bbox_ratio_threshold) return VGPlan::VectorThenSpatial;
+	return VGPlan::SpatialThenVector;
+}
+
 // Vector + Geo: Spatial-filtered ANN search
 std::pair<QueryEngine::Status, std::vector<QueryEngine::VectorGeoResult>>
 QueryEngine::executeVectorGeoQuery(const VectorGeoQuery& q) const {
 	auto span = Tracer::startSpan("QueryEngine.executeVectorGeoQuery");
 	span.setAttribute("query.table", q.table);
 	span.setAttribute("query.k", static_cast<int64_t>(q.k));
+
+	// Erweiterte Index-basierte Vorselektion (Equality, Range, Composite)
+	std::optional<std::vector<std::string>> indexPrefilter;
+	if (!q.extra_filters.empty()) {
+		std::vector<std::string> current; bool first=true;
+		// Hilfsstrukturen für Range Zusammenführung: column -> (lower, includeLower, upper, includeUpper)
+		struct RangeAcc { std::optional<std::string> lower; bool includeLower=true; std::optional<std::string> upper; bool includeUpper=true; };
+		std::unordered_map<std::string, RangeAcc> rangeMap;
+		// Gleichheits-Map für Composite Index Auswertung
+		std::unordered_map<std::string, std::string> equalityMap;
+		// Sammle einfache Gleichheiten + Ranges
+		for (auto &ef : q.extra_filters) {
+			if (!ef) continue;
+			auto *bin = dynamic_cast<query::BinaryOpExpr*>(ef.get());
+			if (!bin) continue;
+			auto *fa = dynamic_cast<query::FieldAccessExpr*>(bin->left.get());
+			auto *lit = dynamic_cast<query::LiteralExpr*>(bin->right.get());
+			if (!fa || !lit) continue;
+			auto *var = dynamic_cast<query::VariableExpr*>(fa->object.get()); if (!var) continue;
+			// Literal -> String
+			std::string value;
+			if (std::holds_alternative<std::string>(lit->value)) value = std::get<std::string>(lit->value);
+			else if (std::holds_alternative<int64_t>(lit->value)) value = std::to_string(std::get<int64_t>(lit->value));
+			else if (std::holds_alternative<double>(lit->value)) { std::ostringstream oss; oss<<std::get<double>(lit->value); value=oss.str(); }
+			else if (std::holds_alternative<bool>(lit->value)) value = std::get<bool>(lit->value)?"true":"false"; else continue;
+			// Equality
+			if (bin->op == query::BinaryOperator::Eq && secIdx_.hasIndex(q.table, fa->field)) {
+				auto [st, keys] = secIdx_.scanKeysEqual(q.table, fa->field, value); if (!st.ok) continue; std::sort(keys.begin(), keys.end());
+				if (first) { current = std::move(keys); first=false; }
+				else {
+					std::vector<std::string> intersected; intersected.reserve(std::min(current.size(), keys.size()));
+					auto it1=current.begin(); auto it2=keys.begin();
+					while(it1!=current.end() && it2!=keys.end()) { if(*it1<*it2) ++it1; else if(*it2<*it1) ++it2; else { intersected.push_back(*it1); ++it1; ++it2; } }
+					current.swap(intersected);
+				}
+				// In Equality-Map eintragen (für mögliche Composite Nutzung)
+				equalityMap[fa->field] = value;
+				continue;
+			}
+			// Range via RangeIndex
+			if ((bin->op == query::BinaryOperator::Gt || bin->op == query::BinaryOperator::Gte || bin->op == query::BinaryOperator::Lt || bin->op == query::BinaryOperator::Lte) && secIdx_.hasRangeIndex(q.table, fa->field)) {
+				auto &acc = rangeMap[fa->field];
+				if (bin->op == query::BinaryOperator::Gt) { acc.lower = value; acc.includeLower=false; }
+				else if (bin->op == query::BinaryOperator::Gte) { acc.lower = value; acc.includeLower=true; }
+				else if (bin->op == query::BinaryOperator::Lt) { acc.upper = value; acc.includeUpper=false; }
+				else if (bin->op == query::BinaryOperator::Lte) { acc.upper = value; acc.includeUpper=true; }
+				continue;
+			}
+		}
+		// Composite Index Nutzung: prüfe vorhandene Equality Map gegen definierte Composite Indizes
+		if (!equalityMap.empty()) {
+			try {
+				auto allStats = secIdx_.getAllIndexStats(q.table);
+				for (const auto &st : allStats) {
+					// Heuristik: Spaltenliste enthält '+' => Composite
+					if (st.column.find('+') == std::string::npos) continue;
+					// Zerlege Spalten
+					std::vector<std::string> cols; cols.reserve(4);
+					{
+						std::string tmp = st.column; size_t pos=0; while(true){ size_t n = tmp.find('+', pos); if(n==std::string::npos){ cols.push_back(tmp.substr(pos)); break; } cols.push_back(tmp.substr(pos, n-pos)); pos = n+1; }
+					}
+					// Prüfe ob alle Spalten Gleichheit haben
+					std::vector<std::string> vals; vals.reserve(cols.size()); bool all=true;
+					for (auto &c : cols) { auto it = equalityMap.find(c); if (it==equalityMap.end()) { all=false; break; } vals.push_back(it->second); }
+					if (!all) continue;
+					// Prüfe Existenz des Composite Index explizit
+					if (!secIdx_.hasCompositeIndex(q.table, cols)) continue;
+					auto [cst, keys] = secIdx_.scanKeysEqualComposite(q.table, cols, vals); if (!cst.ok) continue; std::sort(keys.begin(), keys.end());
+					if (first) { current = std::move(keys); first=false; }
+					else {
+						std::vector<std::string> intersected; intersected.reserve(std::min(current.size(), keys.size()));
+						auto it1=current.begin(); auto it2=keys.begin();
+						while(it1!=current.end() && it2!=keys.end()) { if(*it1<*it2) ++it1; else if(*it2<*it1) ++it2; else { intersected.push_back(*it1); ++it1; ++it2; } }
+						current.swap(intersected);
+					}
+					span.setAttribute("composite_prefilter_applied", true);
+				}
+			} catch(...) {
+				// defensiv: bei Fehler keine Composite-Nutzung
+			}
+		}
+		// Wende Range-Prädikate an (intersect)
+		for (auto &kv : rangeMap) {
+			auto [st, keys] = secIdx_.scanKeysRange(q.table, kv.first, kv.second.lower, kv.second.upper, kv.second.includeLower, kv.second.includeUpper, 100000, false);
+			if (!st.ok) continue; std::sort(keys.begin(), keys.end());
+			if (first) { current = std::move(keys); first=false; }
+			else {
+				std::vector<std::string> intersected; intersected.reserve(std::min(current.size(), keys.size()));
+				auto it1=current.begin(); auto it2=keys.begin();
+				while(it1!=current.end() && it2!=keys.end()) { if(*it1<*it2) ++it1; else if(*it2<*it1) ++it2; else { intersected.push_back(*it1); ++it1; ++it2; } }
+				current.swap(intersected);
+			}
+		}
+		if (!first) {
+			indexPrefilter = std::move(current);
+			span.setAttribute("index_prefilter_size", static_cast<int64_t>(indexPrefilter->size()));
+			if (indexPrefilter->empty()) { span.setAttribute("result_count",0); span.setStatus(true); return {Status::OK(), {}}; }
+		}
+	}
 	
 	// Strategy: Two-phase filtering
 	// 1. Execute spatial filter to get candidate PKs (whitelist)
@@ -2594,10 +3078,134 @@ QueryEngine::executeVectorGeoQuery(const VectorGeoQuery& q) const {
 	std::vector<VectorGeoResult> results;
 	
 	if (!q.spatial_filter) {
-		return {Status::Error("Vector+Geo query requires spatial_filter"), {}};
+		// Erlaube reine Vektorabfrage mittels Syntax-Sugar (SIMILARITY ohne Spatial)
+		// Fallback: direkter ANN/Brute-Force Pfad (ohne Hybrid-Plan-Auswahl)
+		std::vector<VectorGeoResult> results;
+		size_t k = q.k;
+		if (vectorIdx_) {
+			// Falls Index-Prefilter vorhanden, als Whitelist verwenden
+			auto [st, vr] = vectorIdx_->searchKnn(q.query_vector, k, indexPrefilter ? &*indexPrefilter : nullptr);
+			if (!st.ok) return {Status::Error(st.message), {}};
+			// Lade Entities
+			std::vector<std::string> keys; keys.reserve(vr.size());
+			for (auto& r : vr) keys.push_back(q.table + ":" + r.pk);
+			auto blobs = db_.multiGet(keys);
+			for (size_t i=0;i<vr.size();++i) {
+				if (!blobs[i].has_value()) continue;
+				nlohmann::json doc; try { std::string s(blobs[i]->begin(), blobs[i]->end()); doc = nlohmann::json::parse(s);} catch(...) { continue; }
+				// Evaluate extra filters conjunctively
+				bool ok = true;
+				if (!q.extra_filters.empty()) {
+					EvaluationContext ctx; ctx.set("doc", doc);
+					for (auto& ef : q.extra_filters) { if (!evaluateCondition(ef, ctx)) { ok = false; break; } }
+				}
+				if (!ok) continue;
+				VectorGeoResult r; r.pk = vr[i].pk; r.vector_distance = vr[i].distance; r.entity = std::move(doc); results.push_back(std::move(r));
+			}
+			return {Status::OK(), results};
+		}
+		// Brute-force Scan
+		std::vector<std::pair<std::string,float>> tmp;
+		auto it = db_.newIterator(); std::string prefix = q.table + ":"; it->Seek(prefix);
+		while (it->Valid()) {
+			std::string key(it->key().data(), it->key().size()); if (key.rfind(prefix,0)!=0) break;
+			std::string pk = key.substr(prefix.length()); std::string val(it->value().data(), it->value().size());
+			nlohmann::json doc; try { doc = nlohmann::json::parse(val);} catch(...) { it->Next(); continue; }
+			if (!doc.contains(q.vector_field) || !doc[q.vector_field].is_array()) { it->Next(); continue; }
+			std::vector<float> vec = doc[q.vector_field].get<std::vector<float>>(); if (vec.size()!=q.query_vector.size()) { it->Next(); continue; }
+			EvaluationContext ctx; ctx.set("doc", doc);
+			bool ok = true; for (auto& ef : q.extra_filters) { if (!evaluateCondition(ef, ctx)) { ok=false; break; } }
+			if (!ok) { it->Next(); continue; }
+			float d = simd::l2_distance(vec.data(), q.query_vector.data(), vec.size()); tmp.emplace_back(pk,d);
+			it->Next();
+		}
+		std::sort(tmp.begin(), tmp.end(), [](auto&a,auto&b){return a.second<b.second;});
+		for (size_t i=0;i<std::min(tmp.size(),k);++i) {
+			VectorGeoResult r; r.pk=tmp[i].first; r.vector_distance=tmp[i].second; r.entity=db_.getAsJson(q.table, tmp[i].first); results.push_back(std::move(r)); }
+		return {Status::OK(), results};
 	}
 	
-	// Phase 1: Spatial pre-filtering
+	// Optional: choose plan when vector index is available
+	auto cfg = loadHybridConfig_(db_);
+	VGPlan plan = VGPlan::SpatialThenVector;
+	if (vectorIdx_) {
+		// Use cost model via QueryOptimizer
+		QueryOptimizer::VectorGeoCostInput ci; ci.hasVectorIndex = true; ci.hasSpatialIndex = (spatialIdx_ && spatialIdx_->hasSpatialIndex(q.table));
+		if (spatialIdx_ && q.spatial_filter) {
+			auto bbox = extractBBoxFromFilter(q.spatial_filter); if (bbox) {
+				auto stats = spatialIdx_->getStats(q.table); double totalArea = std::max((stats.total_bounds.maxx - stats.total_bounds.minx) * (stats.total_bounds.maxy - stats.total_bounds.miny), 1e-9);
+				double bboxArea = std::max((bbox->maxx - bbox->minx) * (bbox->maxy - bbox->miny), 0.0); ci.bboxRatio = std::min(std::max(bboxArea / totalArea, 0.0), 1.0); ci.spatialIndexEntries = stats.entry_count;
+			}
+		}
+		ci.prefilterSize = indexPrefilter ? indexPrefilter->size() : 0; ci.k = q.k; ci.vectorDim = q.query_vector.size(); ci.overfetch = cfg.overfetch;
+		auto cr = QueryOptimizer::chooseVectorGeoPlan(ci);
+		plan = (cr.plan == QueryOptimizer::VectorGeoPlan::SpatialThenVector) ? VGPlan::SpatialThenVector : VGPlan::VectorThenSpatial;
+		span.setAttribute("optimizer.plan", plan == VGPlan::SpatialThenVector ? "spatial_then_vector" : "vector_then_spatial");
+		span.setAttribute("optimizer.cost_spatial_first", cr.costSpatialFirst);
+		span.setAttribute("optimizer.cost_vector_first", cr.costVectorFirst);
+	}
+
+	// Vector-first plan: run vector search over full index with overfetch, then spatial filter
+	if (plan == VGPlan::VectorThenSpatial && vectorIdx_) {
+		auto child0 = Tracer::startSpan("phase0.vector_first");
+		size_t overfetch = std::max<std::size_t>(q.k * cfg.overfetch, q.k);
+		child0.setAttribute("overfetch", static_cast<int64_t>(overfetch));
+		// Wenn Index-Prefilter vorhanden: Suchraum einschränken
+		auto [st, vr] = vectorIdx_->searchKnn(q.query_vector, overfetch, indexPrefilter ? &*indexPrefilter : nullptr);
+		if (!st.ok) {
+			child0.setStatus(false, st.message);
+		} else {
+			// Load entities in batch
+			std::vector<std::string> keys;
+			keys.reserve(vr.size());
+			for (const auto& r : vr) keys.push_back(q.table + ":" + r.pk);
+			auto blobs = db_.multiGet(keys);
+
+			// Evaluate spatial filter in parallel
+			std::vector<VectorGeoResult> local;
+			local.reserve(vr.size());
+			const size_t n = vr.size();
+			const size_t T = std::max<unsigned>(1u, std::thread::hardware_concurrency());
+			const size_t CHUNK = std::max<std::size_t>(cfg.min_chunk_spatial_eval, (n + T - 1) / T);
+			std::vector<std::vector<VectorGeoResult>> buckets((n + CHUNK - 1) / CHUNK);
+			tbb::task_group tg;
+			for (size_t bi = 0; bi < buckets.size(); ++bi) {
+				tg.run([&, bi]() {
+					size_t start = bi * CHUNK;
+					size_t end = std::min(start + CHUNK, n);
+					std::vector<VectorGeoResult> buf;
+					buf.reserve(end - start);
+					for (size_t i = start; i < end; ++i) {
+						if (!blobs[i].has_value()) continue;
+						nlohmann::json doc;
+						try { std::string s(blobs[i]->begin(), blobs[i]->end()); doc = nlohmann::json::parse(s); }
+						catch (...) { continue; }
+						EvaluationContext ctx; ctx.set("doc", doc);
+						if (evaluateCondition(q.spatial_filter, ctx)) {
+							VectorGeoResult r; r.pk = vr[i].pk; r.vector_distance = vr[i].distance; r.entity = std::move(doc);
+							buf.push_back(std::move(r));
+						}
+					}
+					buckets[bi] = std::move(buf);
+				});
+			}
+			tg.wait();
+			for (auto& b : buckets) {
+				results.insert(results.end(), std::make_move_iterator(b.begin()), std::make_move_iterator(b.end()));
+			}
+			// Sort by vector distance and keep top-k
+			std::sort(results.begin(), results.end(), [](const auto& a, const auto& b){ return a.vector_distance < b.vector_distance; });
+			if (results.size() > q.k) results.resize(q.k);
+			child0.setAttribute("vector_first_after_spatial", static_cast<int64_t>(results.size()));
+			child0.setStatus(true);
+			span.setAttribute("result_count", static_cast<int64_t>(results.size()));
+			span.setStatus(true);
+			return {Status::OK(), std::move(results)};
+		}
+		// If vector-first failed, fall through to spatial-first plan
+	}
+
+	// Phase 1: Spatial pre-filtering (default plan)
 	// Get all entities from table and filter by spatial constraint
 	auto child1 = Tracer::startSpan("phase1.spatial_filter");
 	
@@ -2616,19 +3224,19 @@ QueryEngine::executeVectorGeoQuery(const VectorGeoQuery& q) const {
 			
 			// Use R-Tree range query
 			auto indexResults = spatialIdx_->searchWithin(q.table, *bbox);
-			
-			// Load entities for candidates
-			for (const auto& result : indexResults) {
-				auto [getSt, entity] = db_.get(q.table + ":" + result.primary_key);
-				if (!getSt.ok) continue;
-				
+			// Batch-load entities for candidates
+			std::vector<std::string> keys; keys.reserve(indexResults.size());
+			for (const auto& r : indexResults) keys.push_back(q.table + ":" + r.primary_key);
+			auto blobs = db_.multiGet(keys);
+			for (size_t i = 0; i < indexResults.size(); ++i) {
+				const auto& r = indexResults[i];
+				if (!blobs[i].has_value()) continue;
 				try {
-					nlohmann::json doc = nlohmann::json::parse(entity);
-					spatialCandidates.push_back(result.primary_key);
-					entityCache[result.primary_key] = doc;
-				} catch (...) {
-					// Skip invalid JSON
-				}
+					std::string s(blobs[i]->begin(), blobs[i]->end());
+					nlohmann::json doc = nlohmann::json::parse(s);
+					spatialCandidates.push_back(r.primary_key);
+					entityCache[r.primary_key] = std::move(doc);
+				} catch (...) { /* skip */ }
 			}
 			
 			child1.setAttribute("spatial_candidates", static_cast<int64_t>(spatialCandidates.size()));
@@ -2647,7 +3255,7 @@ QueryEngine::executeVectorGeoQuery(const VectorGeoQuery& q) const {
 		}
 	}
 	
-	// Fallback: Full scan with spatial filter
+	// Fallback: Full scan with spatial filter (+ extra predicates)
 	child1.setAttribute("method", "full_scan");
 	auto it = db_.newIterator();
 	std::string prefix = q.table + ":";
@@ -2667,7 +3275,14 @@ QueryEngine::executeVectorGeoQuery(const VectorGeoQuery& q) const {
 			EvaluationContext ctx;
 			ctx.set("doc", entity);
 			
-			if (evaluateCondition(q.spatial_filter, ctx)) {
+			bool spatialOK = evaluateCondition(q.spatial_filter, ctx);
+			bool extraOK = true;
+			if (spatialOK && !q.extra_filters.empty()) {
+				for (auto& ef : q.extra_filters) {
+					if (!evaluateCondition(ef, ctx)) { extraOK=false; break; }
+				}
+			}
+			if (spatialOK && extraOK) {
 				spatialCandidates.push_back(pk);
 				entityCache[pk] = entity;
 			}
@@ -2719,23 +3334,41 @@ phase2_vector_search:
 	// Fallback: brute-force over spatial candidates if no VectorIndexManager
 	child2.setAttribute("method", "brute_force");
 	std::vector<std::pair<std::string, float>> vectorResults;
-	
-	for (const auto& pk : spatialCandidates) {
-		const auto& entity = entityCache[pk];
-		if (entity.contains(q.vector_field) && entity[q.vector_field].is_array()) {
-			std::vector<float> vec = entity[q.vector_field].get<std::vector<float>>();
-			
-			// Compute L2 distance
-			if (vec.size() == q.query_vector.size()) {
-				float dist = 0.0f;
-				for (size_t i = 0; i < vec.size(); ++i) {
-					float diff = vec[i] - q.query_vector[i];
-					dist += diff * diff;
+	vectorResults.reserve(spatialCandidates.size());
+	const size_t n = spatialCandidates.size();
+	const size_t T = std::max<unsigned>(1u, std::thread::hardware_concurrency());
+	const size_t CHUNK = std::max<std::size_t>(cfg.min_chunk_vector_bf, (n + T - 1) / T);
+	std::vector<std::vector<std::pair<std::string, float>>> buckets((n + CHUNK - 1) / CHUNK);
+	tbb::task_group tg2;
+	for (size_t bi = 0; bi < buckets.size(); ++bi) {
+		tg2.run([&, bi]() {
+			size_t start = bi * CHUNK;
+			size_t end = std::min(start + CHUNK, n);
+			std::vector<std::pair<std::string, float>> buf;
+			buf.reserve(end - start);
+			for (size_t i = start; i < end; ++i) {
+				const auto& pk = spatialCandidates[i];
+				const auto it = entityCache.find(pk);
+				if (it == entityCache.end()) continue;
+				const auto& entity = it->second;
+				if (!entity.contains(q.vector_field) || !entity[q.vector_field].is_array()) continue;
+				// Evaluate extra filters again (not cached in brute force vector phase for spatial-first plan)
+				if (!q.extra_filters.empty()) {
+					EvaluationContext ctx; ctx.set("doc", entity);
+					bool ok = true; for (auto& ef : q.extra_filters) { if (!evaluateCondition(ef, ctx)) { ok=false; break; } }
+					if (!ok) continue;
 				}
-				dist = std::sqrt(dist);
-				vectorResults.push_back({pk, dist});
+				std::vector<float> vec = entity[q.vector_field].get<std::vector<float>>();
+				if (vec.size() != q.query_vector.size()) continue;
+				float d = simd::l2_distance(vec.data(), q.query_vector.data(), vec.size());
+				buf.emplace_back(pk, d);
 			}
-		}
+			buckets[bi] = std::move(buf);
+		});
+	}
+	tg2.wait();
+	for (auto& b : buckets) {
+		vectorResults.insert(vectorResults.end(), std::make_move_iterator(b.begin()), std::make_move_iterator(b.end()));
 	}
 	
 	// Sort by distance and take top-k
@@ -2765,99 +3398,220 @@ QueryEngine::executeContentGeoQuery(const ContentGeoQuery& q) const {
 	auto span = Tracer::startSpan("QueryEngine.executeContentGeoQuery");
 	span.setAttribute("query.table", q.table);
 	span.setAttribute("query.fulltext", q.fulltext_query);
-	
+
 	std::vector<ContentGeoResult> results;
-	
 	if (!q.spatial_filter) {
 		return {Status::Error("Content+Geo query requires spatial_filter"), {}};
 	}
-	
-	// Phase 1: Fulltext search
-	auto child1 = Tracer::startSpan("phase1.fulltext_search");
-	auto [st, ftResults] = secIdx_.scanFulltextWithScores(q.table, q.text_field, q.fulltext_query, q.limit);
-	
-	if (!st.ok) {
-		child1.setStatus(false, st.message);
-		span.setStatus(false, st.message);
-		return {Status::Error(st.message), {}};
-	}
-	
-	child1.setAttribute("fulltext_results", static_cast<int64_t>(ftResults.size()));
-	child1.setStatus(true);
-	
-	if (ftResults.empty()) {
-		span.setAttribute("result_count", 0);
-		span.setStatus(true);
-		return {Status::OK(), {}};
-	}
-	
-	// Phase 2: Spatial filtering + optional distance boosting
-	auto child2 = Tracer::startSpan("phase2.spatial_filter");
-	
-	for (const auto& [pk, bm25_score] : ftResults) {
-		// Load entity
-		auto [getSt, entity] = db_.get(q.table + ":" + pk);
-		if (!getSt.ok) continue;
-		
-		nlohmann::json doc;
-		try {
-			doc = nlohmann::json::parse(entity);
-		} catch (...) {
-			continue;
+
+	// Kostenmodell: wähle Reihenfolge (Fulltext->Spatial oder Spatial->Fulltext)
+	bool hasFT = secIdx_.hasFulltextIndex(q.table, q.text_field);
+	bool hasSpatial = (spatialIdx_ && spatialIdx_->hasSpatialIndex(q.table));
+	double bboxRatio = 1.0;
+	if (hasSpatial) {
+		auto bbox = extractBBoxFromFilter(q.spatial_filter); if (bbox) {
+			auto stats = spatialIdx_->getStats(q.table); double totalArea = std::max((stats.total_bounds.maxx - stats.total_bounds.minx) * (stats.total_bounds.maxy - stats.total_bounds.miny), 1e-9);
+			double bboxArea = std::max((bbox->maxx - bbox->minx) * (bbox->maxy - bbox->miny), 0.0);
+			bboxRatio = std::min(std::max(bboxArea / totalArea, 0.0), 1.0);
 		}
-		
-		// Evaluate spatial filter
-		EvaluationContext ctx;
-		ctx.set("doc", doc);
-		
-		if (!evaluateCondition(q.spatial_filter, ctx)) {
-			continue; // Fails spatial constraint
-		}
-		
-		ContentGeoResult r;
-		r.pk = pk;
-		r.bm25_score = bm25_score;
-		r.entity = doc;
-		
-		// Optional: compute distance for boosting
-		if (q.boost_by_distance && q.center_point.has_value()) {
-			if (doc.contains(q.geom_field) && doc[q.geom_field].is_object()) {
-				const auto& geom = doc[q.geom_field];
-				if (geom.contains("type") && geom["type"] == "Point" && 
-				    geom.contains("coordinates") && geom["coordinates"].is_array() && 
-				    geom["coordinates"].size() >= 2) {
-					
-					double x = geom["coordinates"][0].get<double>();
-					double y = geom["coordinates"][1].get<double>();
-					double cx = (*q.center_point)[0];
-					double cy = (*q.center_point)[1];
-					
-					double dx = x - cx;
-					double dy = y - cy;
-					r.geo_distance = std::sqrt(dx*dx + dy*dy);
-				}
+	}
+	QueryOptimizer::ContentGeoCostInput ci; ci.hasFulltextIndex = hasFT; ci.hasSpatialIndex = hasSpatial; ci.bboxRatio = bboxRatio; ci.limit = q.limit; ci.fulltextHits = q.limit; // grobe Schätzung
+	auto cr = QueryOptimizer::estimateContentGeo(ci);
+	bool fulltextFirst = cr.chooseFulltextFirst || !hasSpatial || !hasFT;
+	span.setAttribute("optimizer.cg.plan", fulltextFirst ? "fulltext_then_spatial" : "spatial_then_fulltext");
+	span.setAttribute("optimizer.cg.cost_fulltext_first", cr.costFulltextThenSpatial);
+	span.setAttribute("optimizer.cg.cost_spatial_first", cr.costSpatialThenFulltext);
+
+	if (fulltextFirst) {
+		// Phase 1: Fulltext search
+		auto child1 = Tracer::startSpan("phase1.fulltext_search");
+		auto [st, ftResults] = secIdx_.scanFulltextWithScores(q.table, q.text_field, q.fulltext_query, q.limit);
+		if (!st.ok) { child1.setStatus(false, st.message); span.setStatus(false, st.message); return {Status::Error(st.message), {}}; }
+		child1.setAttribute("fulltext_results", static_cast<int64_t>(ftResults.size())); child1.setStatus(true);
+		if (ftResults.empty()) { span.setAttribute("result_count",0); span.setStatus(true); return {Status::OK(), {}}; }
+		// Phase 2: Spatial filtering
+		auto child2 = Tracer::startSpan("phase2.spatial_filter");
+		std::vector<std::string> keys; keys.reserve(ftResults.size());
+		std::vector<std::string> pks; pks.reserve(ftResults.size());
+		std::unordered_map<std::string,double> bm25; bm25.reserve(ftResults.size());
+		for (auto &kv : ftResults) { keys.push_back(q.table+":"+kv.first); pks.push_back(kv.first); bm25[kv.first]=kv.second; }
+		auto blobs = db_.multiGet(keys);
+		const size_t n = pks.size(); const size_t T = std::max<unsigned>(1u, std::thread::hardware_concurrency()); const size_t CHUNK = std::max<std::size_t>(64,(n+T-1)/T);
+		std::vector<std::vector<ContentGeoResult>> buckets((n+CHUNK-1)/CHUNK); tbb::task_group tg;
+		for(size_t bi=0; bi<buckets.size(); ++bi){ tg.run([&,bi](){ size_t start=bi*CHUNK; size_t end=std::min(start+CHUNK,n); std::vector<ContentGeoResult> buf; buf.reserve(end-start); for(size_t i=start;i<end;++i){ if(!blobs[i].has_value()) continue; nlohmann::json doc; try { std::string s(blobs[i]->begin(),blobs[i]->end()); doc=nlohmann::json::parse(s);} catch(...) { continue; } EvaluationContext ctx; ctx.set("doc", doc); if(!evaluateCondition(q.spatial_filter, ctx)) continue; ContentGeoResult r; r.pk=pks[i]; r.bm25_score=bm25[pks[i]]; r.entity=std::move(doc); if(q.boost_by_distance && q.center_point){ const auto& docRef=r.entity; if(docRef.contains(q.geom_field) && docRef[q.geom_field].is_object()){ const auto& geom=docRef[q.geom_field]; if(geom.contains("type") && geom["type"]=="Point" && geom.contains("coordinates") && geom["coordinates"].is_array() && geom["coordinates"].size()>=2){ double x=geom["coordinates"][0].get<double>(); double y=geom["coordinates"][1].get<double>(); double cx=(*q.center_point)[0]; double cy=(*q.center_point)[1]; double dx=x-cx; double dy=y-cy; r.geo_distance=std::sqrt(dx*dx+dy*dy); } } } buf.push_back(std::move(r)); } buckets[bi]=std::move(buf); }); }
+		tg.wait(); for(auto &b : buckets){ results.insert(results.end(), std::make_move_iterator(b.begin()), std::make_move_iterator(b.end())); }
+		child2.setAttribute("spatial_results", static_cast<int64_t>(results.size())); child2.setStatus(true);
+	} else {
+		// Spatial-first Plan: verwende SpatialIndex zur Kandidatenmenge, dann naive Fulltext-Evaluation
+		auto childS = Tracer::startSpan("phase1.spatial_first_candidates");
+		std::vector<std::string> spatialCandidates;
+		std::unordered_map<std::string,nlohmann::json> cache;
+		if (spatialIdx_) {
+			auto bbox = extractBBoxFromFilter(q.spatial_filter);
+			if (bbox) {
+				childS.setAttribute("method","spatial_index");
+				auto indexResults = spatialIdx_->searchWithin(q.table, *bbox);
+				std::vector<std::string> keys; keys.reserve(indexResults.size());
+				for (auto &r : indexResults) keys.push_back(q.table+":"+r.primary_key);
+				auto blobs = db_.multiGet(keys);
+				for(size_t i=0;i<indexResults.size();++i){ if(!blobs[i].has_value()) continue; try { std::string s(blobs[i]->begin(),blobs[i]->end()); nlohmann::json doc=nlohmann::json::parse(s); spatialCandidates.push_back(indexResults[i].primary_key); cache[indexResults[i].primary_key]=std::move(doc);} catch(...) {} }
+			} else {
+				childS.setAttribute("method","bbox_extract_failed_fallback_scan");
 			}
 		}
-		
-		results.push_back(std::move(r));
+		childS.setAttribute("spatial_candidates", static_cast<int64_t>(spatialCandidates.size())); childS.setStatus(true);
+		if (spatialCandidates.empty()) { span.setAttribute("result_count",0); span.setStatus(true); return {Status::OK(), {}}; }
+		// Fulltext-Evaluation (naiv) über Kandidaten: AND aller Tokens
+		auto childFT = Tracer::startSpan("phase2.fulltext_eval");
+		auto tokens = SecondaryIndexManager::tokenize(q.fulltext_query);
+		std::unordered_set<std::string> tokenSet(tokens.begin(), tokens.end());
+		for (auto &pk : spatialCandidates) {
+			const auto it = cache.find(pk); if (it==cache.end()) continue;
+			const auto &doc = it->second;
+			if (!doc.contains(q.text_field)) continue;
+			std::string text;
+			try { if (doc[q.text_field].is_string()) text = doc[q.text_field].get<std::string>(); else continue; } catch(...) { continue; }
+			auto docTokens = SecondaryIndexManager::tokenize(text); std::unordered_set<std::string> docSet(docTokens.begin(), docTokens.end());
+			bool all=true; for(auto &t : tokenSet){ if(docSet.find(t)==docSet.end()){ all=false; break; } }
+			if (!all) continue;
+			ContentGeoResult r; r.pk = pk; r.entity = doc; r.bm25_score = static_cast<double>(tokenSet.size());
+			if (q.boost_by_distance && q.center_point){ if (doc.contains(q.geom_field) && doc[q.geom_field].is_object()){ const auto &geom = doc[q.geom_field]; if(geom.contains("type") && geom["type"]=="Point" && geom.contains("coordinates") && geom["coordinates"].is_array() && geom["coordinates"].size()>=2){ double x=geom["coordinates"][0].get<double>(); double y=geom["coordinates"][1].get<double>(); double cx=(*q.center_point)[0]; double cy=(*q.center_point)[1]; double dx=x-cx; double dy=y-cy; r.geo_distance=std::sqrt(dx*dx+dy*dy); } } }
+			results.push_back(std::move(r));
+		}
+		childFT.setAttribute("fulltext_matches", static_cast<int64_t>(results.size())); childFT.setStatus(true);
 	}
-	
-	child2.setAttribute("spatial_results", static_cast<int64_t>(results.size()));
-	child2.setStatus(true);
-	
-	// Optional: re-rank by combined score (BM25 + distance penalty)
+	// Ranking
 	if (q.boost_by_distance) {
-		std::sort(results.begin(), results.end(), [](const auto& a, const auto& b) {
-			// Combined score: BM25 - distance_penalty (lower distance = higher rank)
-			double score_a = a.bm25_score - (a.geo_distance.value_or(0.0) * 0.1);
-			double score_b = b.bm25_score - (b.geo_distance.value_or(0.0) * 0.1);
-			return score_a > score_b;
-		});
+		std::sort(results.begin(), results.end(), [](const auto& a, const auto& b){ double sa = a.bm25_score - (a.geo_distance.value_or(0.0)*0.1); double sb = b.bm25_score - (b.geo_distance.value_or(0.0)*0.1); return sa>sb; });
+	} else {
+		std::sort(results.begin(), results.end(), [](const auto& a, const auto& b){ return a.bm25_score > b.bm25_score; });
 	}
-	
-	span.setAttribute("result_count", static_cast<int64_t>(results.size()));
-	span.setStatus(true);
-	return {Status::OK(), std::move(results)};
+	if (results.size() > q.limit) results.resize(q.limit);
+	span.setAttribute("result_count", static_cast<int64_t>(results.size())); span.setStatus(true); return {Status::OK(), std::move(results)};
+}
+
+// Phase 4.1: Execute CTEs and store results in context
+QueryEngine::Status QueryEngine::executeCTEs(
+    const std::vector<AQLTranslator::TranslationResult::CTEExecution>& ctes,
+    EvaluationContext& context
+) const {
+    auto span = Tracer::startSpan("QueryEngine.executeCTEs");
+    span.setAttribute("cte_count", static_cast<int64_t>(ctes.size()));
+    
+    // Execute CTEs in order (to support CTEs referencing previous CTEs)
+    for (const auto& cte : ctes) {
+        auto cteSpan = Tracer::startSpan("QueryEngine.executeCTE");
+        cteSpan.setAttribute("cte_name", cte.name);
+        cteSpan.setAttribute("should_materialize", cte.should_materialize);
+        
+        if (!cte.subquery) {
+            cteSpan.setStatus(false);
+            span.setStatus(false);
+            return Status::Error("CTE '" + cte.name + "' has null subquery");
+        }
+        
+        // Translate CTE subquery to executable form
+        auto translation = AQLTranslator::translate(cte.subquery);
+        if (!translation.success) {
+            cteSpan.setStatus(false);
+            span.setStatus(false);
+            return Status::Error("CTE '" + cte.name + "' translation failed: " + translation.error_message);
+        }
+        
+        // Execute CTE based on query type
+        std::vector<nlohmann::json> cte_results;
+        
+        if (translation.join.has_value()) {
+            // JOIN query
+            auto& join = translation.join.value();
+            auto [status, results] = executeJoin(
+                join.for_nodes,
+                join.filters,
+                join.let_nodes,
+                join.return_node,
+                join.sort,
+                join.limit
+            );
+            if (!status.ok()) {
+                cteSpan.setStatus(false);
+                span.setStatus(false);
+                return Status::Error("CTE '" + cte.name + "' JOIN execution failed: " + status.message());
+            }
+            cte_results = std::move(results);
+            
+        } else if (translation.query.has_value()) {
+            // Conjunctive query
+            auto [status, entities] = executeAndEntitiesWithFallback(translation.query.value());
+            if (!status.ok()) {
+                cteSpan.setStatus(false);
+                span.setStatus(false);
+                return Status::Error("CTE '" + cte.name + "' conjunctive execution failed: " + status.message());
+            }
+            cte_results.reserve(entities.size());
+            for (auto& entity : entities) {
+                cte_results.push_back(entity.toJSON());
+            }
+            
+        } else if (translation.disjunctive.has_value()) {
+            // Disjunctive query
+            auto [status, entities] = executeOrEntitiesWithFallback(translation.disjunctive.value());
+            if (!status.ok()) {
+                cteSpan.setStatus(false);
+                span.setStatus(false);
+                return Status::Error("CTE '" + cte.name + "' disjunctive execution failed: " + status.message());
+            }
+            cte_results.reserve(entities.size());
+            for (auto& entity : entities) {
+                cte_results.push_back(entity.toJSON());
+            }
+            
+        } else if (translation.traversal.has_value()) {
+            // Graph traversal - not typically used in CTEs but supported
+            cteSpan.setStatus(false);
+            span.setStatus(false);
+            return Status::Error("CTE '" + cte.name + "': Graph traversal queries not yet supported in CTEs");
+            
+        } else if (translation.vector_geo.has_value()) {
+            // Vector+Geo hybrid
+            auto [status, results] = executeVectorGeo(translation.vector_geo.value());
+            if (!status.ok()) {
+                cteSpan.setStatus(false);
+                span.setStatus(false);
+                return Status::Error("CTE '" + cte.name + "' vector+geo execution failed: " + status.message());
+            }
+            cte_results.reserve(results.size());
+            for (auto& result : results) {
+                cte_results.push_back(result.entity);
+            }
+            
+        } else if (translation.content_geo.has_value()) {
+            // Content+Geo hybrid
+            auto [status, results] = executeContentGeo(translation.content_geo.value());
+            if (!status.ok()) {
+                cteSpan.setStatus(false);
+                span.setStatus(false);
+                return Status::Error("CTE '" + cte.name + "' content+geo execution failed: " + status.message());
+            }
+            cte_results.reserve(results.size());
+            for (auto& result : results) {
+                cte_results.push_back(result.entity);
+            }
+            
+        } else {
+            cteSpan.setStatus(false);
+            span.setStatus(false);
+            return Status::Error("CTE '" + cte.name + "': Unknown query type");
+        }
+        
+        // Store CTE results in context
+        cteSpan.setAttribute("result_count", static_cast<int64_t>(cte_results.size()));
+        context.storeCTE(cte.name, std::move(cte_results));
+        cteSpan.setStatus(true);
+    }
+    
+    span.setStatus(true);
+    return Status::OK();
 }
 
 } // namespace themis
+

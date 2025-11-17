@@ -1189,6 +1189,147 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
         return result;
     }
 
+    // ST_ZBetween(geom, zmin, zmax) - Check if any coordinate's Z is within [zmin, zmax]
+    // Returns: Boolean; null/false if geometry has no Z
+    if (funcName == "ST_ZBetween") {
+        if (args.size() != 3) {
+            throw std::runtime_error("ST_ZBetween expects 3 arguments: ST_ZBetween(geom, zmin, zmax)");
+        }
+
+        auto geom = evaluateExpression(args[0], currentDoc);
+        double zmin = toNumber(evaluateExpression(args[1], currentDoc));
+        double zmax = toNumber(evaluateExpression(args[2], currentDoc));
+
+        if (!geom.is_object() || !geom.contains("type") || !geom.contains("coordinates")) {
+            return false;
+        }
+
+        std::string type = geom["type"];
+        const auto& coords = geom["coordinates"];
+
+        auto inRange = [&](double z){ return z >= zmin && z <= zmax; };
+
+        if (type == "Point") {
+            if (coords.is_array() && coords.size() >= 3) {
+                double z = coords[2].get<double>();
+                return inRange(z);
+            }
+            return false;
+        }
+        if (type == "LineString" || type == "MultiPoint") {
+            if (coords.is_array()) {
+                for (const auto& pt : coords) {
+                    if (pt.is_array() && pt.size() >= 3) {
+                        double z = pt[2].get<double>();
+                        if (inRange(z)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+        if (type == "Polygon" || type == "MultiLineString") {
+            if (coords.is_array()) {
+                for (const auto& ring : coords) {
+                    if (ring.is_array()) {
+                        for (const auto& pt : ring) {
+                            if (pt.is_array() && pt.size() >= 3) {
+                                double z = pt[2].get<double>();
+                                if (inRange(z)) return true;
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        return false;
+    }
+
+    // ST_Buffer(geom, distance) - MVP: Point -> square Polygon buffer; others: simple MBR expansion if Polygon
+    if (funcName == "ST_Buffer") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Buffer expects 2 arguments: ST_Buffer(geom, distance)");
+        }
+        auto geom = evaluateExpression(args[0], currentDoc);
+        double dist = toNumber(evaluateExpression(args[1], currentDoc));
+        if (!geom.is_object() || !geom.contains("type") || !geom.contains("coordinates")) {
+            throw std::runtime_error("ST_Buffer: invalid geometry");
+        }
+        std::string type = geom["type"];
+        if (type == "Point") {
+            const auto& c = geom["coordinates"];
+            if (!c.is_array() || c.size() < 2) throw std::runtime_error("ST_Buffer: invalid Point");
+            double x=c[0].get<double>(), y=c[1].get<double>();
+            // Square buffer around point (x±d, y±d)
+            nlohmann::json ring = nlohmann::json::array({
+                {x - dist, y - dist},
+                {x + dist, y - dist},
+                {x + dist, y + dist},
+                {x - dist, y + dist},
+                {x - dist, y - dist}
+            });
+            nlohmann::json poly; poly["type"] = "Polygon"; poly["coordinates"] = nlohmann::json::array({ring});
+            return poly;
+        }
+        if (type == "Polygon") {
+            // Expand exterior ring's MBR by distance
+            const auto& rings = geom["coordinates"];
+            if (!rings.is_array() || rings.empty()) throw std::runtime_error("ST_Buffer: invalid Polygon");
+            const auto& ext = rings[0];
+            double minx=std::numeric_limits<double>::max(), miny=std::numeric_limits<double>::max();
+            double maxx=std::numeric_limits<double>::lowest(), maxy=std::numeric_limits<double>::lowest();
+            for (const auto& pt : ext) if (pt.is_array() && pt.size()>=2) {
+                double x=pt[0].get<double>(), y=pt[1].get<double>();
+                minx=std::min(minx,x); miny=std::min(miny,y); maxx=std::max(maxx,x); maxy=std::max(maxy,y);
+            }
+            minx-=dist; miny-=dist; maxx+=dist; maxy+=dist;
+            nlohmann::json ring = nlohmann::json::array({
+                {minx, miny}, {maxx, miny}, {maxx, maxy}, {minx, maxy}, {minx, miny}
+            });
+            nlohmann::json poly; poly["type"]="Polygon"; poly["coordinates"]=nlohmann::json::array({ring});
+            return poly;
+        }
+        // Fallback: return geometry unchanged (MVP scope)
+        return geom;
+    }
+
+    // ST_Union(g1, g2) - MVP: return MBR union as Polygon
+    if (funcName == "ST_Union") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Union expects 2 arguments: ST_Union(g1, g2)");
+        }
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        auto mbrOf = [](const nlohmann::json& g) -> utils::geo::MBR {
+            if (g.is_object() && g.contains("type")) {
+                std::string t = g["type"];
+                if (t=="Point" && g.contains("coordinates") && g["coordinates"].size()>=2) {
+                    double x=g["coordinates"][0].get<double>(), y=g["coordinates"][1].get<double>();
+                    return utils::geo::MBR{x,y,x,y};
+                }
+                if (t=="Polygon" && g.contains("coordinates")) {
+                    const auto& rings = g["coordinates"]; if (rings.is_array() && !rings.empty()) {
+                        double minx=std::numeric_limits<double>::max(), miny=std::numeric_limits<double>::max();
+                        double maxx=std::numeric_limits<double>::lowest(), maxy=std::numeric_limits<double>::lowest();
+                        const auto& ext = rings[0];
+                        for (const auto& pt : ext) if (pt.is_array() && pt.size()>=2) {
+                            double x=pt[0].get<double>(), y=pt[1].get<double>();
+                            minx=std::min(minx,x); miny=std::min(miny,y); maxx=std::max(maxx,x); maxy=std::max(maxy,y);
+                        }
+                        return utils::geo::MBR{minx,miny,maxx,maxy};
+                    }
+                }
+            }
+            throw std::runtime_error("ST_Union: Unsupported geometry type for MVP");
+        };
+        auto m1 = mbrOf(g1); auto m2 = mbrOf(g2);
+        utils::geo::MBR u{ std::min(m1.minx,m2.minx), std::min(m1.miny,m2.miny), std::max(m1.maxx,m2.maxx), std::max(m1.maxy,m2.maxy) };
+        nlohmann::json ring = nlohmann::json::array({ {u.minx,u.miny},{u.maxx,u.miny},{u.maxx,u.maxy},{u.minx,u.maxy},{u.minx,u.miny} });
+        nlohmann::json poly; poly["type"]="Polygon"; poly["coordinates"]=nlohmann::json::array({ring});
+        return poly;
+    }
+
     throw std::runtime_error("Unknown function: " + funcName);
 }
 

@@ -24,6 +24,13 @@ enum class TokenType {
     SIMILARITY,      // SIMILARITY(vectorField, queryVector) for Vector+Geo
     PROXIMITY,       // PROXIMITY(geoField, point) for Content+Geo
     SHORTEST_PATH,   // SHORTEST_PATH TO target for Graph+Geo
+    TO,              // TO keyword for shortest path target
+    
+    // Phase 3: Subqueries & CTEs
+    WITH,            // WITH cteName = subquery for CTEs
+    AS,              // AS alias for CTE naming
+    ALL,             // ALL quantifier for array subqueries
+    SATISFIES,       // SATISFIES for array predicates
     
     // Operators
     EQ, NEQ, LT, LTE, GT, GTE,
@@ -224,6 +231,13 @@ private:
             if (lower == "similarity") return Token(TokenType::SIMILARITY, value, line, col);
             if (lower == "proximity") return Token(TokenType::PROXIMITY, value, line, col);
             if (lower == "shortest_path") return Token(TokenType::SHORTEST_PATH, value, line, col);
+            if (lower == "to") return Token(TokenType::TO, value, line, col);
+        
+        // Phase 3: Subqueries & CTEs
+        if (lower == "with") return Token(TokenType::WITH, value, line, col);
+        if (lower == "as") return Token(TokenType::AS, value, line, col);
+        if (lower == "all") return Token(TokenType::ALL, value, line, col);
+        if (lower == "satisfies") return Token(TokenType::SATISFIES, value, line, col);
         
         return Token(TokenType::IDENTIFIER, value, line, col);
     }
@@ -340,6 +354,11 @@ private:
     std::shared_ptr<Query> parseQuery() {
         auto query = std::make_shared<Query>();
         
+        // Phase 3: Optional WITH clause
+        if (match(TokenType::WITH)) {
+            query->with_clause = parseWithClause();
+        }
+        
         // One or more FOR clauses (first is also stored in for_node for backward compat)
         if (!match(TokenType::FOR)) {
             throw std::runtime_error("Expected FOR");
@@ -386,6 +405,22 @@ private:
         // RETURN clause (optional)
         if (match(TokenType::RETURN)) {
             query->return_node = parseReturnClause();
+        }
+
+        // Optional shortest path clause BEFORE RETURN (flex: allow position after filters and before/after SORT)
+        // Pattern: SHORTEST_PATH TO <string|identifier>
+        // We allow it if traversal node exists.
+        if (query->traversal && match(TokenType::SHORTEST_PATH)) {
+            advance();
+            expect(TokenType::TO, "Expected TO after SHORTEST_PATH");
+            // Accept STRING literal or IDENTIFIER
+            if (!match(TokenType::STRING) && !match(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected target vertex after SHORTEST_PATH TO");
+            }
+            std::string target = current().value;
+            advance();
+            query->traversal->shortestPath = true;
+            query->traversal->shortestPathTarget = target;
         }
         
         // End of query
@@ -587,6 +622,45 @@ private:
         return std::make_shared<ReturnNode>(expr);
     }
 
+    // Phase 3: Parse WITH clause
+    std::shared_ptr<WithNode> parseWithClause() {
+        expect(TokenType::WITH, "Expected WITH");
+        
+        auto withNode = std::make_shared<WithNode>();
+        
+        // Parse one or more CTEs: cteName AS (subquery) [, cteName AS (subquery)]*
+        do {
+            if (!withNode->ctes.empty()) {
+                expect(TokenType::COMMA, "Expected comma between CTEs");
+            }
+            
+            CTEDefinition cte;
+            
+            // CTE name
+            if (!match(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected CTE name after WITH");
+            }
+            cte.name = current().value;
+            advance();
+            
+            // AS keyword
+            expect(TokenType::AS, "Expected AS after CTE name");
+            
+            // Subquery in parentheses
+            expect(TokenType::LPAREN, "Expected '(' before CTE subquery");
+            
+            // Parse subquery (recursive call to parseQuery)
+            cte.subquery = parseQuery();
+            
+            expect(TokenType::RPAREN, "Expected ')' after CTE subquery");
+            
+            withNode->ctes.push_back(std::move(cte));
+            
+        } while (match(TokenType::COMMA));
+        
+        return withNode;
+    }
+
     std::shared_ptr<CollectNode> parseCollectClause() {
         expect(TokenType::COLLECT, "Expected COLLECT");
         auto node = std::make_shared<CollectNode>();
@@ -779,13 +853,28 @@ private:
     }
     
     std::shared_ptr<Expression> parsePrimary() {
-        // Parenthesized expression
+        // Phase 3.2: Subquery in expression context
+        // Pattern: (FOR ... RETURN expr)
         if (match(TokenType::LPAREN)) {
+            size_t savedPos = pos_;
+            advance();
+            
+            // Check if this is a subquery (starts with FOR)
+            if (match(TokenType::FOR)) {
+                // Parse as subquery
+                auto subquery = parseQuery();
+                expect(TokenType::RPAREN, "Expected ')' after subquery");
+                return std::make_shared<SubqueryExpr>(subquery);
+            }
+            
+            // Not a subquery, restore position and parse as parenthesized expression
+            pos_ = savedPos;
             advance();
             auto expr = parseExpression();
             expect(TokenType::RPAREN, "Expected ')'");
             return expr;
         }
+        
         // Object literal: { key: expr, ... }
         if (match(TokenType::LBRACE)) {
             advance();
@@ -857,6 +946,50 @@ private:
             return std::make_shared<LiteralExpr>(nullptr);
         }
         
+        // Phase 3.3: ANY quantifier
+        // Pattern: ANY var IN arrayExpr SATISFIES condition
+        if (match(TokenType::ANY)) {
+            advance();
+            
+            if (!match(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected variable name after ANY");
+            }
+            std::string varName = current().value;
+            advance();
+            
+            expect(TokenType::IN, "Expected IN after ANY variable");
+            
+            auto arrayExpr = parseExpression();
+            
+            expect(TokenType::SATISFIES, "Expected SATISFIES after array expression");
+            
+            auto condition = parseExpression();
+            
+            return std::make_shared<AnyExpr>(varName, arrayExpr, condition);
+        }
+        
+        // Phase 3.3: ALL quantifier
+        // Pattern: ALL var IN arrayExpr SATISFIES condition
+        if (match(TokenType::ALL)) {
+            advance();
+            
+            if (!match(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected variable name after ALL");
+            }
+            std::string varName = current().value;
+            advance();
+            
+            expect(TokenType::IN, "Expected IN after ALL variable");
+            
+            auto arrayExpr = parseExpression();
+            
+            expect(TokenType::SATISFIES, "Expected SATISFIES after array expression");
+            
+            auto condition = parseExpression();
+            
+            return std::make_shared<AllExpr>(varName, arrayExpr, condition);
+        }
+        
         // Identifier or function call
         if (match(TokenType::IDENTIFIER)) {
             std::string name = current().value;
@@ -899,6 +1032,13 @@ private:
                 }
 
                 expect(TokenType::RPAREN, "Expected ')'");
+                std::string lower = name; std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                if (lower == "similarity") {
+                    return std::make_shared<SimilarityCallExpr>(std::move(args));
+                }
+                if (lower == "proximity") {
+                    return std::make_shared<ProximityCallExpr>(std::move(args));
+                }
                 return std::make_shared<FunctionCallExpr>(name, std::move(args));
             }
 

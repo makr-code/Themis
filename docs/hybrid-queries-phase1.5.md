@@ -1,12 +1,16 @@
-# Hybrid Query Performance Optimizations (Phase 1.5)
+# Hybrid Query Performance Optimizations (Phase 1.5) & Phase 2 Syntax Sugar (SIMILARITY / PROXIMITY)
 
-**Status:** ✅ VOLLSTÄNDIG IMPLEMENTIERT  
+**Status:** ✅ Phase 1.5 implementiert • Phase 2 (Syntax-Zucker) teilweise aktiv (SIMILARITY, PROXIMITY Basis)  
 **Datum:** 17. November 2025  
 **Branch:** `feature/aql-st-functions`
 
 ## Übersicht
-
 Phase 1.5 optimiert die in Phase 1 implementierten Hybrid Queries durch Integration existierender Index-Strukturen. Alle Optimierungen nutzen **bereits vorhandene APIs** ohne Breaking Changes.
+
+Phase 2 startet mit **AQL Syntax Sugar** für Hybrid Queries:
+- `SIMILARITY()` für Vector+Geo (+ optionale zusätzliche Prädikate)
+- `PROXIMITY()` für Content+Geo (FULLTEXT + Distanz-Ranking)
+Weitere geplante Syntax (SHORTEST_PATH, kombinierte Multi-Hybrid) folgt.
 
 ## Implementierte Optimierungen
 
@@ -61,6 +65,56 @@ if (vectorIdx_) {
 - **Speedup:** 10× bei 10k+ vectors
 
 **Test:** `HybridQueriesTest.VectorGeo_WithVectorIndexManager_UsesHNSW`
+
+---
+
+## Phase 2: AQL Syntax Sugar (Fortschritt)
+
+### SIMILARITY() (Vector Similarity + optional Spatial + Extra Predicates)
+
+**Beispiel:**
+```aql
+FOR doc IN hotels
+    FILTER ST_Within(doc.location, @region)
+    FILTER doc.city == "Berlin"
+    SORT SIMILARITY(doc.embedding, @queryVec) DESC
+    LIMIT 10
+    RETURN doc
+```
+Erzeugt intern `VectorGeoQuery` mit:
+- `spatial_filter` (erstes ST_* FunktionCall)
+- `extra_filters` (weitere FILTER Bedingungen)
+- Fallback auf reine Vektor-Suche wenn kein Spatial FILTER vorhanden.
+
+### PROXIMITY() (Content+Geo: FULLTEXT + Distanz-Ranking)
+
+**Beispiel:**
+```aql
+FOR doc IN places
+    FILTER FULLTEXT(doc.description, "coffee", 50)
+    FILTER ST_Within(doc.location, @bbox)
+    SORT PROXIMITY(doc.location, [13.45,52.55]) ASC
+    LIMIT 20
+    RETURN doc
+```
+Erzeugt intern `ContentGeoQuery` mit BM25 Ergebnisliste und Distanz-Berechnung (`geo_distance`) + optional Spatial Vorfilter.
+
+**Ranking-Formel (derzeit):** `combined = bm25_score - (geo_distance * 0.1)` → niedrige Distanz verbessert Rang.
+
+### Dispatcher
+Neue Funktion `executeAql()` führt automatische Erkennung und ruft:
+- `executeVectorGeoQuery()` bei SIMILARITY
+- `executeContentGeoQuery()` bei PROXIMITY
+
+### Tests
+- `test_aql_similarity.cpp`, `test_aql_similarity_dispatch.cpp`
+- `test_aql_proximity.cpp`, `test_aql_proximity_dispatch.cpp`
+
+### Offene Punkte Phase 2
+- AST Spezialisierung (SimilarityExpr / ProximityExpr) statt generischer FunctionCallExpr
+- Index-Extraktion für `extra_filters` (Equality/Range → Sekundärindex Vorfilterung)
+- SHORTEST_PATH Syntax Sugar + Graph+Geo Integration
+- Erweiterte Kostenmodelle (Hybrid Optimizer v2)
 
 ---
 
@@ -390,7 +444,7 @@ QueryEngine queryEngine(
 
 Diese Optimierungen sind **NICHT kritisch** - aktuelle Performance ist production-ready:
 
-1. **Parallel Filtering (TBB)**
+1. **Parallel Filtering (TBB)** (bereits teilweise für Vector+Geo spatial/vector brute-force aktiv)
    - Für Content+Geo bei >1000 fulltext results
    - Erwarteter Speedup: 2-3× auf Multi-Core
 
@@ -398,7 +452,7 @@ Diese Optimierungen sind **NICHT kritisch** - aktuelle Performance ist productio
    - Für Brute-Force Fallback
    - Erwarteter Speedup: 2-4× mit AVX2
 
-3. **Geo-aware Query Optimizer**
+3. **Geo-aware Query Optimizer** (Grundheuristik aktiv: Spatial-first vs. Vector-first; Ausbau geplant für Content+Geo + Graph)
    - Cost-based Entscheidung: Spatial vs. Fulltext Pre-Filter
    - Automatische Query-Plan-Wahl
 
@@ -406,9 +460,9 @@ Diese Optimierungen sind **NICHT kritisch** - aktuelle Performance ist productio
 
 ## Änderungslog
 
-### Phase 1.5 (November 2025)
+### Phase 1.5 (November 2025) & Phase 2 (Beginn)
 
-**Neue Dateien:**
+**Neue Dateien (Phase 1.5 / Anfang Phase 2):**
 - `docs/hybrid-queries-phase1.5.md` - Diese Dokumentation
 
 **Geänderte Dateien:**
@@ -419,10 +473,12 @@ Diese Optimierungen sind **NICHT kritisch** - aktuelle Performance ist productio
 - `CMakeLists.txt` - /FS flag für MSVC builds
 - `build-tests-msvc.ps1` - Helper script für MSVC builds
 
-**Performance-Impact:**
+**Performance-Impact (aktuell gemessen / Ziel):**
 - Vector+Geo: 100ms → 4ms (25× Speedup) ✅
 - Graph+Geo: 160ms → 35ms (4.5× Speedup) ✅
-- Content+Geo: Bereits effizient (~20-80ms)
+- Content+Geo: Bereits effizient (~20-80ms) • Distanz-Ranking hinzugefügt
+- Vector+Geo Syntax-Zucker: <1ms Übersetzungs-Overhead vs. direkte API
+- Proximity Dispatch: <1ms Übersetzung + identische Volltext/Spatial Pfade
 
 ---
 

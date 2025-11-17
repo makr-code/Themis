@@ -37,6 +37,8 @@ struct VectorGeoQuery {
     std::vector<float> query_vector;
     size_t k = 10; // top-k results
     std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_Within(location, @region)
+    // Additional non-spatial predicates (equality / range) allowed now
+    std::vector<std::shared_ptr<query::Expression>> extra_filters; // evaluated conjunctively
 };
 
 // Content + Geo Hybrid Query
@@ -56,6 +58,7 @@ class SecondaryIndexManager;
 class BaseEntity;
 class VectorIndexManager;
 class SpatialIndexManager;
+class AQLTranslator; // Phase 4.1: For CTEExecution struct
 
 // Forward declarations für AQL-Typen
 namespace query {
@@ -187,7 +190,8 @@ public:
         const std::vector<query::LetNode>& let_nodes,
         const std::shared_ptr<query::ReturnNode>& return_node,
         const std::shared_ptr<query::SortNode>& sort,
-        const std::shared_ptr<query::LimitNode>& limit
+        const std::shared_ptr<query::LimitNode>& limit,
+        const EvaluationContext* parent_context = nullptr  // Phase 4.1: For CTE results
     ) const;
     
     std::pair<Status, std::vector<nlohmann::json>> executeGroupBy(
@@ -195,6 +199,13 @@ public:
         const std::shared_ptr<query::CollectNode>& collect,
         const std::vector<std::shared_ptr<query::FilterNode>>& filters,
         const std::shared_ptr<query::ReturnNode>& return_node
+    ) const;
+    
+    // Phase 4.1: CTE execution helper
+    // Executes all CTEs from TranslationResult and stores results in context
+    Status executeCTEs(
+        const std::vector<struct AQLTranslator::TranslationResult::CTEExecution>& ctes,
+        EvaluationContext& context
     ) const;
 
     // ============================================================================
@@ -253,21 +264,43 @@ private:
     std::pair<Status, std::vector<BaseEntity>> executeAndEntitiesRangeAware_(const ConjunctiveQuery& q) const;
 };
 
+// Forward declaration for CTECache
+namespace query {
+    class CTECache;
+}
+
 // EvaluationContext Definition (moved from class body to avoid json dependency in header)
 struct QueryEngine::EvaluationContext {
     std::unordered_map<std::string, nlohmann::json> bindings;
     // Optional: BM25/FULLTEXT score context, keyed by primary key ("_key")
     std::shared_ptr<std::unordered_map<std::string, double>> bm25_scores;
     
+    // Phase 3: CTE materialization storage (legacy - use cte_cache for large CTEs)
+    std::unordered_map<std::string, std::vector<nlohmann::json>> cte_results;
+    
+    // Phase 4.3: Managed CTE cache with spill-to-disk
+    std::shared_ptr<query::CTECache> cte_cache;
+    
+    // Phase 3.4: Parent context for correlated subqueries
+    const EvaluationContext* parent = nullptr;
+    
     void bind(const std::string& var, nlohmann::json value) {
         bindings[var] = std::move(value);
     }
     
     std::optional<nlohmann::json> get(const std::string& var) const {
+        // First check local bindings
         auto it = bindings.find(var);
         if (it != bindings.end()) return std::make_optional(it->second);
+        
+        // Phase 3.4: Check parent context for correlated variables
+        if (parent) {
+            return parent->get(var);
+        }
+        
         return std::nullopt;
     }
+    
     void setBm25Scores(std::shared_ptr<std::unordered_map<std::string, double>> scores) {
         bm25_scores = std::move(scores);
     }
@@ -276,6 +309,44 @@ struct QueryEngine::EvaluationContext {
         auto it = bm25_scores->find(pk);
         if (it == bm25_scores->end()) return 0.0;
         return it->second;
+    }
+    
+    // Phase 4.3: CTE access with cache fallback
+    void storeCTE(const std::string& name, std::vector<nlohmann::json> results) {
+        // Try cache first if available
+        if (cte_cache && !cte_cache->store(name, results)) {
+            // Fallback to in-memory if cache fails
+            cte_results[name] = std::move(results);
+        } else if (!cte_cache) {
+            // No cache, use in-memory
+            cte_results[name] = std::move(results);
+        }
+    }
+    
+    std::optional<std::vector<nlohmann::json>> getCTE(const std::string& name) const {
+        // Try cache first
+        if (cte_cache) {
+            auto cached = cte_cache->get(name);
+            if (cached.has_value()) {
+                return cached;
+            }
+        }
+        
+        // Fallback to in-memory
+        auto it = cte_results.find(name);
+        if (it != cte_results.end()) return std::make_optional(it->second);
+        
+        return std::nullopt;
+    }
+    
+    // Phase 3.4: Create child context with parent chain
+    EvaluationContext createChild() const {
+        EvaluationContext child;
+        child.parent = this;
+        child.bm25_scores = bm25_scores; // Share BM25 scores
+        child.cte_results = cte_results;  // Share CTE results
+        child.cte_cache = cte_cache;      // Share CTE cache
+        return child;
     }
 };
 

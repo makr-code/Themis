@@ -35,6 +35,7 @@ option(THEMIS_ENABLE_GPU "Enable GPU acceleration for vector search" OFF)
 option(THEMIS_ENABLE_TRACING "Enable OpenTelemetry distributed tracing" ON)
 option(THEMIS_ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
 option(THEMIS_STRICT_BUILD "Treat warnings as errors" OFF)
+option(THEMIS_ENABLE_AVX2 "Enable AVX2/FMA for SIMD kernels in Release builds (MSVC)" ON)
 
 # Geo feature tiering options (Core vs. Enterprise add-ins)
 option(THEMIS_GEO "Enable Geo core feature scaffolding" ON)
@@ -56,6 +57,9 @@ if(MSVC)
     add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS _WIN32_WINNT=0x0A00)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_compile_options(/O2 /GL)
+        if(THEMIS_ENABLE_AVX2)
+            add_compile_options(/arch:AVX2)
+        endif()
         # Ensure Link-Time Code Generation to avoid link restart messages
         add_link_options(/LTCG)
     endif()
@@ -201,9 +205,11 @@ set(THEMIS_CORE_SOURCES
     src/query/query_optimizer.cpp
     src/query/aql_parser.cpp
     src/query/aql_translator.cpp
+    src/query/aql_runner.cpp
     src/query/let_evaluator.cpp
     src/query/window_evaluator.cpp
     src/query/cte_subquery.cpp
+    src/query/cte_cache.cpp
     src/query/statistical_aggregator.cpp
     src/query/semantic_cache.cpp
     
@@ -256,6 +262,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/stopwords.cpp
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
+    src/utils/simd_distance.cpp
     
     # Geo utilities
     src/utils/geo/ewkb.cpp
@@ -411,6 +418,10 @@ if(THEMIS_BUILD_TESTS)
               tests/test_aql_or.cpp
               tests/test_aql_fulltext_hybrid.cpp
               tests/test_aql_bm25.cpp
+              tests/test_aql_similarity.cpp
+              tests/test_aql_similarity_dispatch.cpp
+              tests/test_aql_proximity.cpp
+              tests/test_aql_proximity_dispatch.cpp
         tests/test_metrics_api.cpp
         tests/test_http_query_range.cpp
         tests/test_http_aql.cpp
@@ -443,6 +454,9 @@ if(THEMIS_BUILD_TESTS)
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
+        tests/test_aql_with_clause.cpp
+        tests/test_aql_subqueries.cpp
+        tests/test_cte_cache.cpp
         tests/test_aql_translator.cpp
         tests/test_text_processor.cpp
     tests/test_prompt_manager.cpp
@@ -586,6 +600,17 @@ if(THEMIS_BUILD_BENCHMARKS)
             themis_core
             benchmark::benchmark
             benchmark::benchmark_main
+    )
+
+    # Hybrid AQL Syntax Sugar benchmark (Phase 2.5)
+    add_executable(bench_hybrid_aql_sugar
+        benchmarks/bench_hybrid_aql_sugar.cpp
+    )
+    
+    target_link_libraries(bench_hybrid_aql_sugar
+        PRIVATE
+            themis_core
+            benchmark::benchmark
     )
 endif()
 

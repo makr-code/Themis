@@ -2,7 +2,7 @@
 
 **Datum:** 17. November 2025  
 **Branch:** `feature/aql-st-functions`  
-**Status:** 🚧 In Planning
+**Status:** ✅ Phase 2 + 2.5 abgeschlossen (SIMILARITY, PROXIMITY, SHORTEST_PATH, spezialisierte AST-Knoten, Composite Index Prefilter, erweiterte Kostenmodelle, Graph-Optimierung, Benchmark Suite)
 
 ---
 
@@ -194,22 +194,25 @@ public:
 
 ## Implementation Roadmap
 
-### Phase 2.1: SIMILARITY() Function ⭐ HIGH PRIORITY
+### Phase 2.1: SIMILARITY() Function ⭐ Abgeschlossen
 
 **Tasks:**
-1. ✅ Add SIMILARITY keyword to tokenizer
-2. ✅ Extend parser to recognize SIMILARITY(field, vector)
-3. ✅ Implement SimilarityExpr AST node
-4. ✅ Extend translator to detect Vector+Geo pattern
-5. ✅ Generate executeVectorGeoQuery() call
-6. ✅ Add integration tests
+1. ✅ Keyword SIMILARITY im Tokenizer
+2. ✅ Parser erkennt SIMILARITY als FunctionCall in SORT
+3. ✅ SimilarityCallExpr spezialisierter AST Node (Parser ersetzt FunctionCall)
+4. ✅ Translator: Erkennung + Erzeugung VectorGeoQuery
+5. ✅ Dispatcher: executeAql() ruft executeVectorGeoQuery()
+6. ✅ Tests: Parsing / Übersetzung / Dispatch
+7. ✅ Zusätzliche Gleichheits-/Range-Prädikate neben Spatial Filter (extra_filters)
+8. ✅ Gleichheits-Prädikate extrahiert & Index-Prefilter (Whitelist für ANN / Plan-Kostenmodell)
 
 **Estimated:** 4-6 hours
 
-**Example:**
+**Example (mit zusätzlichem Predicate):**
 ```aql
 FOR doc IN hotels
   FILTER ST_Within(doc.location, POLYGON(...))
+  FILTER doc.city == "Berlin"
   SORT SIMILARITY(doc.description_embedding, @queryVec) DESC
   LIMIT 10
   RETURN doc
@@ -217,7 +220,7 @@ FOR doc IN hotels
 
 ---
 
-### Phase 2.2: Graph Spatial Constraints
+### Phase 2.2: Graph Spatial Constraints ✅ Abgeschlossen
 
 **Tasks:**
 1. ✅ Add SHORTEST_PATH keyword
@@ -238,7 +241,7 @@ FOR v IN 1..10 OUTBOUND @start edges
 
 ---
 
-### Phase 2.3: PROXIMITY() Function
+### Phase 2.3: PROXIMITY() Function ✅ Abgeschlossen
 
 **Tasks:**
 1. ✅ Add PROXIMITY keyword
@@ -261,13 +264,14 @@ FOR doc IN restaurants
 
 ---
 
-### Phase 2.4: Query Optimizer (Optional)
+### Phase 2.4: Query Optimizer ✅ Erstes Kostenmodell integriert
 
 **Tasks:**
-1. ⏳ Implement HybridQueryOptimizer
-2. ⏳ Add cost estimation
-3. ⏳ Implement plan selection
-4. ⏳ Add optimizer tests
+1. ✅ Erweiterung bestehender QueryOptimizer (Predicate Reihenfolge + VectorGeo Kostenmodell)
+2. ✅ Kostenabschätzung Vector+Geo (Spatial-first vs Vector-first) + Prefilter Rabatt
+3. ✅ Integration in `executeVectorGeoQuery` (Span-Attribute für Plan & Kosten)
+4. ✅ Tests: `test_query_optimizer_vector_geo.cpp`
+5. ✅ Stub-Kostenmodelle für Content+Geo & Graph-Pfade (Future Erweiterung)
 
 **Estimated:** 6-8 hours
 
@@ -468,16 +472,126 @@ Phase 2 is successful when:
 
 ---
 
-## Next Steps
+## Phase 2.5 Follow-Up Tasks ✅ ABGESCHLOSSEN
 
-1. Start with Phase 2.1 (SIMILARITY function)
-2. Extend tokenizer + parser
-3. Implement translator pattern detection
-4. Add integration tests
-5. Document + commit
-6. Repeat for 2.2, 2.3
+### 1. Erweiterte Predicate-Normalisierung ✅
+- **Status:** Implementiert
+- Equality + Range + Composite Index Prefiltering
+- `scanKeysEqualComposite()` Integration in `executeVectorGeoQuery`
+- Automatische Erkennung von AND-Ketten für Composite Indizes
+- Span-Attribut: `composite_prefilter_applied`
+
+### 2. Content+Geo Erweitertes Kostenmodell ✅
+- **Status:** Implementiert
+- Planwahl zwischen Fulltext-first und Spatial-first
+- Heuristisches Modell mit `bboxRatio` und geschätzten FT-Hits
+- Naive Token-AND Evaluation im Spatial-first Pfad
+- Span-Attribute: `optimizer.cg.plan`, `optimizer.cg.cost_fulltext_first`, `optimizer.cg.cost_spatial_first`
+
+### 3. Graph-Pfad Optimierung ✅
+- **Status:** Implementiert
+- Dynamische Branching-Faktor-Schätzung (Sampling über erste 2 Tiefen)
+- Frühabbruch bei geschätzter Expansion >1M Vertices
+- Räumliche Selektivität in Kostenmodell integriert
+- Span-Attribute: `optimizer.graph.branching_estimate`, `optimizer.graph.expanded_estimate`, `optimizer.graph.aborted`
+
+### 4. Benchmark Suite Hybrid Sugar ✅
+- **Status:** Implementiert
+- `benchmarks/bench_hybrid_aql_sugar.cpp` erstellt
+- Vergleich: AQL Sugar vs C++ API (Vector+Geo, Content+Geo)
+- Parse+Translate Overhead isoliert gemessen
+- 1000 Hotels Testdaten mit Indizes
+- CMakeLists.txt Target hinzugefügt
+
+### 5. Dokumentation Kostenmodelle ✅
+- **Status:** Erweitert
+- `docs/dev/cost-models.md` mit allen drei Modellen (Vector+Geo, Content+Geo, Graph)
+- Detaillierte Formeln, Tuning-Parameter, Grenzen
+- Tracer-Attribute dokumentiert
+
+### 6. Hybrid Queries Doku ✅
+- **Status:** Aktualisiert
+- `docs/aql-hybrid-queries.md` mit Composite Index Beispielen
+- Kostenmodell-Planwahl Details für alle Hybrid-Typen
+- Tracer-Attribute für Observability
+- Performance Hinweise erweitert
 
 ---
 
-**Status:** Ready to implement Phase 2.1  
-**Priority:** SIMILARITY() function (highest user value)
+## Next Steps (Phase 3 / Future Work)
+
+### Empfohlene nächste Features (priorisiert):
+
+#### Option A: Phase 3 - Advanced AQL Features (Höchste User Value)
+1. **Subqueries & Common Table Expressions (CTEs)**
+   - `WITH temp AS (...) FOR doc IN temp ...`
+   - Erhebliche Verbesserung der Query-Ausdruckskraft
+   - Wiederverwendung von Zwischenergebnissen
+   - **Aufwand:** 12-16 Stunden
+   
+2. **JOIN Operations**
+   - `FOR doc1 IN table1 FOR doc2 IN table2 FILTER doc1.ref == doc2._id`
+   - Nested Loop + Optional Hash Join Optimizer
+   - **Aufwand:** 16-20 Stunden
+   
+3. **Window Functions**
+   - `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`
+   - Rank, Dense Rank, Lag, Lead
+   - **Aufwand:** 10-14 Stunden
+
+#### Option B: Production Readiness (Höchste Stabilität)
+1. **Query Plan Cache**
+   - Parsed AST caching (LRU Cache)
+   - Reduziert Parse-Overhead bei wiederholten Queries
+   - **Aufwand:** 6-8 Stunden
+   
+2. **Query Timeout & Resource Limits**
+   - Max execution time, max memory per query
+   - Graceful abort bei Überschreitung
+   - **Aufwand:** 8-10 Stunden
+   
+3. **Enhanced Error Messages**
+   - Detaillierte Parse-Fehler mit Zeilennummer/Spalte
+   - Query-Explain für Debugging
+   - **Aufwand:** 6-8 Stunden
+
+#### Option C: Performance & Scale (Höchste Performance)
+1. **Parallel Query Execution**
+   - Parallel FOR-Loop Processing (TBB Thread Pool)
+   - Chunk-basierte Verteilung
+   - **Aufwand:** 12-16 Stunden
+   
+2. **Adaptive Query Optimizer**
+   - Runtime Statistics Collection
+   - Plan-Cache mit Statistics-basierter Invalidierung
+   - **Aufwand:** 16-20 Stunden
+   
+3. **Batch Processing API**
+   - Multi-Query Batch Execution
+   - Amortisierte Parse-Kosten
+   - **Aufwand:** 8-10 Stunden
+
+#### Option D: Multi-Model Enhancements (Breite Features)
+1. **Graph Pattern Matching (OpenCypher-Style)**
+   - `MATCH (a:City)-[:ROAD*1..5]->(b:City)`
+   - Deklarative Graph Queries
+   - **Aufwand:** 20-24 Stunden
+   
+2. **Vector Index Improvements**
+   - Product Quantization (PQ) für Memory-Effizienz
+   - IVF-HNSW Hybrid für sehr große Datensätze
+   - **Aufwand:** 16-20 Stunden
+   
+3. **Fulltext Ranking Improvements**
+   - TF-IDF neben BM25
+   - Phrase Matching
+   - **Aufwand:** 10-12 Stunden
+
+---
+
+**Empfehlung:** Start mit **Option A (Subqueries)** – größter User Value bei moderatem Aufwand.
+
+---
+
+**Status:** Phase 2 + 2.5 Complete ✅  
+**Next Priority:** Subqueries / CTEs (Option A.1)

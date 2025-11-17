@@ -20,6 +20,13 @@ using query::LiteralValue;
 using query::ASTNodeType;
 using query::FunctionCallExpr;
 using query::BinaryOperator;
+using query::VariableExpr;
+using query::SimilarityCallExpr;
+using query::ProximityCallExpr;
+using query::ArrayLiteralExpr;
+using query::SubqueryExpr;
+using query::AnyExpr;
+using query::AllExpr;
 
 /**
  * Translates AQL AST to QueryEngine ConjunctiveQuery
@@ -55,6 +62,8 @@ public:
             Direction direction = Direction::Outbound;
             std::string startVertex;
             std::string graphName;
+            bool shortestPath = false;
+            std::string endVertex; // gesetzt wenn shortestPath
         };
         std::optional<TraversalQuery> traversal;
         
@@ -72,6 +81,19 @@ public:
         
         // Disjunctive Query (OR support)
         std::optional<DisjunctiveQuery> disjunctive;
+
+        // Hybrid Vector+Geo Query (SIMILARITY + ST_*)
+        std::optional<VectorGeoQuery> vector_geo;
+        // Hybrid Content+Geo Query (FULLTEXT + PROXIMITY + optional ST_*)
+        std::optional<ContentGeoQuery> content_geo;
+        
+        // Phase 4: CTE execution metadata
+        struct CTEExecution {
+            std::string name;                          // CTE name
+            std::shared_ptr<query::Query> subquery;    // AST for execution
+            bool should_materialize;                   // Based on heuristic
+        };
+        std::vector<CTEExecution> ctes;                // CTEs to execute before main query
         
         static TranslationResult Success(ConjunctiveQuery q) {
             TranslationResult r;
@@ -100,6 +122,15 @@ public:
             r.traversal = std::move(t);
             return r;
         }
+
+        static TranslationResult SuccessVectorGeo(VectorGeoQuery v) {
+            TranslationResult r;
+            r.success = true;
+            r.vector_geo = std::move(v);
+            return r;
+        }
+        static TranslationResult SuccessContentGeo(ContentGeoQuery c) {
+            TranslationResult r; r.success = true; r.content_geo = std::move(c); return r; }
         
         static TranslationResult Error(std::string msg) {
             TranslationResult r;
@@ -169,6 +200,34 @@ private:
         const std::shared_ptr<SortNode>& sort,
         const std::shared_ptr<LimitNode>& limit
     );
+    
+    /**
+     * Count CTE references in AST (Phase 4.1)
+     * Scans FOR nodes to see how many times a CTE name appears as collection
+     */
+    static size_t countCTEReferences(
+        const std::shared_ptr<Query>& ast,
+        const std::string& cte_name
+    );
+    
+    /**
+     * Count CTE references recursively in expressions (Phase 4.1)
+     * Used for subqueries in FILTER, LET, etc.
+     */
+    static size_t countCTEReferencesInExpr(
+        const std::shared_ptr<Expression>& expr,
+        const std::string& cte_name
+    );
+    
+    /**
+     * Attach CTE execution metadata to translation result (Phase 4.1)
+     * Helper to avoid duplicating CTE attachment logic across all return paths
+     */
+    static void attachCTEs(
+        TranslationResult& result,
+        std::vector<TranslationResult::CTEExecution> ctes
+    );
 };
 
 } // namespace themis
+

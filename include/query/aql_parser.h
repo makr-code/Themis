@@ -27,6 +27,7 @@ enum class ASTNodeType {
     ReturnNode,         // RETURN expression
     LetNode,            // LET variable = expression
     CollectNode,        // COLLECT ... AGGREGATE ... (Phase 2)
+    WithNode,           // WITH cteName AS subquery (Phase 3)
     
     // Expressions
     BinaryOp,           // ==, !=, >, <, >=, <=, AND, OR, +, -, *, /
@@ -36,7 +37,12 @@ enum class ASTNodeType {
     Literal,            // "string", 123, true, false, null
     Variable,           // doc, user, etc.
     ArrayLiteral,       // [1, 2, 3] or ["a", "b"]
-    ObjectConstruct     // {name: doc.name, age: doc.age}
+    ObjectConstruct,    // {name: doc.name, age: doc.age}
+    SimilarityCall,     // SIMILARITY(expr, [vector], k?) specialized sugar
+    ProximityCall,      // PROXIMITY(expr, [lon,lat]) specialized sugar
+    SubqueryExpr,       // Subquery in expression context (Phase 3)
+    AnyExpr,            // ANY quantifier for arrays (Phase 3.3)
+    AllExpr             // ALL quantifier for arrays (Phase 3.3)
 };
 
 // ============================================================================
@@ -161,6 +167,28 @@ struct FunctionCallExpr : Expression {
     nlohmann::json toJSON() const override;
 };
 
+struct SimilarityCallExpr : Expression {
+    std::vector<std::shared_ptr<Expression>> arguments; // [fieldAccess, arrayLiteral, optional k]
+    SimilarityCallExpr(std::vector<std::shared_ptr<Expression>> args) : arguments(std::move(args)) {}
+    ASTNodeType getType() const override { return ASTNodeType::SimilarityCall; }
+    nlohmann::json toJSON() const override {
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &a : arguments) arr.push_back(a->toJSON());
+        return {{"type","similarity_call"},{"arguments",arr}};
+    }
+};
+
+struct ProximityCallExpr : Expression {
+    std::vector<std::shared_ptr<Expression>> arguments; // [fieldAccess, pointArray]
+    ProximityCallExpr(std::vector<std::shared_ptr<Expression>> args) : arguments(std::move(args)) {}
+    ASTNodeType getType() const override { return ASTNodeType::ProximityCall; }
+    nlohmann::json toJSON() const override {
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &a : arguments) arr.push_back(a->toJSON());
+        return {{"type","proximity_call"},{"arguments",arr}};
+    }
+};
+
 struct ArrayLiteralExpr : Expression {
     std::vector<std::shared_ptr<Expression>> elements;
     
@@ -179,6 +207,62 @@ struct ObjectConstructExpr : Expression {
     
     ASTNodeType getType() const override { return ASTNodeType::ObjectConstruct; }
     nlohmann::json toJSON() const override;
+};
+
+// Subquery Expression (Phase 3)
+struct SubqueryExpr : Expression {
+    std::shared_ptr<Query> subquery;
+    
+    explicit SubqueryExpr(std::shared_ptr<Query> sq)
+        : subquery(std::move(sq)) {}
+    
+    ASTNodeType getType() const override { return ASTNodeType::SubqueryExpr; }
+    nlohmann::json toJSON() const override {
+        return {
+            {"type", "subquery"},
+            {"query", subquery ? subquery->toJSON() : nlohmann::json()}
+        };
+    }
+};
+
+// ANY quantifier: ANY var IN array SATISFIES condition
+struct AnyExpr : Expression {
+    std::string variable;                          // Loop variable
+    std::shared_ptr<Expression> arrayExpr;         // Array to iterate
+    std::shared_ptr<Expression> condition;         // Condition to test
+    
+    AnyExpr(std::string var, std::shared_ptr<Expression> arr, std::shared_ptr<Expression> cond)
+        : variable(std::move(var)), arrayExpr(std::move(arr)), condition(std::move(cond)) {}
+    
+    ASTNodeType getType() const override { return ASTNodeType::AnyExpr; }
+    nlohmann::json toJSON() const override {
+        return {
+            {"type", "any"},
+            {"variable", variable},
+            {"array", arrayExpr ? arrayExpr->toJSON() : nlohmann::json()},
+            {"condition", condition ? condition->toJSON() : nlohmann::json()}
+        };
+    }
+};
+
+// ALL quantifier: ALL var IN array SATISFIES condition
+struct AllExpr : Expression {
+    std::string variable;                          // Loop variable
+    std::shared_ptr<Expression> arrayExpr;         // Array to iterate
+    std::shared_ptr<Expression> condition;         // Condition to test
+    
+    AllExpr(std::string var, std::shared_ptr<Expression> arr, std::shared_ptr<Expression> cond)
+        : variable(std::move(var)), arrayExpr(std::move(arr)), condition(std::move(cond)) {}
+    
+    ASTNodeType getType() const override { return ASTNodeType::AllExpr; }
+    nlohmann::json toJSON() const override {
+        return {
+            {"type", "all"},
+            {"variable", variable},
+            {"array", arrayExpr ? arrayExpr->toJSON() : nlohmann::json()},
+            {"condition", condition ? condition->toJSON() : nlohmann::json()}
+        };
+    }
 };
 
 // ============================================================================
@@ -321,10 +405,48 @@ struct CollectNode {
 };
 
 // ============================================================================
+// WITH Clause / CTEs (Phase 3)
+// ============================================================================
+
+// Forward declaration for Query
+struct Query;
+
+// Single CTE definition
+struct CTEDefinition {
+    std::string name;                                  // CTE name (e.g., "expensiveHotels")
+    std::shared_ptr<Query> subquery;                   // The subquery AST
+    
+    nlohmann::json toJSON() const {
+        return {
+            {"type", "cte_definition"},
+            {"name", name},
+            {"subquery", subquery ? subquery->toJSON() : nlohmann::json()}
+        };
+    }
+};
+
+// WITH clause node
+struct WithNode {
+    std::vector<CTEDefinition> ctes;                   // One or more CTEs
+    
+    nlohmann::json toJSON() const {
+        nlohmann::json j;
+        j["type"] = "with";
+        nlohmann::json ctesJson = nlohmann::json::array();
+        for (const auto& cte : ctes) {
+            ctesJson.push_back(cte.toJSON());
+        }
+        j["ctes"] = ctesJson;
+        return j;
+    }
+};
+
+// ============================================================================
 // Query AST (Root)
 // ============================================================================
 
 struct Query {
+    std::shared_ptr<WithNode> with_clause;  // Phase 3: WITH clause for CTEs (optional)
     ForNode for_node; // first FOR (backwards compatibility)
     std::vector<ForNode> for_nodes; // support multiple FOR clauses for joins
     std::vector<std::shared_ptr<FilterNode>> filters;
@@ -346,6 +468,8 @@ struct Query {
         std::string startVertex; // Primary Key des Startknotens
         std::string graphName;   // Graph-Name (aktuell informativ)
         std::string edgeType;    // optional: Kanten-Typ-Filter (wenn gesetzt)
+            bool shortestPath = false; // SHORTEST_PATH Syntax aktiviert
+            std::string shortestPathTarget; // Zielknoten für Pfad
 
         nlohmann::json toJSON() const {
             const char* dir = direction == Direction::Outbound ? "OUTBOUND" : (direction == Direction::Inbound ? "INBOUND" : "ANY");
@@ -363,6 +487,10 @@ struct Query {
             if (!edgeType.empty()) {
                 j["edgeType"] = edgeType;
             }
+                if (shortestPath) {
+                    j["shortestPath"] = true;
+                    j["shortestPathTarget"] = shortestPathTarget;
+                }
             return j;
         }
     };
@@ -373,6 +501,11 @@ struct Query {
             {"type", "query"},
             {"for", for_node.toJSON()}
         };
+        
+        if (with_clause) {
+            j["with"] = with_clause->toJSON();
+        }
+        
         if (!for_nodes.empty()) {
             nlohmann::json fors = nlohmann::json::array();
             for (const auto& f : for_nodes) fors.push_back(f.toJSON());

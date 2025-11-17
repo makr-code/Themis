@@ -5,6 +5,7 @@
 #include "storage/key_schema.h"
 #include "storage/base_entity.h"
 #include "utils/logger.h"
+#include "utils/simd_distance.h"
 
 #ifdef THEMIS_HNSW_ENABLED
 #include <hnswlib/hnswlib.h>
@@ -59,12 +60,9 @@ void VectorIndexManager::setAutoSavePath(const std::string& savePath, bool autoS
 }
 
 float VectorIndexManager::l2(const std::vector<float>& a, const std::vector<float>& b) {
-	float s = 0.0f;
-	for (size_t i = 0; i < a.size(); ++i) {
-		float d = a[i] - b[i];
-		s += d * d;
-	}
-	return s;
+	if (a.size() != b.size()) return std::numeric_limits<float>::infinity();
+	// Return squared L2 to match existing distance semantics (lower is better)
+	return simd::l2_distance_sq(a.data(), b.data(), a.size());
 }
 
 float VectorIndexManager::cosineOneMinus(const std::vector<float>& a, const std::vector<float>& b) {
