@@ -296,6 +296,17 @@ private:
     // PKI endpoints (sign/verify)
     http::response<http::string_body> handlePkiSign(const http::request<http::string_body>& req);
     http::response<http::string_body> handlePkiVerify(const http::request<http::string_body>& req);
+    
+    // PKI HSM, TSA, eIDAS endpoints
+    http::response<http::string_body> handlePkiHsmSign(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiHsmKeys(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiTimestamp(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiTimestampVerify(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiEidasSign(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiEidasVerify(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiCertificates(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiCertificate(const http::request<http::string_body>& req);
+    http::response<http::string_body> handlePkiStatus(const http::request<http::string_body>& req);
 
     // Classification API endpoints (Skeleton)
     http::response<http::string_body> handleClassificationListRules(const http::request<http::string_body>& req);

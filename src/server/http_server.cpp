@@ -705,6 +705,15 @@ namespace {
         // Keys / Classification / Reports
     PkiSignPost,
     PkiVerifyPost,
+    PkiHsmSignPost,
+    PkiHsmKeysGet,
+    PkiTimestampPost,
+    PkiTimestampVerifyPost,
+    PkiEidasSignPost,
+    PkiEidasVerifyPost,
+    PkiCertificatesGet,
+    PkiCertificateGet,
+    PkiStatusGet,
         KeysListGet,
         KeysRotatePost,
         ClassificationRulesGet,
@@ -805,6 +814,16 @@ namespace {
             if (path_only.size() >= 5 && path_only.compare(path_only.size() - 5, 5, "/sign") == 0) return Route::PkiSignPost;
             if (path_only.size() >= 7 && path_only.compare(path_only.size() - 7, 7, "/verify") == 0) return Route::PkiVerifyPost;
         }
+        // New PKI HSM, TSA, eIDAS endpoints
+        if (path_only == "/api/pki/hsm/sign" && method == http::verb::post) return Route::PkiHsmSignPost;
+        if (path_only == "/api/pki/hsm/keys" && method == http::verb::get) return Route::PkiHsmKeysGet;
+        if (path_only == "/api/pki/timestamp" && method == http::verb::post) return Route::PkiTimestampPost;
+        if (path_only == "/api/pki/timestamp/verify" && method == http::verb::post) return Route::PkiTimestampVerifyPost;
+        if (path_only == "/api/pki/eidas/sign" && method == http::verb::post) return Route::PkiEidasSignPost;
+        if (path_only == "/api/pki/eidas/verify" && method == http::verb::post) return Route::PkiEidasVerifyPost;
+        if (path_only == "/api/pki/certificates" && method == http::verb::get) return Route::PkiCertificatesGet;
+        if (path_only.rfind("/api/pki/certificates/", 0) == 0 && method == http::verb::get) return Route::PkiCertificateGet;
+        if (path_only == "/api/pki/status" && method == http::verb::get) return Route::PkiStatusGet;
         // Keys API
         if (path_only == "/keys" && method == http::verb::get) return Route::KeysListGet;
         if (path_only == "/keys/rotate" && method == http::verb::post) return Route::KeysRotatePost;
@@ -1056,6 +1075,33 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::PkiVerifyPost:
             response = handlePkiVerify(req);
             break;
+        case Route::PkiHsmSignPost:
+            response = handlePkiHsmSign(req);
+            break;
+        case Route::PkiHsmKeysGet:
+            response = handlePkiHsmKeys(req);
+            break;
+        case Route::PkiTimestampPost:
+            response = handlePkiTimestamp(req);
+            break;
+        case Route::PkiTimestampVerifyPost:
+            response = handlePkiTimestampVerify(req);
+            break;
+        case Route::PkiEidasSignPost:
+            response = handlePkiEidasSign(req);
+            break;
+        case Route::PkiEidasVerifyPost:
+            response = handlePkiEidasVerify(req);
+            break;
+        case Route::PkiCertificatesGet:
+            response = handlePkiCertificates(req);
+            break;
+        case Route::PkiCertificateGet:
+            response = handlePkiCertificate(req);
+            break;
+        case Route::PkiStatusGet:
+            response = handlePkiStatus(req);
+            break;
         case Route::KeysRotatePost:
             response = handleKeysRotateKey(req);
             break;
@@ -1250,6 +1296,192 @@ http::response<http::string_body> HttpServer::handlePkiVerify(
         if (!req.body().empty()) body = nlohmann::json::parse(req.body());
 
         auto result = pki_api_->verify(key_id, body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+// ============================================================================
+// New PKI HSM, TSA, eIDAS Handlers
+// ============================================================================
+
+http::response<http::string_body> HttpServer::handlePkiHsmSign(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:sign", "pki.hsm.sign", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->hsmSign(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiHsmKeys(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.hsm.read", "/api/pki")) return *resp;
+
+        auto result = pki_api_->hsmListKeys();
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiTimestamp(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:timestamp", "pki.timestamp", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->getTimestamp(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiTimestampVerify(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:verify", "pki.timestamp.verify", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->verifyTimestamp(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiEidasSign(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:eidas", "pki.eidas.sign", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->eidasSign(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiEidasVerify(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:verify", "pki.eidas.verify", "/api/pki")) return *resp;
+
+        nlohmann::json body = nlohmann::json::object();
+        if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        auto result = pki_api_->eidasVerify(body);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiCertificates(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.certificates.read", "/api/pki")) return *resp;
+
+        auto result = pki_api_->listCertificates();
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiCertificate(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.certificates.read", "/api/pki")) return *resp;
+
+        // Extract cert_id from path: /api/pki/certificates/:cert_id
+        auto path = std::string(req.target());
+        auto cert_id = extractPathParam(path, "/api/pki/certificates/");
+        if (cert_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing cert_id", req);
+
+        auto result = pki_api_->getCertificate(cert_id);
+        if (result.contains("status_code")) {
+            int sc = result.value("status_code", 500);
+            return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
+        }
+        return makeResponse(http::status::ok, result.dump(), req);
+    } catch (const std::exception& e) {
+        return makeErrorResponse(http::status::internal_server_error, e.what(), req);
+    }
+}
+
+http::response<http::string_body> HttpServer::handlePkiStatus(
+    const http::request<http::string_body>& req
+) {
+    try {
+        if (!pki_api_) return makeErrorResponse(http::status::service_unavailable, "PKI API not available", req);
+        if (auto resp = requireAccess(req, "pki:read", "pki.status", "/api/pki")) return *resp;
+
+        auto result = pki_api_->getStatus();
         if (result.contains("status_code")) {
             int sc = result.value("status_code", 500);
             return makeErrorResponse(static_cast<http::status>(sc), result.dump(), req);
