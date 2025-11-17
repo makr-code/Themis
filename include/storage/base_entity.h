@@ -8,7 +8,11 @@
 #include <map>
 #include <variant>
 
+// Forward declaration for Geo support
 namespace themis {
+namespace geo {
+    struct GeoSidecar;
+}
 
 /// Value type that can represent different data types
 using Value = std::variant<
@@ -115,6 +119,28 @@ public:
     /// Extract vector embedding field (for ANN index)
     std::optional<std::vector<float>> extractVector(std::string_view field_name = "embedding") const;
     
+    // ===== Geo Support (Cross-Cutting Capability) =====
+    
+    /// Check if entity has geometry
+    bool hasGeometry() const { return geometry_.has_value(); }
+    
+    /// Get geometry blob (EWKB format)
+    const std::optional<Blob>& getGeometry() const { return geometry_; }
+    
+    /// Set geometry blob (EWKB format)
+    void setGeometry(const Blob& ewkb);
+    
+    /// Get geo sidecar (MBR, centroid, z-range)
+    const std::optional<geo::GeoSidecar>& getGeoSidecar() const { return geo_sidecar_; }
+    
+    /// Set geo sidecar (computed from geometry)
+    void setGeoSidecar(const geo::GeoSidecar& sidecar);
+    
+    /// Clear geometry (remove geo capability)
+    void clearGeometry();
+    
+    // ===== Index Support (fast field extraction) =====
+    
     /// Get all indexable fields (for secondary index maintenance)
     /// Returns field_name -> string_value pairs
     Attributes extractAllFields() const;
@@ -141,6 +167,10 @@ private:
     // Lazy-parsed field cache (shared_ptr für Copy-Semantik)
     mutable std::shared_ptr<FieldMap> field_cache_;
     mutable bool cache_valid_ = false;
+    
+    // Geo support (optional, cross-cutting capability)
+    std::optional<Blob> geometry_;                      // EWKB blob
+    std::optional<geo::GeoSidecar> geo_sidecar_;       // MBR, centroid, z-range
     
     // Parse blob into field cache
     void ensureCache() const;

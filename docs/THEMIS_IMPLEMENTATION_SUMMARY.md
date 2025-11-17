@@ -2,16 +2,19 @@
 **Stand:** 17. November 2025  
 **Zweck:** Gesamtübersicht über den Implementierungsstand von ThemisDB mit prozentualem Fortschritt
 
-**Letzte Änderung:** Critical/High-Priority Sprint abgeschlossen (17.11.2025)
-- 8 Tasks abgeschlossen (BFS Fix, Encryption Tests, PKI Docs, Lazy Re-Encryption, Metrics)
-- 3.633 Zeilen Code hinzugefügt
-- Security/Governance von 15% auf 45% gestiegen
+**Letzte Änderung:** Security Hardening Sprint: TLS/SSL Implementation (17.11.2025)
+- TLS 1.3 Support mit Strong Ciphers (ECDHE-RSA-AES256-GCM-SHA384)
+- Mutual TLS (mTLS) Client Authentication
+- SSL Session Handling (SslSession Class)
+- Test Certificate Generation Script (`scripts/generate_test_certs.sh`)
+- Comprehensive TLS Documentation (`docs/TLS_SETUP.md`)
+- Security/Governance von 45% auf 60% gestiegen
 
 ---
 
 ## Executive Summary
 
-**ThemisDB ist zu ~61% implementiert** mit starkem Fokus auf Core-Features und MVP-Funktionalität. Die Basis-Architektur ist produktionsreif, Security-Layer deutlich verbessert.
+**ThemisDB ist zu ~64% implementiert** mit starkem Fokus auf Core-Features und MVP-Funktionalität. Die Basis-Architektur ist produktionsreif, Security-Layer deutlich verbessert.
 
 **Status:** 
 - ✅ **Produktionsreif:** Core Database, MVCC, Vector Search, Time-Series, AQL Basics, Encryption
@@ -31,9 +34,9 @@
 | **Phase 4** | **Content/Filesystem** | Documents, Chunks, Extraction, Hybrid | ⚠️ Teilweise | Alpha | **30%** |
 | **Phase 5** | **Observability** | Metrics, Backup, Tracing, Logs | ✅ Fast Vollständig | MVP | **85%** |
 | **Phase 6** | **Analytics (Arrow)** | RecordBatches, OLAP, SIMD | ❌ Nicht gestartet | Geplant | **0%** |
-| **Phase 7** | **Security/Governance** | RBAC, Audit, DSGVO, PKI | ⚠️ Teilweise | MVP | **45%** |
+| **Phase 7** | **Security/Governance** | RBAC, Audit, DSGVO, PKI | ⚠️ Teilweise | MVP | **60%** |
 
-**Gewichteter Gesamtfortschritt:** **~61%**
+**Gewichteter Gesamtfortschritt:** **~64%**
 
 ---
 
@@ -221,7 +224,7 @@
 #### ❌ Nicht implementiert (70%)
 
 **Missing Features:**
-- Advanced Extraction (PDF/DOCX/Images) ❌
+--- Advanced Extraction (PDF/DOCX/Images) ❌ (as enterprise addon) ---
 - Chunk Reindexing/Compaction ❌
 - Multi-Modal Embeddings (Text+Image+Audio) ❌
 - Bulk Chunk Upload Optimization ❌
@@ -292,9 +295,9 @@
 
 ---
 
-### Phase 7: Security & Governance ⚠️ 15%
+### Phase 7: Security & Governance ⚠️ 60%
 
-#### ✅ Implementiert (15%)
+#### ✅ Implementiert (60%)
 
 **Encryption:**
 - Field-Level Encryption (AES-256-GCM) ✅
@@ -309,12 +312,21 @@
 - Basic Audit Logging ✅
 - Audit API (`GET /api/audit`, CSV Export) ✅
 
+**Network Security:**
+- Rate Limiting (Token Bucket, per IP/User) ✅ (17.11.2025)
+- Security Headers (X-Frame-Options, X-Content-Type-Options, CSP, Referrer-Policy) ✅ (17.11.2025)
+- CORS konfigurierbar (Allow-All/Allowlist, Credentials) ✅ (17.11.2025)
+- Input Validation (AQL, Path Traversal, JSON Schema Stubs, 10MB Body Limit) ✅ (17.11.2025)
+- **TLS/SSL Hardening (TLS 1.3, Strong Ciphers, HSTS)** ✅ (17.11.2025)
+- **Mutual TLS (mTLS) Client Authentication** ✅ (17.11.2025)
+- **SSL Session Handling (SslSession Class)** ✅ (17.11.2025)
+
 **PII Detection:**
 - PII Manager (RocksDB-Backend) ✅
 - CRUD Operations (addMapping, getMapping, etc.) ✅
 - API: PIIApiHandler ✅
 
-#### ❌ Nicht implementiert (85%)
+#### ❌ Nicht implementiert (40%)
 
 **Missing Features:**
 - RBAC (Role-Based Access Control) ❌
@@ -324,6 +336,69 @@
 - DSGVO Compliance Tooling ❌
 - Security Audit Tooling ❌
 - Governance Policy Engine ❌ (Design vorhanden)
+- Certificate Pinning für HSM/TSA (Outbound) ❌
+- OCSP Stapling ❌
+- Automated Certificate Rotation (Let's Encrypt) ❌
+
+#### TLS/SSL Konfiguration (neu)
+
+**Transport Security:**
+- TLS 1.3 by default (TLS 1.2 fallback konfigurierbar)
+- Strong Ciphers: ECDHE-RSA-AES256-GCM-SHA384, ECDHE-RSA-AES128-GCM-SHA256, ChaCha20-Poly1305
+- Disabled Weak Protocols: SSLv2/v3, TLSv1.0/1.1 explizit deaktiviert
+- HSTS Header: `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+
+**Environment Variables:**
+```bash
+# Basic TLS (one-way authentication)
+THEMIS_TLS_ENABLED=1
+THEMIS_TLS_CERT=/path/to/server.crt
+THEMIS_TLS_KEY=/path/to/server.key
+THEMIS_TLS_MIN_VERSION=TLSv1.3  # or TLSv1.2
+
+# Mutual TLS (two-way authentication)
+THEMIS_TLS_CA_CERT=/path/to/ca.crt
+THEMIS_TLS_REQUIRE_CLIENT_CERT=1
+
+# Optional: Custom cipher list (OpenSSL format)
+THEMIS_TLS_CIPHER_LIST="ECDHE-RSA-AES256-GCM-SHA384:..."
+```
+
+**Test Certificate Generation:**
+- Script: `scripts/generate_test_certs.sh`
+- Generates: CA, Server Cert/Key, Client Cert/Key (mTLS)
+- Documentation: `docs/TLS_SETUP.md` (comprehensive guide)
+
+**mTLS Features:**
+- Client Certificate Verification (X.509)
+- Client DN Logging für Audit Trails
+- Certificate Chain Validation
+
+#### CORS/Security-Header Konfiguration (neu)
+
+- `THEMIS_CORS_ALLOW_ALL=1` → `Access-Control-Allow-Origin: *`
+- `THEMIS_CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com`
+- `THEMIS_CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS`
+- `THEMIS_CORS_ALLOWED_HEADERS=Authorization,Content-Type,X-Requested-With`
+- `THEMIS_CORS_ALLOW_CREDENTIALS=1` (nur bei konkretem Origin)
+
+Preflight (`OPTIONS`) Antworten:
+- `204 No Content` bei erlaubtem Origin inkl. `Access-Control-Max-Age: 600`
+- `403 Forbidden` bei nicht erlaubtem Origin
+
+Security-Header (Default für API-Responses):
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: no-referrer`
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'`
+
+Rate Limiting:
+- Default: 100 req/min, per IP und per User
+- Override: `THEMIS_RATE_LIMIT_PER_MINUTE=250`
+
+Maximale Request-Größe (Input Validation):
+- Default: 10MB (`HttpServer::Config::max_request_size_mb` bzw. `THEMIS_MAX_BODY_BYTES`)
+- Override: `THEMIS_MAX_BODY_BYTES=20971520` (20MB)
 
 ---
 
@@ -464,13 +539,15 @@
    - Basic Schema vorhanden
    - Extraction Pipeline alpha
 
-10. **Security/Governance** (45%)
+10. **Security/Governance** (60%)
     - ✅ Field Encryption produktiv (AES-256-GCM)
     - ✅ Lazy Re-Encryption für Key Rotation
     - ✅ Encryption Prometheus Metrics (42 counters)
     - ✅ Schema-Based Encryption Tests (809 lines)
     - ✅ PKI Documentation (eIDAS-compliant, 1,111 lines)
     - ✅ Audit Log Encryption (encrypt-then-sign)
+    - ✅ TLS/SSL Hardening (TLS 1.3, Strong Ciphers, HSTS)
+    - ✅ Mutual TLS (mTLS) Client Authentication
     - ⏳ RBAC geplant
     - ⏳ Dynamic Data Masking geplant
 
@@ -496,7 +573,7 @@
    - OR/NOT mit Index-Merge
    - Advanced Joins
 
-3. **Security erweitern** (15% → 40%)
+3. **Security erweitern** (60% → 75%)
    - eIDAS-konforme Signaturen (PKI)
    - Column-Level Key Rotation
    - Basic RBAC
@@ -509,7 +586,7 @@
    - RecordBatch Integration
    - Basic OLAP Queries
 
-5. **Governance Tools** (15% → 50%)
+5. **Governance Tools** (60% → 75%)
    - DSGVO Compliance Tooling
    - Governance Policy Engine
    - Dynamic Data Masking

@@ -10,6 +10,11 @@
 #include <windows.h>
 #endif
 
+// OpenSSL headers for TLS/SSL support
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+
 // Windows macros undefine - MUST be before any includes
 #ifdef ERROR
 #undef ERROR
@@ -90,6 +95,7 @@ static inline void portable_gmtime_r_impl(const time_t* t, std::tm* out) {
 #include "query/aql_translator.h"
 
 #include "security/signing.h"
+#include "utils/input_validator.h"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -510,6 +516,143 @@ HttpServer::HttpServer(
     
     rate_limiter_ = std::make_unique<RateLimiter>(rate_config);
     THEMIS_INFO("Rate Limiter initialized: {} req/min", rate_config.refill_rate * 60.0);
+
+    // ----------------------------------------------------------------------------
+    // CORS configuration (from environment)
+    // ----------------------------------------------------------------------------
+    cors_allow_all_ = false;
+    cors_allow_credentials_ = false;
+    cors_allowed_origins_.clear();
+    cors_allowed_methods_ = "GET,POST,PUT,DELETE,OPTIONS";
+    cors_allowed_headers_ = "Authorization,Content-Type,X-Requested-With";
+
+    if (auto v = get_env("THEMIS_CORS_ALLOW_ALL")) {
+        cors_allow_all_ = (*v == "1" || *v == "true" || *v == "TRUE");
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOW_CREDENTIALS")) {
+        cors_allow_credentials_ = (*v == "1" || *v == "true" || *v == "TRUE");
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOWED_ORIGINS")) {
+        // Comma-separated exact origins, e.g. https://app.example.com,https://admin.example.com
+        std::istringstream iss(*v);
+        std::string origin;
+        while (std::getline(iss, origin, ',')) {
+            if (!origin.empty()) cors_allowed_origins_.push_back(origin);
+        }
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOWED_METHODS")) {
+        if (!v->empty()) cors_allowed_methods_ = *v;
+    }
+    if (auto v = get_env("THEMIS_CORS_ALLOWED_HEADERS")) {
+        if (!v->empty()) cors_allowed_headers_ = *v;
+    }
+    if (cors_allow_all_) {
+        THEMIS_INFO("CORS: allowing all origins (Access-Control-Allow-Origin: *)");
+    } else if (!cors_allowed_origins_.empty()) {
+        THEMIS_INFO("CORS: allowed origins configured ({} entries)", cors_allowed_origins_.size());
+    } else {
+        THEMIS_INFO("CORS: no origins allowed by default (set THEMIS_CORS_ALLOW_ALL=1 for dev)");
+    }
+
+    // Initialize Input Validator (schema dir from env or default config/schemas)
+    std::string schema_dir = "config/schemas";
+    if (auto v = get_env("THEMIS_SCHEMAS_DIR")) {
+        if (!v->empty()) schema_dir = *v;
+    }
+    validator_ = std::make_unique<themis::utils::InputValidator>(schema_dir);
+    THEMIS_INFO("InputValidator initialized with schema dir: {}", schema_dir);
+
+    // ----------------------------------------------------------------------------
+    // Input validation limits
+    // ----------------------------------------------------------------------------
+    if (auto v = get_env("THEMIS_MAX_BODY_BYTES")) {
+        try { max_body_bytes_ = static_cast<size_t>(std::stoull(*v)); }
+        catch (...) { THEMIS_WARN("Invalid THEMIS_MAX_BODY_BYTES value, using default 10MB"); }
+    } else {
+        // fall back to config max_request_size_mb if provided
+        if (config_.max_request_size_mb > 0) {
+            max_body_bytes_ = config_.max_request_size_mb * 1024ull * 1024ull;
+        }
+    }
+    THEMIS_INFO("Max request body set to {} bytes", max_body_bytes_);
+
+    // ----------------------------------------------------------------------------
+    // TLS/SSL Configuration
+    // ----------------------------------------------------------------------------
+    if (config_.enable_tls) {
+        try {
+            // Create SSL context
+            ssl_ctx_ = std::make_unique<boost::asio::ssl::context>(
+                boost::asio::ssl::context::tlsv13_server // TLS 1.3 by default
+            );
+
+            // Set minimum TLS version
+            if (config_.tls_min_version == "TLSv1.2") {
+                ssl_ctx_ = std::make_unique<boost::asio::ssl::context>(
+                    boost::asio::ssl::context::tlsv12_server
+                );
+                THEMIS_INFO("TLS: minimum version set to TLSv1.2");
+            } else {
+                THEMIS_INFO("TLS: minimum version set to TLSv1.3 (recommended)");
+            }
+
+            // Load server certificate and private key
+            if (config_.tls_cert_path.empty() || config_.tls_key_path.empty()) {
+                throw std::runtime_error("TLS enabled but cert/key paths not configured");
+            }
+            ssl_ctx_->use_certificate_chain_file(config_.tls_cert_path);
+            ssl_ctx_->use_private_key_file(config_.tls_key_path, boost::asio::ssl::context::pem);
+            THEMIS_INFO("TLS: loaded certificate from {} and private key from {}", 
+                config_.tls_cert_path, config_.tls_key_path);
+
+            // Configure strong cipher suites (if custom list provided)
+            if (!config_.tls_cipher_list.empty()) {
+                SSL_CTX_set_cipher_list(ssl_ctx_->native_handle(), config_.tls_cipher_list.c_str());
+                THEMIS_INFO("TLS: custom cipher list configured: {}", config_.tls_cipher_list);
+            } else {
+                // Default: use strong ciphers only (ECDHE with AES256-GCM, ChaCha20)
+                // For TLS 1.3, ciphersuites are configured separately
+                SSL_CTX_set_cipher_list(ssl_ctx_->native_handle(), 
+                    "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-CHACHA20-POLY1305");
+                THEMIS_INFO("TLS: using default strong cipher suites (ECDHE-RSA-AES256-GCM-SHA384, etc.)");
+            }
+
+            // Disable weak protocols and ciphers
+            ssl_ctx_->set_options(
+                boost::asio::ssl::context::default_workarounds |
+                boost::asio::ssl::context::no_sslv2 |
+                boost::asio::ssl::context::no_sslv3 |
+                boost::asio::ssl::context::no_tlsv1 |
+                boost::asio::ssl::context::no_tlsv1_1 |
+                boost::asio::ssl::context::single_dh_use
+            );
+            THEMIS_INFO("TLS: disabled weak protocols (SSLv2/v3, TLSv1.0/1.1)");
+
+            // Mutual TLS (mTLS) configuration
+            if (config_.tls_require_client_cert) {
+                if (config_.tls_ca_cert_path.empty()) {
+                    throw std::runtime_error("mTLS enabled but CA cert path not configured");
+                }
+                ssl_ctx_->load_verify_file(config_.tls_ca_cert_path);
+                ssl_ctx_->set_verify_mode(
+                    boost::asio::ssl::verify_peer | 
+                    boost::asio::ssl::verify_fail_if_no_peer_cert
+                );
+                THEMIS_INFO("mTLS: client certificate verification enabled (CA: {})", 
+                    config_.tls_ca_cert_path);
+            } else {
+                ssl_ctx_->set_verify_mode(boost::asio::ssl::verify_none);
+                THEMIS_INFO("mTLS: client certificate verification disabled (one-way TLS)");
+            }
+
+            THEMIS_INFO("HTTPS server enabled (TLS configured successfully)");
+        } catch (const std::exception& e) {
+            THEMIS_ERROR("Failed to initialize TLS: {}", e.what());
+            throw std::runtime_error(std::string("TLS initialization failed: ") + e.what());
+        }
+    } else {
+        THEMIS_INFO("HTTP server running without TLS (plaintext mode)");
+    }
 }
 
 HttpServer::~HttpServer() {
@@ -635,8 +778,12 @@ void HttpServer::onAccept(beast::error_code ec, tcp::socket socket) {
     if (ec) {
         THEMIS_ERROR("Accept error: {}", ec.message());
     } else {
-        // Create new session for this connection
-        std::make_shared<Session>(std::move(socket), this)->start();
+        // Create new session for this connection (SSL or plain based on config)
+        if (config_.enable_tls && ssl_ctx_) {
+            std::make_shared<SslSession>(std::move(socket), *ssl_ctx_, this)->start();
+        } else {
+            std::make_shared<Session>(std::move(socket), this)->start();
+        }
     }
 
     // Accept next connection
@@ -927,6 +1074,49 @@ http::response<http::string_body> HttpServer::routeRequest(
     // Increment request counter
     request_count_.fetch_add(1, std::memory_order_relaxed);
     
+    // Handle CORS preflight early
+    if (method == http::verb::options) {
+        return makePreflightResponse(req);
+    }
+
+    // Enforce request body size limit (after OPTIONS preflight)
+    if (req.body().size() > max_body_bytes_) {
+        http::response<http::string_body> res{http::status::payload_too_large, req.version()};
+        res.set(http::field::content_type, "application/json");
+        nlohmann::json body = {
+            {"error", "Payload Too Large"},
+            {"message", "Request body exceeds maximum size"},
+            {"max_bytes", max_body_bytes_},
+            {"actual_bytes", req.body().size()},
+            {"status_code", 413}
+        };
+        res.body() = body.dump();
+        applyGovernanceHeaders(req, res);
+        res.prepare_payload();
+        recordLatency(std::chrono::microseconds(0)); // negligible work
+        return res;
+    }
+
+    // Path traversal checks for entity paths
+    {
+        std::string path_only = target;
+        auto qpos = path_only.find('?');
+        if (qpos != std::string::npos) path_only = path_only.substr(0, qpos);
+        if (path_only.rfind("/entities/", 0) == 0 && validator_) {
+            std::string key = path_only.substr(std::string("/entities/").size());
+            if (!validator_->validatePathSegment(key)) {
+                http::response<http::string_body> res{http::status::bad_request, req.version()};
+                res.set(http::field::content_type, "application/json");
+                nlohmann::json body = {{"error", true},{"message","invalid entity key"},{"status_code",400}};
+                res.body() = body.dump();
+                applyGovernanceHeaders(req, res);
+                res.prepare_payload();
+                recordLatency(std::chrono::microseconds(0));
+                return res;
+            }
+        }
+    }
+
     // Check rate limit BEFORE processing request
     if (auto rate_limit_response = checkRateLimit(req)) {
         auto end = std::chrono::steady_clock::now();
@@ -980,9 +1170,24 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::QueryPost:
             response = handleQuery(req);
             break;
-        case Route::QueryAqlPost:
+        case Route::QueryAqlPost: {
+            // AQL payload validation before handling
+            if (validator_) {
+                try {
+                    nlohmann::json j = nlohmann::json::object();
+                    if (!req.body().empty()) j = nlohmann::json::parse(req.body());
+                    if (auto err = validator_->validateAqlRequest(j)) {
+                        auto res = makeErrorResponse(http::status::bad_request, *err, req);
+                        return res;
+                    }
+                } catch (const std::exception& ex) {
+                    auto res = makeErrorResponse(http::status::bad_request, std::string("invalid JSON: ") + ex.what(), req);
+                    return res;
+                }
+            }
             response = handleQueryAql(req);
             break;
+        }
         case Route::IndexCreatePost:
             response = handleCreateIndex(req);
             break;
@@ -1188,7 +1393,22 @@ http::response<http::string_body> HttpServer::routeRequest(
             response = handleTransactionStats(req);
             break;
         case Route::ContentImportPost:
-            response = handleContentImport(req);
+            {
+                if (validator_) {
+                    try {
+                        nlohmann::json j = nlohmann::json::object();
+                        if (!req.body().empty()) j = nlohmann::json::parse(req.body());
+                        if (auto err = validator_->validateJsonStub(j, "content_import")) {
+                            response = makeErrorResponse(http::status::bad_request, *err, req);
+                            break;
+                        }
+                    } catch (const std::exception& ex) {
+                        response = makeErrorResponse(http::status::bad_request, std::string("invalid JSON: ") + ex.what(), req);
+                        break;
+                    }
+                }
+                response = handleContentImport(req);
+            }
             break;
         case Route::ContentGet:
             response = handleGetContent(req);
@@ -1294,9 +1514,18 @@ http::response<http::string_body> HttpServer::handlePkiSign(
             key_id = key_id.substr(0, key_id.size() - 5);
         }
         if (key_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+        if (validator_ && !validator_->validatePathSegment(key_id)) {
+            return makeErrorResponse(http::status::bad_request, "Invalid key_id", req);
+        }
 
         nlohmann::json body = nlohmann::json::object();
         if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        if (validator_) {
+            if (auto err = validator_->validateJsonStub(body, "pki_sign")) {
+                return makeErrorResponse(http::status::bad_request, *err, req);
+            }
+        }
 
         auto result = pki_api_->sign(key_id, body);
         if (result.contains("status_code")) {
@@ -1325,9 +1554,18 @@ http::response<http::string_body> HttpServer::handlePkiVerify(
             key_id = key_id.substr(0, key_id.size() - 7);
         }
         if (key_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing key_id", req);
+        if (validator_ && !validator_->validatePathSegment(key_id)) {
+            return makeErrorResponse(http::status::bad_request, "Invalid key_id", req);
+        }
 
         nlohmann::json body = nlohmann::json::object();
         if (!req.body().empty()) body = nlohmann::json::parse(req.body());
+
+        if (validator_) {
+            if (auto err = validator_->validateJsonStub(body, "pki_verify")) {
+                return makeErrorResponse(http::status::bad_request, *err, req);
+            }
+        }
 
         auto result = pki_api_->verify(key_id, body);
         if (result.contains("status_code")) {
@@ -1496,6 +1734,9 @@ http::response<http::string_body> HttpServer::handlePkiCertificate(
         auto path = std::string(req.target());
         auto cert_id = extractPathParam(path, "/api/pki/certificates/");
         if (cert_id.empty()) return makeErrorResponse(http::status::bad_request, "Missing cert_id", req);
+        if (validator_ && !validator_->validatePathSegment(cert_id)) {
+            return makeErrorResponse(http::status::bad_request, "Invalid cert_id", req);
+        }
 
         auto result = pki_api_->getCertificate(cert_id);
         if (result.contains("status_code")) {
@@ -8903,6 +9144,68 @@ http::response<http::string_body> HttpServer::makeErrorResponse(
     return makeResponse(status, error_body.dump(), req);
 }
 
+http::response<http::string_body> HttpServer::makePreflightResponse(
+    const http::request<http::string_body>& req
+) {
+    // Determine request origin
+    std::string origin;
+    if (auto it = req.find(http::field::origin); it != req.end()) {
+        origin = std::string(it->value());
+    }
+
+    // Decide allowed origin
+    std::string allow_origin;
+    if (cors_allow_all_) {
+        allow_origin = "*";
+    } else if (!origin.empty()) {
+        bool allowed = false;
+        for (const auto& o : cors_allowed_origins_) {
+            if (o == origin) { allowed = true; break; }
+        }
+        if (allowed) allow_origin = origin;
+    }
+
+    // If not allowed, respond 403 without exposing CORS headers
+    if (allow_origin.empty()) {
+        http::response<http::string_body> res{http::status::forbidden, req.version()};
+        res.set(http::field::server, "THEMIS/0.1.0");
+        res.set(http::field::content_type, "application/json");
+        res.keep_alive(req.keep_alive());
+        nlohmann::json body = {
+            {"error", true},
+            {"message", "CORS origin not allowed"},
+            {"status_code", 403}
+        };
+        res.body() = body.dump();
+        applyGovernanceHeaders(req, res);
+        res.prepare_payload();
+        return res;
+    }
+
+    // Build successful preflight response (204 No Content)
+    http::response<http::string_body> res{http::status::no_content, req.version()};
+    res.set(http::field::server, "THEMIS/0.1.0");
+    res.keep_alive(req.keep_alive());
+
+    // CORS headers
+    res.set("Access-Control-Allow-Origin", allow_origin);
+    // Ensure caches vary on relevant request headers
+    res.set("Vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+    res.set("Access-Control-Allow-Methods", cors_allowed_methods_);
+    res.set("Access-Control-Allow-Headers", cors_allowed_headers_);
+    if (cors_allow_credentials_ && allow_origin != "*") {
+        res.set("Access-Control-Allow-Credentials", "true");
+    }
+    // Cache preflight for 10 minutes
+    res.set("Access-Control-Max-Age", "600");
+
+    // Apply security/governance headers consistently
+    applyGovernanceHeaders(req, res);
+
+    res.prepare_payload();
+    return res;
+}
+
 void HttpServer::applyGovernanceHeaders(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res
@@ -8968,13 +9271,60 @@ void HttpServer::applyGovernanceHeaders(
     // Compose policy summary
     std::string policy_summary = "classification=" + classification + ";mode=" + mode + ";encrypt_logs=" + (encrypt_logs?"true":"false") + ";redaction=" + redaction;
 
-    // Write headers
+    // Write governance headers
     res.set("X-Themis-Policy", policy_summary);
     res.set("X-Themis-ANN", ann);
     res.set("X-Themis-Content-Enc", content_enc);
     res.set("X-Themis-Export", export_perm);
     res.set("X-Themis-Cache", cache_perm);
     res.set("X-Themis-Retention-Days", retention_days);
+
+    // ------------------------------------------------------------------------
+    // Security Headers (global defaults, safe for JSON APIs)
+    // ------------------------------------------------------------------------
+    res.set("X-Frame-Options", "DENY");
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("Referrer-Policy", "no-referrer");
+    // Strict CSP for API-only responses; adjust in UI-serving endpoints if needed
+    res.set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    // Modern browsers ignore X-XSS-Protection; set to 0 to avoid legacy behavior
+    res.set("X-XSS-Protection", "0");
+
+    // ------------------------------------------------------------------------
+    // CORS Headers
+    // ------------------------------------------------------------------------
+    // Determine origin
+    std::string origin;
+    auto it = req.find(http::field::origin);
+    if (it != req.end()) {
+        origin = std::string(it->value());
+    }
+
+    auto set_cors_common = [&](const std::string& allow_origin) {
+        res.set("Access-Control-Allow-Origin", allow_origin);
+        // Preserve existing Vary if already set (e.g., by preflight)
+        if (res.find(http::field::vary) == res.end()) {
+            res.set(http::field::vary, "Origin");
+        }
+        res.set("Access-Control-Allow-Methods", cors_allowed_methods_);
+        res.set("Access-Control-Allow-Headers", cors_allowed_headers_);
+        if (cors_allow_credentials_ && allow_origin != "*") {
+            res.set("Access-Control-Allow-Credentials", "true");
+        }
+    };
+
+    if (cors_allow_all_) {
+        set_cors_common("*");
+    } else if (!origin.empty()) {
+        // Exact-match allowlist
+        bool allowed = false;
+        for (const auto& o : cors_allowed_origins_) {
+            if (o == origin) { allowed = true; break; }
+        }
+        if (allowed) {
+            set_cors_common(origin);
+        }
+    }
 }
 
 void HttpServer::recordLatency(std::chrono::microseconds duration) {
@@ -9134,6 +9484,141 @@ void HttpServer::Session::onWrite(
 
     // Read next request
     doRead();
+}
+
+// ============================================================================
+// SSL Session Implementation
+// ============================================================================
+
+HttpServer::SslSession::SslSession(tcp::socket socket, boost::asio::ssl::context& ssl_ctx, HttpServer* server)
+    : stream_(std::move(socket), ssl_ctx)
+    , server_(server)
+{
+}
+
+void HttpServer::SslSession::start() {
+    doHandshake();
+}
+
+void HttpServer::SslSession::doHandshake() {
+    stream_.async_handshake(
+        boost::asio::ssl::stream_base::server,
+        beast::bind_front_handler(&SslSession::onHandshake, shared_from_this())
+    );
+}
+
+void HttpServer::SslSession::onHandshake(beast::error_code ec) {
+    if (ec) {
+        THEMIS_ERROR("TLS handshake error: {}", ec.message());
+        return;
+    }
+
+    // Log successful TLS connection with client certificate info (mTLS)
+    if (server_->config_.tls_require_client_cert) {
+        try {
+            X509* cert = SSL_get_peer_certificate(stream_.native_handle());
+            if (cert) {
+                char subject_name[256];
+                X509_NAME_oneline(X509_get_subject_name(cert), subject_name, sizeof(subject_name));
+                THEMIS_INFO("mTLS: client authenticated with certificate: {}", subject_name);
+                X509_free(cert);
+            } else {
+                THEMIS_WARN("mTLS: no client certificate presented despite requirement");
+            }
+        } catch (const std::exception& e) {
+            THEMIS_ERROR("mTLS: failed to extract client certificate info: {}", e.what());
+        }
+    }
+
+    doRead();
+}
+
+void HttpServer::SslSession::doRead() {
+    request_ = {};
+
+    http::async_read(
+        stream_,
+        buffer_,
+        request_,
+        beast::bind_front_handler(&SslSession::onRead, shared_from_this())
+    );
+}
+
+void HttpServer::SslSession::onRead(
+    beast::error_code ec,
+    std::size_t bytes_transferred
+) {
+    boost::ignore_unused(bytes_transferred);
+
+    if (ec == http::error::end_of_stream) {
+        doShutdown();
+        return;
+    }
+
+    if (ec) {
+        THEMIS_ERROR("SSL read error: {}", ec.message());
+        return;
+    }
+
+    processRequest();
+}
+
+void HttpServer::SslSession::processRequest() {
+    // Route request to appropriate handler
+    response_ = server_->routeRequest(request_);
+    
+    // Add HSTS header for HTTPS connections
+    if (server_->config_.enable_tls) {
+        response_.set(http::field::strict_transport_security, "max-age=31536000; includeSubDomains");
+    }
+    
+    doWrite();
+}
+
+void HttpServer::SslSession::doWrite() {
+    bool close = response_.need_eof();
+    http::async_write(
+        stream_,
+        response_,
+        beast::bind_front_handler(
+            &SslSession::onWrite,
+            shared_from_this(),
+            close
+        )
+    );
+}
+
+void HttpServer::SslSession::onWrite(
+    bool close,
+    beast::error_code ec,
+    std::size_t bytes_transferred
+) {
+    boost::ignore_unused(bytes_transferred);
+
+    if (ec) {
+        THEMIS_ERROR("SSL write error: {}", ec.message());
+        return;
+    }
+
+    if (close) {
+        doShutdown();
+        return;
+    }
+
+    // Read next request (keep-alive)
+    doRead();
+}
+
+void HttpServer::SslSession::doShutdown() {
+    stream_.async_shutdown(
+        beast::bind_front_handler(
+            [self = shared_from_this()](beast::error_code ec) {
+                if (ec && ec != boost::asio::error::eof) {
+                    THEMIS_ERROR("SSL shutdown error: {}", ec.message());
+                }
+            }
+        )
+    );
 }
 
 http::response<http::string_body> HttpServer::handleIndexStats(
@@ -10049,6 +10534,8 @@ std::optional<http::response<http::string_body>> HttpServer::checkRateLimit(
         };
         
         response.body() = error_body.dump();
+        // Apply governance and security headers as with normal responses
+        applyGovernanceHeaders(req, response);
         response.prepare_payload();
         
         return response;

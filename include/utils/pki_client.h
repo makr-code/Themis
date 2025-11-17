@@ -15,6 +15,11 @@ struct PKIConfig {
     std::string key_path;           // optional: private key path (PEM)
     std::string key_passphrase;     // optional: private key passphrase
     std::string signature_algorithm = "RSA-SHA256";
+    
+    // TLS Hardening: Certificate Pinning
+    bool enable_cert_pinning = false;                   // Enable certificate pinning
+    std::vector<std::string> pinned_cert_fingerprints;  // SHA256 fingerprints (hex) of allowed certificates
+    bool pin_leaf_only = false;                         // If true, pin only leaf cert; if false, pin any cert in chain
 };
 
 struct SignatureResult {

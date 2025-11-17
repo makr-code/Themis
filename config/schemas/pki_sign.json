@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["data"],
+  "properties": {
+    "data": { "type": "string" },
+    "algorithm": { "type": "string" }
+  }
+}

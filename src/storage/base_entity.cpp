@@ -1,6 +1,7 @@
 ﻿#include "storage/base_entity.h"
 #include "utils/serialization.h"
 #include "utils/logger.h"
+#include "utils/geo/ewkb.h"
 #include <simdjson.h>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
@@ -516,6 +517,30 @@ BaseEntity::Attributes BaseEntity::extractFieldsWithPrefix(std::string_view pref
     }
     
     return attrs;
+}
+
+// ===== Geo Support (Cross-Cutting Capability) =====
+
+void BaseEntity::setGeometry(const Blob& ewkb) {
+    geometry_ = ewkb;
+    
+    // Compute sidecar automatically
+    try {
+        auto geom_info = geo::EWKBParser::parse(ewkb);
+        geo_sidecar_ = geo::EWKBParser::computeSidecar(geom_info);
+    } catch (const std::exception& e) {
+        // Log warning but don't fail
+        geo_sidecar_.reset();
+    }
+}
+
+void BaseEntity::setGeoSidecar(const geo::GeoSidecar& sidecar) {
+    geo_sidecar_ = sidecar;
+}
+
+void BaseEntity::clearGeometry() {
+    geometry_.reset();
+    geo_sidecar_.reset();
 }
 
 } // namespace themis
