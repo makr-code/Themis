@@ -434,6 +434,7 @@ if(THEMIS_BUILD_TESTS)
         # Geo tests
         tests/geo/test_geo_ewkb.cpp
         tests/geo/test_spatial_index.cpp
+        tests/geo/test_aql_st_functions.cpp
         tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
         tests/test_mvcc.cpp
