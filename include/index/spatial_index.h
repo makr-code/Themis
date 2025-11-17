@@ -1,12 +1,15 @@
 #pragma once
 
-#include "storage/storage_engine.h"
 #include "utils/geo/ewkb.h"
 #include <string>
 #include <string_view>
 #include <vector>
 #include <memory>
 #include <optional>
+
+namespace themis {
+    class StorageEngine;  // Forward declaration
+}
 
 namespace themis {
 namespace index {

@@ -1,5 +1,6 @@
 #include "query/let_evaluator.h"
 #include "utils/logger.h"
+#include "utils/geo/ewkb.h"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -416,6 +417,239 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
             maxVal = std::max(maxVal, val);
         }
         return maxVal;
+    }
+
+    // ================= SPATIAL FUNCTIONS (ST_*) =================
+    
+    // ST_Point(x, y) - Create a 2D Point geometry
+    // Returns: GeoJSON object {"type": "Point", "coordinates": [x, y]}
+    if (funcName == "ST_Point") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Point expects 2 arguments: ST_Point(x, y)");
+        }
+        double x = toNumber(evaluateExpression(args[0], currentDoc));
+        double y = toNumber(evaluateExpression(args[1], currentDoc));
+        
+        nlohmann::json geojson;
+        geojson["type"] = "Point";
+        geojson["coordinates"] = {x, y};
+        return geojson;
+    }
+
+    // ST_AsGeoJSON(geometry) - Convert geometry to GeoJSON string
+    // Input: GeoJSON object or EWKB binary string
+    // Output: GeoJSON string representation
+    if (funcName == "ST_AsGeoJSON") {
+        if (args.size() != 1) {
+            throw std::runtime_error("ST_AsGeoJSON expects 1 argument");
+        }
+        auto geom = evaluateExpression(args[0], currentDoc);
+        
+        // If already GeoJSON object, convert to string
+        if (geom.is_object() && geom.contains("type") && geom.contains("coordinates")) {
+            return geom.dump();
+        }
+        
+        // If EWKB binary (stored as base64 string or byte array)
+        if (geom.is_string()) {
+            std::string ewkbStr = geom.get<std::string>();
+            std::vector<uint8_t> ewkb(ewkbStr.begin(), ewkbStr.end());
+            
+            try {
+                auto geomInfo = utils::geo::parseEWKB(ewkb);
+                nlohmann::json geojson;
+                
+                // Map GeometryType to GeoJSON type string
+                switch (geomInfo.type) {
+                    case utils::geo::GeometryType::Point:
+                    case utils::geo::GeometryType::PointZ:
+                        geojson["type"] = "Point";
+                        if (!geomInfo.coordinates.empty()) {
+                            const auto& c = geomInfo.coordinates[0];
+                            geojson["coordinates"] = {c.x, c.y};
+                            if (geomInfo.type == utils::geo::GeometryType::PointZ) {
+                                geojson["coordinates"].push_back(c.z);
+                            }
+                        }
+                        break;
+                    case utils::geo::GeometryType::LineString:
+                    case utils::geo::GeometryType::LineStringZ:
+                        geojson["type"] = "LineString";
+                        geojson["coordinates"] = nlohmann::json::array();
+                        for (const auto& c : geomInfo.coordinates) {
+                            if (geomInfo.type == utils::geo::GeometryType::LineStringZ) {
+                                geojson["coordinates"].push_back({c.x, c.y, c.z});
+                            } else {
+                                geojson["coordinates"].push_back({c.x, c.y});
+                            }
+                        }
+                        break;
+                    case utils::geo::GeometryType::Polygon:
+                    case utils::geo::GeometryType::PolygonZ:
+                        geojson["type"] = "Polygon";
+                        geojson["coordinates"] = nlohmann::json::array();
+                        // Note: Polygon rings not fully parsed in current EWKB parser
+                        // This is a simplified version
+                        {
+                            nlohmann::json ring = nlohmann::json::array();
+                            for (const auto& c : geomInfo.coordinates) {
+                                if (geomInfo.type == utils::geo::GeometryType::PolygonZ) {
+                                    ring.push_back({c.x, c.y, c.z});
+                                } else {
+                                    ring.push_back({c.x, c.y});
+                                }
+                            }
+                            geojson["coordinates"].push_back(ring);
+                        }
+                        break;
+                    default:
+                        throw std::runtime_error("ST_AsGeoJSON: Unsupported geometry type");
+                }
+                
+                return geojson.dump();
+            } catch (const std::exception& e) {
+                throw std::runtime_error("ST_AsGeoJSON: Failed to parse EWKB: " + std::string(e.what()));
+            }
+        }
+        
+        throw std::runtime_error("ST_AsGeoJSON: Argument must be GeoJSON object or EWKB binary");
+    }
+
+    // ST_Distance(geom1, geom2) - Euclidean distance between two geometries
+    // Returns: Distance in coordinate system units (typically meters for geographic data)
+    if (funcName == "ST_Distance") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Distance expects 2 arguments: ST_Distance(geom1, geom2)");
+        }
+        
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        
+        // Helper to extract Point coordinates from GeoJSON
+        auto extractPoint = [](const nlohmann::json& geojson) -> std::pair<double, double> {
+            if (geojson.is_object() && geojson.contains("type") && geojson["type"] == "Point") {
+                if (geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
+                    double x = geojson["coordinates"][0].get<double>();
+                    double y = geojson["coordinates"][1].get<double>();
+                    return {x, y};
+                }
+            }
+            throw std::runtime_error("ST_Distance: Expected Point geometry");
+        };
+        
+        auto [x1, y1] = extractPoint(g1);
+        auto [x2, y2] = extractPoint(g2);
+        
+        // Euclidean distance
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double distance = std::sqrt(dx * dx + dy * dy);
+        
+        return distance;
+    }
+
+    // ST_Intersects(geom1, geom2) - Test if two geometries spatially intersect
+    // Returns: Boolean true if geometries intersect
+    if (funcName == "ST_Intersects") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Intersects expects 2 arguments: ST_Intersects(geom1, geom2)");
+        }
+        
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        
+        // For now, implement Point-Point intersection (same location within epsilon)
+        // Full implementation would use Boost.Geometry with all geometry types
+        auto extractPoint = [](const nlohmann::json& geojson) -> std::pair<double, double> {
+            if (geojson.is_object() && geojson.contains("type") && geojson["type"] == "Point") {
+                if (geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
+                    double x = geojson["coordinates"][0].get<double>();
+                    double y = geojson["coordinates"][1].get<double>();
+                    return {x, y};
+                }
+            }
+            throw std::runtime_error("ST_Intersects: Expected Point geometry (full geometry support coming)");
+        };
+        
+        auto [x1, y1] = extractPoint(g1);
+        auto [x2, y2] = extractPoint(g2);
+        
+        const double epsilon = 1e-9;
+        bool intersects = (std::abs(x1 - x2) < epsilon && std::abs(y1 - y2) < epsilon);
+        
+        return intersects;
+    }
+
+    // ST_Within(geom1, geom2) - Test if geom1 is completely inside geom2
+    // Returns: Boolean true if geom1 is within geom2
+    if (funcName == "ST_Within") {
+        if (args.size() != 2) {
+            throw std::runtime_error("ST_Within expects 2 arguments: ST_Within(geom1, geom2)");
+        }
+        
+        auto g1 = evaluateExpression(args[0], currentDoc);
+        auto g2 = evaluateExpression(args[1], currentDoc);
+        
+        // Simplified implementation: Check if Point g1 is within Polygon g2 using MBR
+        // Full implementation would use Boost.Geometry within()
+        
+        auto extractPoint = [](const nlohmann::json& geojson) -> std::pair<double, double> {
+            if (geojson.is_object() && geojson.contains("type") && geojson["type"] == "Point") {
+                if (geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
+                    double x = geojson["coordinates"][0].get<double>();
+                    double y = geojson["coordinates"][1].get<double>();
+                    return {x, y};
+                }
+            }
+            throw std::runtime_error("ST_Within: Expected Point geometry");
+        };
+        
+        auto extractMBR = [](const nlohmann::json& geojson) -> utils::geo::MBR {
+            // Extract MBR from Polygon or use Point as degenerate MBR
+            if (geojson.is_object() && geojson.contains("type")) {
+                std::string type = geojson["type"];
+                if (type == "Point" && geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
+                    double x = geojson["coordinates"][0].get<double>();
+                    double y = geojson["coordinates"][1].get<double>();
+                    return utils::geo::MBR{x, y, x, y};
+                }
+                if (type == "Polygon" && geojson.contains("coordinates")) {
+                    // Compute MBR from polygon exterior ring
+                    const auto& rings = geojson["coordinates"];
+                    if (rings.is_array() && !rings.empty()) {
+                        const auto& exteriorRing = rings[0];
+                        if (exteriorRing.is_array() && !exteriorRing.empty()) {
+                            double minx = std::numeric_limits<double>::max();
+                            double miny = std::numeric_limits<double>::max();
+                            double maxx = std::numeric_limits<double>::lowest();
+                            double maxy = std::numeric_limits<double>::lowest();
+                            
+                            for (const auto& coord : exteriorRing) {
+                                if (coord.is_array() && coord.size() >= 2) {
+                                    double x = coord[0].get<double>();
+                                    double y = coord[1].get<double>();
+                                    minx = std::min(minx, x);
+                                    miny = std::min(miny, y);
+                                    maxx = std::max(maxx, x);
+                                    maxy = std::max(maxy, y);
+                                }
+                            }
+                            
+                            return utils::geo::MBR{minx, miny, maxx, maxy};
+                        }
+                    }
+                }
+            }
+            throw std::runtime_error("ST_Within: Could not extract MBR from geometry");
+        };
+        
+        auto [px, py] = extractPoint(g1);
+        auto mbr = extractMBR(g2);
+        
+        // Check if point is within MBR (simplified within test)
+        bool within = (px >= mbr.minx && px <= mbr.maxx && py >= mbr.miny && py <= mbr.maxy);
+        
+        return within;
     }
 
     throw std::runtime_error("Unknown function: " + funcName);

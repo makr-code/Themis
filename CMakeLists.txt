@@ -263,7 +263,6 @@ set(THEMIS_CORE_SOURCES
     src/index/spatial_index.cpp
     src/security/pki_key_provider.cpp
     src/security/cms_signing.cpp
-    src/security/secrets_manager.cpp
     src/security/rbac.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
