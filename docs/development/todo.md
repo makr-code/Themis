@@ -18,6 +18,25 @@ Die Datei beginnt jetzt mit den offenen Tasks zur schnellen Nachverfolgung. Absc
 - [ ] Multi-Modal Embeddings (Text+Image+Audio) — TODO
 - [ ] Filesystem: Chunking/Hybrid-Search Follow-ups (Batch-Insert, Reindex/Compaction, Pagination) — TODO
 
+### Apache Arrow QuickWins (Priority 4 - Langfristig)
+
+- [ ] **Arrow QuickWin 1: Columnar Scan für Analytics** (Geschätzt: 4-6h)
+  - DoD: Einfacher Scan-API-Endpunkt, der relationale Tabellen-Scans als Arrow RecordBatch zurückgibt
+  - ROI: 10-100x Speedup für OLAP-Aggregationen (nur relevant für Analytics-Workloads)
+  - Abhängigkeit: Arrow-Bibliothek bereits in vcpkg.json vorhanden
+  
+- [ ] **Arrow QuickWin 2: Vector Batch Export** (Geschätzt: 3-4h)
+  - DoD: Export von Vector-Search-Ergebnissen als Arrow-Batches für ML-Pipelines
+  - ROI: Zero-Copy-Transfer zu Pandas/NumPy für Embedding-Analysen
+  - Abhängigkeit: Bestehende VectorIndexManager-Integration
+  
+- [ ] **Arrow QuickWin 3: Bulk Insert mit Arrow** (Geschätzt: 6-8h)
+  - DoD: Bulk-Insert-API akzeptiert Arrow RecordBatches für hohen Durchsatz
+  - ROI: 5-10x schnellere Batch-Inserts für Daten-Migrationen
+  - Abhängigkeit: TransactionDB Batch-Write-APIs
+
+**Hinweis:** Diese QuickWins bleiben Priority 4 (Langfristig), da ThemisDB primär für OLTP/RAG/Graph optimiert ist. Nur priorisieren, wenn Analytics/BI-Use-Cases konkret werden.
+
 _Hinweis:_ Dieser Abschnitt wurde eingefügt, damit offene Aufgaben direkt am Dokumentanfang sichtbar sind. Der restliche Inhalt des Dokuments (inkl. bereits abgeschlossener Items und detaillierter Roadmap) bleibt unverändert weiter unten.
 
 ## Scan-Update (12.11.2025)

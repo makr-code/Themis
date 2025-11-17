@@ -194,8 +194,8 @@ private:
     bool topologyLoaded_ = false;
 
     // Hilfsfunktionen
-    void addEdgeToTopology_(const std::string& edgeId, const std::string& from, const std::string& to);
-    void removeEdgeFromTopology_(const std::string& edgeId, const std::string& from, const std::string& to);
+    void addEdgeToTopology_(const std::string& edgeId, const std::string& from, const std::string& to, const std::string& graphId = "");
+    void removeEdgeFromTopology_(const std::string& edgeId, const std::string& from, const std::string& to, const std::string& graphId = "");
     
     // Edge-Weight-Parsing (liest _weight aus Edge-Entity, default 1.0)
     double getEdgeWeight_(std::string_view graphId, std::string_view edgeId) const;
