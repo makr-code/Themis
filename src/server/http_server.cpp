@@ -485,6 +485,31 @@ HttpServer::HttpServer(
             THEMIS_WARN("Failed to initialize Ranger client; integration disabled");
         }
     }
+    
+    // Initialize Rate Limiter for DoS protection
+    RateLimitConfig rate_config;
+    rate_config.bucket_capacity = 100;
+    rate_config.refill_rate = 100.0 / 60.0; // 100 req/min default
+    rate_config.per_ip_enabled = true;
+    rate_config.per_user_enabled = true;
+    
+    // Whitelist localhost for development
+    rate_config.whitelist_ips = {"127.0.0.1", "::1"};
+    
+    // Load custom limits from environment
+    if (auto limit_str = get_env("THEMIS_RATE_LIMIT_PER_MINUTE")) {
+        try {
+            uint32_t limit = std::stoul(*limit_str);
+            rate_config.bucket_capacity = limit;
+            rate_config.refill_rate = static_cast<double>(limit) / 60.0;
+            THEMIS_INFO("Rate limit set to {} req/min from environment", limit);
+        } catch (...) {
+            THEMIS_WARN("Invalid THEMIS_RATE_LIMIT_PER_MINUTE value, using default");
+        }
+    }
+    
+    rate_limiter_ = std::make_unique<RateLimiter>(rate_config);
+    THEMIS_INFO("Rate Limiter initialized: {} req/min", rate_config.refill_rate * 60.0);
 }
 
 HttpServer::~HttpServer() {
@@ -901,6 +926,15 @@ http::response<http::string_body> HttpServer::routeRequest(
 
     // Increment request counter
     request_count_.fetch_add(1, std::memory_order_relaxed);
+    
+    // Check rate limit BEFORE processing request
+    if (auto rate_limit_response = checkRateLimit(req)) {
+        auto end = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        recordLatency(duration);
+        span.setStatus(false, "rate_limited");
+        return *rate_limit_response;
+    }
 
     http::response<http::string_body> response;
 
@@ -2706,6 +2740,30 @@ http::response<http::string_body> HttpServer::handleMetricsJson(
             out += "# HELP vccdb_sse_dropped_events_total Total buffered SSE events dropped due to backpressure\n";
             out += "# TYPE vccdb_sse_dropped_events_total counter\n";
             out += "vccdb_sse_dropped_events_total " + std::to_string(sstats.total_dropped_events) + "\n";
+        }
+        
+        // Rate Limiter metrics
+        if (rate_limiter_) {
+            auto rl_stats = rate_limiter_->getStatistics();
+            out += "# HELP vccdb_rate_limit_requests_total Total requests processed by rate limiter\n";
+            out += "# TYPE vccdb_rate_limit_requests_total counter\n";
+            out += "vccdb_rate_limit_requests_total " + std::to_string(rl_stats.total_requests) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_allowed_total Requests allowed by rate limiter\n";
+            out += "# TYPE vccdb_rate_limit_allowed_total counter\n";
+            out += "vccdb_rate_limit_allowed_total " + std::to_string(rl_stats.allowed_requests) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_rejected_total Requests rejected by rate limiter (429)\n";
+            out += "# TYPE vccdb_rate_limit_rejected_total counter\n";
+            out += "vccdb_rate_limit_rejected_total " + std::to_string(rl_stats.rejected_requests) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_active_ip_buckets Active IP rate limit buckets\n";
+            out += "# TYPE vccdb_rate_limit_active_ip_buckets gauge\n";
+            out += "vccdb_rate_limit_active_ip_buckets " + std::to_string(rl_stats.active_ip_buckets) + "\n";
+            
+            out += "# HELP vccdb_rate_limit_active_user_buckets Active user rate limit buckets\n";
+            out += "# TYPE vccdb_rate_limit_active_user_buckets gauge\n";
+            out += "vccdb_rate_limit_active_user_buckets " + std::to_string(rl_stats.active_user_buckets) + "\n";
         }
 
         // Build plain text response with proper content-type
@@ -9915,6 +9973,88 @@ http::response<http::string_body> HttpServer::handleIndexClearPatterns(
         span.setStatus(false, "error");
         return makeErrorResponse(http::status::internal_server_error, e.what(), req);
     }
+}
+
+// ============================================================================
+// Rate Limiting Helper Methods
+// ============================================================================
+
+std::string HttpServer::extractClientIP(const http::request<http::string_body>& req) const {
+    // Try X-Forwarded-For header first (for proxied requests)
+    if (req.find("X-Forwarded-For") != req.end()) {
+        std::string xff = std::string(req["X-Forwarded-For"]);
+        // Take first IP in comma-separated list
+        auto comma_pos = xff.find(',');
+        if (comma_pos != std::string::npos) {
+            return xff.substr(0, comma_pos);
+        }
+        return xff;
+    }
+    
+    // Try X-Real-IP header
+    if (req.find("X-Real-IP") != req.end()) {
+        return std::string(req["X-Real-IP"]);
+    }
+    
+    // Fallback: would need to extract from socket (not directly available in Beast)
+    // For now, return empty string which will be handled by rate limiter
+    return ""; // In production, extract from Session's socket remote_endpoint()
+}
+
+std::optional<http::response<http::string_body>> HttpServer::checkRateLimit(
+    const http::request<http::string_body>& req
+) {
+    if (!rate_limiter_) {
+        return std::nullopt; // Rate limiting disabled
+    }
+    
+    std::string client_ip = extractClientIP(req);
+    std::string user_id;
+    
+    // Extract user ID from JWT token if authenticated
+    if (auth_ && auth_->isEnabled()) {
+        if (req.find("Authorization") != req.end()) {
+            std::string auth_header = std::string(req["Authorization"]);
+            if (auth_header.size() > 7 && auth_header.substr(0, 7) == "Bearer ") {
+                std::string token = auth_header.substr(7);
+                auto ctx = auth_->extractContext(token);
+                if (ctx) {
+                    user_id = ctx->user_id;
+                }
+            }
+        }
+    }
+    
+    // Check rate limit
+    if (!rate_limiter_->allowRequest(client_ip, user_id)) {
+        uint32_t retry_after = rate_limiter_->getRetryAfter(client_ip, user_id);
+        
+        THEMIS_WARN("Rate limit exceeded: ip={}, user={}, retry_after={}s", 
+            client_ip.empty() ? "<unknown>" : client_ip, 
+            user_id.empty() ? "<anonymous>" : user_id,
+            retry_after);
+        
+        http::response<http::string_body> response;
+        response.result(http::status::too_many_requests);
+        response.set(http::field::content_type, "application/json");
+        response.set("Retry-After", std::to_string(retry_after));
+        response.set("X-RateLimit-Limit", "100");
+        response.set("X-RateLimit-Remaining", "0");
+        
+        json error_body = {
+            {"error", "Too Many Requests"},
+            {"message", "Rate limit exceeded. Please retry after " + std::to_string(retry_after) + " seconds."},
+            {"retry_after_seconds", retry_after},
+            {"status_code", 429}
+        };
+        
+        response.body() = error_body.dump();
+        response.prepare_payload();
+        
+        return response;
+    }
+    
+    return std::nullopt; // Rate limit OK
 }
 
 } // namespace server

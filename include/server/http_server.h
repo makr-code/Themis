@@ -32,6 +32,7 @@
 #include "server/pki_api_handler.h"
 #include "server/classification_api_handler.h"
 #include "server/reports_api_handler.h"
+#include "server/rate_limiter.h"
 #include "server/auth_middleware.h"
 #include "server/policy_engine.h"
 #include "server/ranger_adapter.h"
@@ -452,6 +453,9 @@ private:
 
     // Authorization middleware
     std::unique_ptr<themis::AuthMiddleware> auth_;
+    
+    // Rate Limiter for DoS protection
+    std::unique_ptr<RateLimiter> rate_limiter_;
 
     // Networking
     net::io_context ioc_;
@@ -488,6 +492,14 @@ private:
     
     // Helper to record latency
     void recordLatency(std::chrono::microseconds duration);
+    
+    // Extract client IP from request
+    std::string extractClientIP(const http::request<http::string_body>& req) const;
+    
+    // Check rate limit and return error response if exceeded
+    std::optional<http::response<http::string_body>> checkRateLimit(
+        const http::request<http::string_body>& req
+    );
 
     // Page Fetch (Cursor) Histogram in Millisekunden: 1,5,10,25,50,100,250,500,1000,5000,+Inf
     std::atomic<uint64_t> page_bucket_1ms_{0};
