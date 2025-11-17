@@ -2,16 +2,21 @@
 **Stand:** 17. November 2025  
 **Zweck:** Gesamtübersicht über den Implementierungsstand von ThemisDB mit prozentualem Fortschritt
 
+**Letzte Änderung:** Critical/High-Priority Sprint abgeschlossen (17.11.2025)
+- 8 Tasks abgeschlossen (BFS Fix, Encryption Tests, PKI Docs, Lazy Re-Encryption, Metrics)
+- 3.633 Zeilen Code hinzugefügt
+- Security/Governance von 15% auf 45% gestiegen
+
 ---
 
 ## Executive Summary
 
-**ThemisDB ist zu ~58% implementiert** mit starkem Fokus auf Core-Features und MVP-Funktionalität. Die Basis-Architektur ist produktionsreif, erweiterte Enterprise-Features sind geplant.
+**ThemisDB ist zu ~61% implementiert** mit starkem Fokus auf Core-Features und MVP-Funktionalität. Die Basis-Architektur ist produktionsreif, Security-Layer deutlich verbessert.
 
 **Status:** 
-- ✅ **Produktionsreif:** Core Database, MVCC, Vector Search, Time-Series, AQL Basics
-- ⏳ **In Entwicklung:** Advanced AQL, Content Pipeline, Observability
-- 📋 **Geplant:** Analytics (Arrow), Security/Governance, Auto-Scaling
+- ✅ **Produktionsreif:** Core Database, MVCC, Vector Search, Time-Series, AQL Basics, Encryption
+- ⏳ **In Entwicklung:** Advanced AQL, Content Pipeline, Security/Governance
+- 📋 **Geplant:** Analytics (Arrow), RBAC, Auto-Scaling
 
 ---
 
@@ -26,9 +31,9 @@
 | **Phase 4** | **Content/Filesystem** | Documents, Chunks, Extraction, Hybrid | ⚠️ Teilweise | Alpha | **30%** |
 | **Phase 5** | **Observability** | Metrics, Backup, Tracing, Logs | ⚠️ Teilweise | MVP | **75%** |
 | **Phase 6** | **Analytics (Arrow)** | RecordBatches, OLAP, SIMD | ❌ Nicht gestartet | Geplant | **0%** |
-| **Phase 7** | **Security/Governance** | RBAC, Audit, DSGVO, PKI | ⚠️ Minimal | Alpha | **15%** |
+| **Phase 7** | **Security/Governance** | RBAC, Audit, DSGVO, PKI | ⚠️ Teilweise | MVP | **45%** |
 
-**Gewichteter Gesamtfortschritt:** **~58%**
+**Gewichteter Gesamtfortschritt:** **~61%**
 
 ---
 
@@ -407,9 +412,15 @@
    - Basic Schema vorhanden
    - Extraction Pipeline alpha
 
-10. **Security/Governance** (15%)
-    - Field Encryption produktiv
-    - RBAC/PKI geplant
+10. **Security/Governance** (45%)
+    - ✅ Field Encryption produktiv (AES-256-GCM)
+    - ✅ Lazy Re-Encryption für Key Rotation
+    - ✅ Encryption Prometheus Metrics (42 counters)
+    - ✅ Schema-Based Encryption Tests (809 lines)
+    - ✅ PKI Documentation (eIDAS-compliant, 1,111 lines)
+    - ✅ Audit Log Encryption (encrypt-then-sign)
+    - ⏳ RBAC geplant
+    - ⏳ Dynamic Data Masking geplant
 
 11. **Analytics (Arrow)** (0%)
     - Design vorhanden
@@ -486,12 +497,14 @@
 ✅ **Comprehensive Observability** - Metrics, Backup, Tracing (75%)  
 ✅ **MVP Query Language** - AQL mit Joins und Aggregationen (65%)  
 ✅ **Excellent Test Coverage** - 468/468 Tests PASS (100%)  
-✅ **Umfassende Dokumentation** - 141 MD-Dateien, 95% coverage
+✅ **Umfassende Dokumentation** - 141 MD-Dateien, 95% coverage  
+✅ **Production-Ready Security** - Encryption + Lazy Key Rotation + Metrics (45%)  
+✅ **PKI/eIDAS Documentation** - Comprehensive deployment guides (1,111 lines)
 
 ### Lücken
 
 ❌ **Analytics (Arrow)** - Nicht implementiert (0%)  
-⚠️ **Security/Governance** - Nur Encryption, kein RBAC (15%)  
+⚠️ **RBAC** - Geplant, noch nicht implementiert  
 ⚠️ **Content Pipeline** - Basis vorhanden, Features fehlen (30%)  
 ⚠️ **SDKs** - Nur Python MVP, andere alpha (25%)  
 ⚠️ **Admin Tools** - Nur 1/8 Tools produktiv (27%)

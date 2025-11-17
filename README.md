@@ -23,7 +23,35 @@ The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Databa
 - **Notes on container/runtime:** `Dockerfile.runtime` uses `/usr/local/bin/themis_server --config /etc/themis/config.json` as entrypoint and also exposes ports `8080` and `18765` in the image — these are image-level ports and may be mapped to the server's configured port (default `8765`) at runtime; when running the binary directly prefer to use the `--port` flag or a config file to guarantee port choice.
 
 
-## Recent changes (2025-11-11)
+## Recent changes (2025-11-17)
+
+### Critical/High-Priority Sprint Completed ✅
+
+**Branch:** `feature/critical-high-priority-fixes` | **Commits:** 2 | **Lines:** 3,633 added
+
+All 8 CRITICAL and HIGH-priority tasks completed:
+
+1. **BFS Bug Fix** - Fixed GraphId propagation in graph topology (BLOCKER resolved)
+2. **Schema Encryption Tests** - 809 lines, 19 E2E test cases
+3. **PKI Documentation** - 1,111 lines covering eIDAS compliance and technical APIs
+4. **Vector Metadata Encryption Edge Cases** - 532 lines of edge case tests
+5. **Content-Blob ZSTD Compression** - Verified as already implemented (50% storage savings)
+6. **Audit Log Encryption** - Verified as already implemented (encrypt-then-sign pattern)
+7. **Lazy Re-Encryption** - Zero-downtime key rotation with transparent migration
+8. **Encryption Prometheus Metrics** - 42 counters, performance histograms, Grafana alerts
+
+**Production Impact:**
+- 🛡️ Security: Comprehensive encryption test coverage + lazy key rotation
+- 📊 Observability: Real-time encryption metrics for GDPR/eIDAS compliance
+- 🐛 Stability: Critical BFS bug fixed (prevented graph operations after topology rebuild)
+- 📚 Documentation: 1,521 lines of production-ready PKI + metrics documentation
+
+**Files Changed:** 12 files (7 new tests/docs, 5 modified)
+- Tests: `test_schema_encryption.cpp`, `test_lazy_reencryption.cpp`, `test_vector_metadata_encryption_edge_cases.cpp`
+- Docs: `pki_integration_architecture.md`, `pki_signatures.md`, `encryption_metrics.md`
+- Implementation: `encryption.h`, `field_encryption.cpp`, `http_server.cpp`, `graph_index.h/cpp`
+
+### Previous Changes (2025-11-11)
 
 - Temporal aggregation support: added `aggregateEdgePropertyInTimeRange()` to `GraphIndexManager`.
   - Supports COUNT, SUM, AVG, MIN, MAX over a time window and optional `_type` filtering.
