@@ -1,9 +1,11 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
+using System.Net.Http;
 using System.Windows;
 using Themis.AqlQueryBuilder.Models;
 using Themis.AdminTools.Shared.ApiClient;
+using Themis.AdminTools.Shared.Models;
 using System.Text.Json;
 
 namespace Themis.AqlQueryBuilder.ViewModels;
@@ -13,7 +15,7 @@ namespace Themis.AqlQueryBuilder.ViewModels;
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
-    private readonly ThemisApiClient _apiClient;
+    private readonly HttpClient _httpClient;
 
     [ObservableProperty]
     private AqlQueryModel _query;
@@ -48,7 +50,7 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
-        _apiClient = new ThemisApiClient(ServerUrl);
+        _httpClient = new HttpClient();
         _query = new AqlQueryModel();
         
         // Initialize with a sample query
@@ -183,10 +185,11 @@ public partial class MainViewModel : ObservableObject
             };
 
             var json = JsonSerializer.Serialize(requestBody);
-            var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
             // Execute query via API
-            var response = await _apiClient.PostAsync("/api/query/aql", content);
+            _httpClient.BaseAddress = new Uri(ServerUrl);
+            var response = await _httpClient.PostAsync("/api/query/aql", content);
             
             if (response.IsSuccessStatusCode)
             {
