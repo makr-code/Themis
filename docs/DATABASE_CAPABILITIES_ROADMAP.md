@@ -18,11 +18,11 @@ ThemisDB ist aktuell zu **~64%** implementiert mit starken Core-Features. Diese 
 5. **Time-Series** (aktuell 85% → stabil)
 
 ### Cross-Cutting Capabilities
-6. **Geo/Spatial** (aktuell 65% → Ziel: 85% MVP) ✅ **IN PROGRESS**
+6. **Geo/Spatial** (aktuell 82% → Ziel: 85% MVP) ✅ **FAST FERTIG**
    - **Nicht** ein separates Modell, sondern erweitert alle 5 Modelle
    - Jedes Modell kann geo-enabled sein (optional `geometry` field)
    - Gemeinsamer R-Tree Index, ST_* Functions für alle Tabellen
-   - **Status:** EWKB Parser ✅, R-Tree Index ✅, ST_* Functions ✅ (5/17)
+   - **Status:** EWKB Parser ✅, R-Tree Index ✅, ST_* Functions ✅ (14/17 = 82%)
 
 **Geschätzter Zeitaufwand:** 24 Arbeitstage  
 **Priorisierung:** Geo Infrastructure → Graph → Vector → Content
@@ -226,9 +226,9 @@ spatial:documents:45678901 → ["content/doc1", "content/doc2"]      # Content
 
 ---
 
-#### 0.3 AQL ST_* Functions (Priorität: KRITISCH) ✅ **9/17 IMPLEMENTIERT**
+#### 0.3 AQL ST_* Functions (Priorität: KRITISCH) ✅ **14/17 IMPLEMENTIERT (82%)**
 
-**Status:** Erweiterte Implementierung in `feature/aql-st-functions` (commits `ead621b`, `80d3d4a`).
+**Status:** Core-Funktionen vollständig in `feature/aql-st-functions` (commits `ead621b`, `80d3d4a`, `89778e4`).
 
 **Universelle Geo-Funktionen für alle Modelle:**
 ```sql
@@ -265,90 +265,116 @@ FOR reading IN sensor_data
 
 **17 ST_* Functions - Implementierungsstatus:**
 
-| Kategorie | Funktion | Status | Commit/Zeile |
-|-----------|----------|--------|--------------|
-| **Constructors** | ST_Point(x, y) | ✅ Implementiert | ead621b:422 |
-| | ST_GeomFromGeoJSON(json) | ✅ Implementiert | 80d3d4a:656 |
-| | ST_GeomFromText(wkt) | ⏳ TODO | - |
-| **Converters** | ST_AsGeoJSON(geom) | ✅ Implementiert | ead621b:433 |
-| | ST_AsText(geom) | ⏳ TODO | - |
-| **Predicates** | ST_Intersects(g1, g2) | ✅ Implementiert | ead621b:535 |
-| | ST_Within(g1, g2) | ✅ Implementiert | ead621b:566 |
-| | ST_Contains(g1, g2) | ✅ Implementiert | 80d3d4a:686 |
-| **Distance** | ST_Distance(g1, g2) | ✅ Implementiert | ead621b:501 |
-| | ST_DWithin(g1, g2, dist) | ✅ Implementiert | 80d3d4a:755 |
-| | ST_3DDistance(g1, g2) | ⏳ TODO | - |
-| **3D Support** | ST_HasZ(geom) | ✅ Implementiert | 80d3d4a:791 |
-| | ST_Z(point) | ✅ Implementiert | 80d3d4a:820 |
-| | ST_ZMin(geom) | ✅ Implementiert | 80d3d4a:839 |
-| | ST_ZMax(geom) | ✅ Implementiert | 80d3d4a:880 |
-| | ST_Force2D(geom) | ⏳ TODO | - |
-| | ST_ZBetween(geom, zmin, zmax) | ⏳ TODO | - |
+| Kategorie | Funktion | Status | Commit |
+|-----------|----------|--------|--------|
+| **Constructors** | ST_Point(x, y) | ✅ | ead621b |
+| | ST_GeomFromGeoJSON(json) | ✅ | 80d3d4a |
+| | ST_GeomFromText(wkt) | ✅ | 89778e4 |
+| **Converters** | ST_AsGeoJSON(geom) | ✅ | ead621b |
+| | ST_AsText(geom) | ✅ | 89778e4 |
+| **Predicates** | ST_Intersects(g1, g2) | ✅ | ead621b |
+| | ST_Within(g1, g2) | ✅ | ead621b |
+| | ST_Contains(g1, g2) | ✅ | 80d3d4a |
+| **Distance** | ST_Distance(g1, g2) | ✅ | ead621b |
+| | ST_DWithin(g1, g2, dist) | ✅ | 80d3d4a |
+| | ST_3DDistance(g1, g2) | ✅ | 89778e4 |
+| **3D Support** | ST_HasZ(geom) | ✅ | 80d3d4a |
+| | ST_Z(point) | ✅ | 80d3d4a |
+| | ST_ZMin(geom) | ✅ | 80d3d4a |
+| | ST_ZMax(geom) | ✅ | 80d3d4a |
+| | ST_Force2D(geom) | ✅ | 89778e4 |
+| | ST_ZBetween(g, zmin, zmax) | ⏳ | Optional |
 
-**Progress:** 9/17 (53%) ✅ | Remaining: 8/17 (47%) ⏳
+**Progress:** 14/17 (82%) ✅ | Remaining: 3/17 (18%) ⏳
 
-**Implementierte Funktionen (9/17 - 53%):**
+**Vollständig implementierte Kategorien:**
+- ✅ **Constructors:** 3/3 (100%) - ST_Point, ST_GeomFromGeoJSON, ST_GeomFromText
+- ✅ **Converters:** 2/2 (100%) - ST_AsGeoJSON, ST_AsText
+- ✅ **Predicates:** 3/3 (100%) - ST_Intersects, ST_Within, ST_Contains
+- ✅ **Distance:** 3/3 (100%) - ST_Distance, ST_DWithin, ST_3DDistance
+
+**Implementierte Funktionen (14/17 - 82%):**
 
 ```cpp
-// src/query/let_evaluator.cpp (commits ead621b, 80d3d4a)
+// src/query/let_evaluator.cpp (commits ead621b, 80d3d4a, 89778e4)
 
+// === CONSTRUCTORS (3/3) ✅ ===
 // 1. ST_Point(x, y) - Create Point geometry
 LET point = ST_Point(13.405, 52.52)
 → {"type": "Point", "coordinates": [13.405, 52.52]}
 
-// 2. ST_GeomFromGeoJSON(json) - Parse GeoJSON string NEW ✨
+// 2. ST_GeomFromGeoJSON(json) - Parse GeoJSON string
 LET geom = ST_GeomFromGeoJSON('{"type":"Point","coordinates":[13.405,52.52]}')
 → {"type": "Point", "coordinates": [13.405, 52.52]}
 
-// 3. ST_AsGeoJSON(geom) - Convert EWKB to GeoJSON
+// 3. ST_GeomFromText(wkt) - Parse WKT (Well-Known Text) NEW ✨
+LET geom = ST_GeomFromText('POINT(13.405 52.52)')
+→ {"type": "Point", "coordinates": [13.405, 52.52]}
+
+LET line = ST_GeomFromText('LINESTRING(0 0, 1 1, 2 1, 2 2)')
+→ {"type": "LineString", "coordinates": [[0,0],[1,1],[2,1],[2,2]]}
+
+// === CONVERTERS (2/2) ✅ ===
+// 4. ST_AsGeoJSON(geom) - Convert to GeoJSON string
 LET json = ST_AsGeoJSON(doc.geometry)
 → "{\"type\":\"Point\",\"coordinates\":[13.405,52.52]}"
 
-// 4. ST_Distance(g1, g2) - Euclidean distance
-LET dist = ST_Distance(
-    ST_Point(13.405, 52.52),  // Berlin
-    ST_Point(2.35, 48.86)      // Paris
-)
-→ 14.87 (degrees, ~1654 km)
+// 5. ST_AsText(geom) - Convert to WKT NEW ✨
+LET wkt = ST_AsText(ST_Point(13.405, 52.52))
+→ "POINT(13.405 52.52)"
 
-// 5. ST_DWithin(g1, g2, distance) - Proximity check NEW ✨
-LET nearby = ST_DWithin(
-    doc.location,
-    ST_Point(13.405, 52.52),
-    0.1  // within 0.1 degrees (~11km)
-)
+// === PREDICATES (3/3) ✅ ===
+// 6. ST_Intersects(g1, g2) - Spatial intersection
+LET intersects = ST_Intersects(point1, point2)
 → true/false
 
-// 6. ST_Intersects(g1, g2) - Spatial intersection (Point-Point)
-LET intersects = ST_Intersects(point1, point2)
-→ true/false (epsilon-based comparison)
-
 // 7. ST_Within(g1, g2) - Point within Polygon/MBR
-LET within = ST_Within(
-    ST_Point(13.405, 52.52),
-    polygonBoundary
-)
-→ true/false (MBR-based test)
+LET within = ST_Within(ST_Point(13.405, 52.52), boundary)
+→ true/false
 
-// 8. ST_Contains(g1, g2) - Containment test NEW ✨
+// 8. ST_Contains(g1, g2) - Containment test
 LET contains = ST_Contains(boundary, point)
-→ true/false (MBR-based, inverse of ST_Within)
+→ true/false
 
-// 9. ST_HasZ(geom) - Check for 3D coordinates NEW ✨
-LET is3d = ST_HasZ(ST_Point(13.405, 52.52, 35.0))
+// === DISTANCE (3/3) ✅ ===
+// 9. ST_Distance(g1, g2) - 2D Euclidean distance
+LET dist = ST_Distance(
+    ST_Point(13.405, 52.52),
+    ST_Point(2.35, 48.86)
+)
+→ 14.87 degrees (~1654 km)
+
+// 10. ST_DWithin(g1, g2, distance) - Proximity check
+LET nearby = ST_DWithin(doc.location, ST_Point(13.405, 52.52), 0.1)
+→ true/false
+
+// 11. ST_3DDistance(g1, g2) - 3D Euclidean distance NEW ✨
+LET dist3d = ST_3DDistance(
+    ST_GeomFromText('POINT(0 0 0)'),
+    ST_GeomFromText('POINT(1 1 1)')
+)
+→ 1.732 (sqrt(3))
+
+// === 3D SUPPORT (5/7) ===
+// 12. ST_HasZ(geom) - Check for 3D coordinates
+LET is3d = ST_HasZ(ST_GeomFromText('POINT(13.405 52.52 35.0)'))
 → true
 
-// 10. ST_Z(point) - Extract Z coordinate NEW ✨
-LET elevation = ST_Z(ST_Point(13.405, 52.52, 35.0))
+// 13. ST_Z(point) - Extract Z coordinate
+LET elevation = ST_Z(ST_GeomFromText('POINT(13.405 52.52 35.0)'))
 → 35.0
 
-// 11. ST_ZMin(geom) - Minimum Z value NEW ✨
-LET min_elevation = ST_ZMin(terrain_polygon)
+// 14. ST_ZMin(geom) - Minimum Z value
+LET min_z = ST_ZMin(terrain_polygon)
 → 12.5 (or null if 2D)
 
-// 12. ST_ZMax(geom) - Maximum Z value NEW ✨
-LET max_elevation = ST_ZMax(terrain_polygon)
+// 15. ST_ZMax(geom) - Maximum Z value
+LET max_z = ST_ZMax(terrain_polygon)
 → 156.8 (or null if 2D)
+
+// 16. ST_Force2D(geom) - Strip Z coordinates NEW ✨
+LET geom2d = ST_Force2D(ST_GeomFromText('POINT(1 2 3)'))
+→ {"type": "Point", "coordinates": [1, 2]}
 ```
 
 **Implementierte Dateien:**
@@ -356,14 +382,11 @@ LET max_elevation = ST_ZMax(terrain_polygon)
 - ✅ `include/utils/geo/ewkb.h` - MBR, Coordinate, GeometryInfo
 - ✅ Windows-Kompatibilität: M_PI definition, GeoSidecar include
 
-**Remaining Work (8/17 functions - 47%):**
-- ⏳ ST_GeomFromText(wkt) - WKT parser (constructor)
-- ⏳ ST_AsText(geom) - WKT converter
-- ⏳ ST_3DDistance(g1, g2) - 3D Euclidean distance
-- ⏳ ST_Force2D(geom) - Remove Z coordinates
-- ⏳ ST_ZBetween(geom, zmin, zmax) - Z-range filter
+**Remaining Work (3/17 functions - 18% optional):**
+- ⏳ ST_ZBetween(geom, zmin, zmax) - Z-range filter (optional)
+- ⏳ Advanced: ST_Buffer, ST_Union (future enhancements)
 
-**Geschätzt:** 0.3 Tage (verbleibend für 5 Funktionen - WKT, 3D, Z-manipulation)
+**Geschätzt:** <0.1 Tage (ST_ZBetween trivial, advanced functions für Phase 2)
 FOR doc IN documents
   FILTER FULLTEXT(doc.text, "hotel")
     AND ST_DWithin(doc.location, @myLocation, 2000)
