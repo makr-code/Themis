@@ -72,6 +72,16 @@ public partial class MainViewModel : ObservableObject
         ConnectionType.DirectCpp
     };
 
+    // Phase 2: Graph query support
+    public ObservableCollection<GraphNode> GraphNodes { get; } = new();
+    public ObservableCollection<GraphEdge> GraphEdges { get; } = new();
+    
+    [ObservableProperty]
+    private GraphPattern _graphPattern = new();
+    
+    [ObservableProperty]
+    private string _graphAql = string.Empty;
+
     public MainViewModel()
     {
         _httpClient = new HttpClient();
@@ -286,6 +296,168 @@ public partial class MainViewModel : ObservableObject
         UpdateGeneratedQuery();
     }
 
+    // Phase 2: Graph query commands
+    [RelayCommand]
+    private void AddGraphNode()
+    {
+        var node = new GraphNode
+        {
+            Variable = $"node{GraphNodes.Count + 1}",
+            Collection = "users",
+            X = 100 + GraphNodes.Count * 150,
+            Y = 100,
+            Label = $"Node {GraphNodes.Count + 1}"
+        };
+        GraphNodes.Add(node);
+        GraphPattern.Nodes.Add(node);
+        UpdateGraphAql();
+    }
+
+    [RelayCommand]
+    private void RemoveGraphNode(GraphNode node)
+    {
+        // Remove edges connected to this node
+        var connectedEdges = GraphEdges.Where(e => e.FromNodeId == node.Id || e.ToNodeId == node.Id).ToList();
+        foreach (var edge in connectedEdges)
+        {
+            GraphEdges.Remove(edge);
+            GraphPattern.Edges.Remove(edge);
+        }
+        
+        GraphNodes.Remove(node);
+        GraphPattern.Nodes.Remove(node);
+        UpdateGraphAql();
+    }
+
+    [RelayCommand]
+    private void AddGraphEdge()
+    {
+        if (GraphNodes.Count < 2)
+        {
+            QueryResult = "Need at least 2 nodes to create an edge";
+            return;
+        }
+
+        var fromNode = GraphNodes[GraphNodes.Count - 2];
+        var toNode = GraphNodes[GraphNodes.Count - 1];
+        
+        var edge = new GraphEdge
+        {
+            Variable = $"edge{GraphEdges.Count + 1}",
+            FromNodeId = fromNode.Id,
+            ToNodeId = toNode.Id,
+            EdgeType = "CONNECTED_TO",
+            Label = "Edge"
+        };
+        GraphEdges.Add(edge);
+        GraphPattern.Edges.Add(edge);
+        UpdateGraphAql();
+    }
+
+    [RelayCommand]
+    private void RemoveGraphEdge(GraphEdge edge)
+    {
+        GraphEdges.Remove(edge);
+        GraphPattern.Edges.Remove(edge);
+        UpdateGraphAql();
+    }
+
+    [RelayCommand]
+    private void UpdateGraphAql()
+    {
+        GraphAql = GraphPattern.ToAql();
+        if (!string.IsNullOrWhiteSpace(GraphAql))
+        {
+            GeneratedQuery = GraphAql + "\n  RETURN " + string.Join(", ", GraphNodes.Select(n => n.Variable));
+        }
+    }
+
+    [RelayCommand]
+    private void AddSampleGraphPattern()
+    {
+        // Clear existing
+        GraphNodes.Clear();
+        GraphEdges.Clear();
+        GraphPattern.Nodes.Clear();
+        GraphPattern.Edges.Clear();
+        
+        // Create sample pattern: User -[FOLLOWS]-> User -[LIKES]-> Product
+        var user1 = new GraphNode
+        {
+            Variable = "user1",
+            Collection = "users",
+            X = 100,
+            Y = 150,
+            Label = "User"
+        };
+        user1.Properties.Add(new GraphNodeProperty
+        {
+            PropertyName = "name",
+            Operator = FilterOperator.Equals,
+            Value = "\"Alice\""
+        });
+        
+        var user2 = new GraphNode
+        {
+            Variable = "user2",
+            Collection = "users",
+            X = 350,
+            Y = 150,
+            Label = "Friend"
+        };
+        
+        var product = new GraphNode
+        {
+            Variable = "product",
+            Collection = "products",
+            X = 600,
+            Y = 150,
+            Label = "Product"
+        };
+        product.Properties.Add(new GraphNodeProperty
+        {
+            PropertyName = "category",
+            Operator = FilterOperator.Equals,
+            Value = "\"Books\""
+        });
+        
+        var follows = new GraphEdge
+        {
+            Variable = "follows",
+            Collection = "edges",
+            FromNodeId = user1.Id,
+            ToNodeId = user2.Id,
+            EdgeType = "FOLLOWS",
+            Direction = EdgeDirection.Outbound,
+            Label = "FOLLOWS"
+        };
+        
+        var likes = new GraphEdge
+        {
+            Variable = "likes",
+            Collection = "edges",
+            FromNodeId = user2.Id,
+            ToNodeId = product.Id,
+            EdgeType = "LIKES",
+            Direction = EdgeDirection.Outbound,
+            Label = "LIKES"
+        };
+        
+        GraphNodes.Add(user1);
+        GraphNodes.Add(user2);
+        GraphNodes.Add(product);
+        GraphEdges.Add(follows);
+        GraphEdges.Add(likes);
+        
+        GraphPattern.Nodes.Add(user1);
+        GraphPattern.Nodes.Add(user2);
+        GraphPattern.Nodes.Add(product);
+        GraphPattern.Edges.Add(follows);
+        GraphPattern.Edges.Add(likes);
+        
+        UpdateGraphAql();
+    }
+
     [RelayCommand]
     private void UpdateLimit()
     {
@@ -399,8 +571,12 @@ public partial class MainViewModel : ObservableObject
         SortClauses.Clear();
         GroupByFields.Clear();
         AggregateFields.Clear();
+        GraphNodes.Clear();
+        GraphEdges.Clear();
+        GraphPattern = new GraphPattern();
         Query = new AqlQueryModel();
         GeneratedQuery = string.Empty;
+        GraphAql = string.Empty;
         QueryResult = string.Empty;
     }
 

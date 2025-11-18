@@ -33,7 +33,7 @@
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="#2D2D30" Padding="10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="📊 Themis AQL Query Builder - Phase 1.5" 
+                <TextBlock Text="📊 Themis AQL Query Builder - Phase 2" 
                           Foreground="White" 
                           FontSize="18" 
                           FontWeight="Bold" 
@@ -167,22 +167,25 @@
 
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="LightGray"/>
 
-            <!-- Center Panel: Query Builder -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Background="#FAFAFA">
-                <StackPanel Margin="15">
-                    
-                    <!-- Phase 1.5 Banner -->
-                    <Border Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
-                        <StackPanel>
-                            <TextBlock Text="✅ Phase 1.5: Advanced Relational + Connection Options" FontWeight="Bold" FontSize="14" Foreground="#2E7D32"/>
-                            <TextBlock Text="New: COLLECT/AGGREGATE • Connection Status • Filter AND/OR • Connection Test" 
-                                      FontSize="11" Foreground="#424242" Margin="0,5,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <!-- FOR Clauses -->
-                    <GroupBox Header="FOR Clauses (Collections / JOINs)" Margin="0,0,0,10" BorderBrush="#007ACC" BorderThickness="2">
-                        <GroupBox.HeaderTemplate>
+            <!-- Center Panel: Query Builder with Tabs -->
+            <TabControl Grid.Column="2" Margin="5" Background="#FAFAFA">
+                <!-- Relational Query Tab -->
+                <TabItem Header="📊 Relational Query">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Background="#FAFAFA">
+                        <StackPanel Margin="15">
+                            
+                            <!-- Phase 1.5 Banner -->
+                            <Border Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
+                                <StackPanel>
+                                    <TextBlock Text="✅ Phase 1.5: Advanced Relational + Connection Options" FontWeight="Bold" FontSize="14" Foreground="#2E7D32"/>
+                                    <TextBlock Text="New: COLLECT/AGGREGATE • Connection Status • Filter AND/OR • Connection Test" 
+                                              FontSize="11" Foreground="#424242" Margin="0,5,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- FOR Clauses -->
+                            <GroupBox Header="FOR Clauses (Collections / JOINs)" Margin="0,0,0,10" BorderBrush="#007ACC" BorderThickness="2">
+                                <GroupBox.HeaderTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#007ACC" FontSize="13"/>
                             </DataTemplate>
@@ -538,6 +541,216 @@
                            BorderThickness="0"/>
                 </StackPanel>
             </ScrollViewer>
+        </TabItem>
+        
+        <!-- Graph Query Tab (Phase 2) -->
+        <TabItem Header="🕸️ Graph Query">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="#FAFAFA">
+                <StackPanel Margin="15">
+                    
+                    <!-- Phase 2 Banner -->
+                    <Border Background="#E1F5FE" BorderBrush="#03A9F4" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
+                        <StackPanel>
+                            <TextBlock Text="✅ Phase 2: Graph Query Builder" FontWeight="Bold" FontSize="14" Foreground="#0277BD"/>
+                            <TextBlock Text="New: Visual Graph Patterns • Node/Edge Builder • Traversal Generation • Pattern Matching" 
+                                      FontSize="11" Foreground="#424242" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Graph Pattern Info -->
+                    <Border Background="#FFF3E0" BorderBrush="#FF9800" BorderThickness="1" Padding="10" Margin="0,0,0,15" CornerRadius="3">
+                        <StackPanel>
+                            <TextBlock Text="💡 Build graph traversal patterns visually" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="Create nodes and edges to define your graph query pattern. Use sample pattern to see an example." 
+                                      FontSize="10" Foreground="#666" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Graph Nodes -->
+                    <GroupBox Header="Graph Nodes" Margin="0,0,0,10" BorderBrush="#8B5CF6" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#8B5CF6" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="💡 Add nodes to your graph pattern. Each node represents a collection." 
+                                      FontSize="10" Foreground="#666" Margin="5,0,5,8" TextWrapping="Wrap"/>
+                            <ItemsControl ItemsSource="{Binding GraphNodes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#8B5CF6" BorderThickness="1" Padding="8" Margin="0,3" Background="#F3E8FF" CornerRadius="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                
+                                                <TextBlock Text="(" Grid.Column="0" Grid.Row="0" VerticalAlignment="Center" FontSize="16" FontWeight="Bold" Margin="0,0,5,0"/>
+                                                <TextBox Grid.Column="1" Grid.Row="0" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0" Padding="4"/>
+                                                <TextBlock Text="IN" Grid.Column="2" Grid.Row="0" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,5,0"/>
+                                                <ComboBox Grid.Column="3" Grid.Row="0" 
+                                                         Text="{Binding Collection, UpdateSourceTrigger=PropertyChanged}"
+                                                         ItemsSource="{Binding DataContext.SchemaCollections, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                         DisplayMemberPath="Name"
+                                                         IsEditable="True"
+                                                         Margin="0,0,5,0" Padding="4"/>
+                                                <TextBlock Text=")" Grid.Column="4" Grid.Row="0" VerticalAlignment="Center" FontSize="16" FontWeight="Bold" Margin="0,0,5,0"/>
+                                                <Button Grid.Column="5" Grid.Row="0" Content="✕" 
+                                                       Command="{Binding DataContext.RemoveGraphNodeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Width="28" Height="28"
+                                                       Background="#FFE5E5"
+                                                       BorderBrush="#F44336"
+                                                       Margin="5,0,0,0"/>
+                                                
+                                                <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="6"
+                                                          Text="{Binding Label, StringFormat='Label: {0}'}"
+                                                          FontSize="10" Foreground="#666" Margin="0,3,0,0"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Node" 
+                                   Command="{Binding AddGraphNodeCommand}"
+                                   HorizontalAlignment="Left" 
+                                   Margin="0,8,0,0"
+                                   Padding="12,6"
+                                   Background="#F3E8FF"
+                                   BorderBrush="#8B5CF6"
+                                   FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Graph Edges -->
+                    <GroupBox Header="Graph Edges (Relationships)" Margin="0,0,0,10" BorderBrush="#EC4899" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#EC4899" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="💡 Connect nodes with edges. Edges represent relationships between nodes." 
+                                      FontSize="10" Foreground="#666" Margin="5,0,5,8" TextWrapping="Wrap"/>
+                            <ItemsControl ItemsSource="{Binding GraphEdges}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#EC4899" BorderThickness="1" Padding="8" Margin="0,3" Background="#FCE7F3" CornerRadius="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <TextBlock Text="-[" Grid.Column="0" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Margin="0,0,5,0"/>
+                                                <TextBox Grid.Column="1" Text="{Binding EdgeType, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0" Padding="4"/>
+                                                <TextBlock Text="]->" Grid.Column="2" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Margin="0,0,5,0"/>
+                                                <ComboBox Grid.Column="3" SelectedItem="{Binding Direction}" Margin="0,0,5,0" Padding="4" Width="100">
+                                                    <ComboBox.Items>
+                                                        <ComboBoxItem Content="Outbound →" Tag="Outbound"/>
+                                                        <ComboBoxItem Content="Inbound ←" Tag="Inbound"/>
+                                                        <ComboBoxItem Content="Any ↔" Tag="Any"/>
+                                                    </ComboBox.Items>
+                                                </ComboBox>
+                                                <Button Grid.Column="4" Content="✕" 
+                                                       Command="{Binding DataContext.RemoveGraphEdgeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Width="28" Height="28"
+                                                       Background="#FFE5E5"
+                                                       BorderBrush="#F44336"
+                                                       Margin="5,0,0,0"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Edge" 
+                                   Command="{Binding AddGraphEdgeCommand}"
+                                   HorizontalAlignment="Left" 
+                                   Margin="0,8,0,0"
+                                   Padding="12,6"
+                                   Background="#FCE7F3"
+                                   BorderBrush="#EC4899"
+                                   FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Pattern Actions -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,10">
+                        <Button Content="📋 Sample Pattern" 
+                               Command="{Binding AddSampleGraphPatternCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#E3F2FD"
+                               BorderBrush="#2196F3"/>
+                        <Button Content="🔄 Generate AQL" 
+                               Command="{Binding UpdateGraphAqlCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#007ACC"
+                               Foreground="White"
+                               FontWeight="Bold"/>
+                        <Button Content="🗑️ Clear Pattern" 
+                               Command="{Binding ClearQueryCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#FFE5E5"
+                               BorderBrush="#F44336"/>
+                    </StackPanel>
+                    
+                    <!-- Pattern Visualization (Text-based for now) -->
+                    <GroupBox Header="Pattern Visualization" Margin="0,10,0,10" BorderBrush="#10B981" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#10B981" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="Pattern representation (simplified):" FontSize="11" Foreground="#666" Margin="5"/>
+                            <TextBlock Text="{Binding GraphPattern.Nodes.Count, StringFormat='Nodes: {0}'}" 
+                                      FontFamily="Consolas" FontSize="11" Margin="5,3"/>
+                            <TextBlock Text="{Binding GraphPattern.Edges.Count, StringFormat='Edges: {0}'}" 
+                                      FontFamily="Consolas" FontSize="11" Margin="5,3"/>
+                            <TextBlock Text="Pattern: Check Generated AQL below" 
+                                      FontStyle="Italic" FontSize="10" Foreground="#999" Margin="5,5,5,3"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+        
+        <!-- Vector Query Tab (Placeholder) -->
+        <TabItem Header="🔢 Vector Search" IsEnabled="False">
+            <StackPanel Margin="20" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="🔢 Vector Similarity Search" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+                <TextBlock Text="Coming in Phase 3" Foreground="Gray" FontSize="14"/>
+                <TextBlock Text="Features: Similarity threshold, distance metrics, hybrid filtering" 
+                          Foreground="Gray" FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
+            </StackPanel>
+        </TabItem>
+        
+        <!-- Geo Query Tab (Placeholder) -->
+        <TabItem Header="📍 Geo Query" IsEnabled="False">
+            <StackPanel Margin="20" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="📍 Geospatial Query Builder" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+                <TextBlock Text="Coming in Phase 4" Foreground="Gray" FontSize="14"/>
+                <TextBlock Text="Features: Interactive map, spatial operators, drawing tools" 
+                          Foreground="Gray" FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
+            </StackPanel>
+        </TabItem>
+    </TabControl>
 
             <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" Background="LightGray"/>
 
@@ -600,7 +813,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="✅ Phase 1.5 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBlock Text="✅ Phase 2 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
                     <TextBlock Text="|" Foreground="White" Margin="0,0,10,0"/>
                     <TextBlock Text="{Binding SchemaCollections.Count, StringFormat='{0} collections'}" 
                               Foreground="White" 
