@@ -53,11 +53,11 @@ nlohmann::json PkiApiHandler::sign(const std::string& key_id, const nlohmann::js
     try {
         if (!signing_service_) {
             THEMIS_ERROR("PKI API: Signing service not initialized");
-            return {{"error","Service Unavailable"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("data_b64")) {
-            return {{"error","Bad Request"},{"message","missing data_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing data_b64"; j["status_code"] = 400; return j;
         }
 
         std::string data_b64 = body["data_b64"].get<std::string>();
@@ -65,14 +65,14 @@ nlohmann::json PkiApiHandler::sign(const std::string& key_id, const nlohmann::js
 
         SigningResult res = signing_service_->sign(data, key_id);
 
-        return {
-            {"signature_b64", base64_encode(res.signature)},
-            {"algorithm", res.algorithm}
-        };
+        nlohmann::json resp;
+        resp["signature_b64"] = base64_encode(res.signature);
+        resp["algorithm"] = res.algorithm;
+        return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API sign failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -80,23 +80,22 @@ nlohmann::json PkiApiHandler::verify(const std::string& key_id, const nlohmann::
     try {
         if (!signing_service_) {
             THEMIS_ERROR("PKI API: Signing service not initialized");
-            return {{"error","Service Unavailable"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("data_b64") || !body.contains("signature_b64")) {
-            return {{"error","Bad Request"},{"message","missing data_b64 or signature_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing data_b64 or signature_b64"; j["status_code"] = 400; return j;
         }
 
         auto data = base64_decode(body["data_b64"].get<std::string>());
         auto sig = base64_decode(body["signature_b64"].get<std::string>());
 
         bool ok = signing_service_->verify(data, sig, key_id);
-
-        return {{"valid", ok}};
+        nlohmann::json resp; resp["valid"] = ok; return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API verify failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -108,11 +107,11 @@ nlohmann::json PkiApiHandler::hsmSign(const nlohmann::json& body) {
     try {
         if (!hsm_provider_) {
             THEMIS_ERROR("PKI API: HSM provider not initialized");
-            return {{"error","Service Unavailable"},{"message","HSM not configured"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["message"] = "HSM not configured"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("data_b64")) {
-            return {{"error","Bad Request"},{"message","missing data_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing data_b64"; j["status_code"] = 400; return j;
         }
 
         std::string data_b64 = body["data_b64"].get<std::string>();
@@ -121,19 +120,19 @@ nlohmann::json PkiApiHandler::hsmSign(const nlohmann::json& body) {
         auto result = hsm_provider_->sign(data);
 
         if (!result.success) {
-            return {{"error","Internal Server Error"},{"message","HSM signing failed"},{"status_code",500}};
+            nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = "HSM signing failed"; j["status_code"] = 500; return j;
         }
 
-        return {
-            {"signature_b64", result.signature_b64},
-            {"algorithm", result.algorithm},
-            {"key_id", result.key_id},
-            {"cert_serial", result.cert_serial}
-        };
+        nlohmann::json resp;
+        resp["signature_b64"] = result.signature_b64;
+        resp["algorithm"] = result.algorithm;
+        resp["key_id"] = result.key_id;
+        resp["cert_serial"] = result.cert_serial;
+        return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API hsmSign failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -141,16 +140,32 @@ nlohmann::json PkiApiHandler::hsmListKeys() {
     try {
         if (!hsm_provider_) {
             THEMIS_ERROR("PKI API: HSM provider not initialized");
-            return {{"error","Service Unavailable"},{"message","HSM not configured"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["message"] = "HSM not configured"; j["status_code"] = 503; return j;
         }
 
         auto keys = hsm_provider_->listKeys();
 
-        return {{"keys", keys}};
+        {
+            nlohmann::json resp;
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& k : keys) {
+                nlohmann::json jk;
+                jk["label"] = k.label;
+                jk["id"] = k.id;
+                jk["algorithm"] = k.algorithm;
+                jk["can_sign"] = k.can_sign;
+                jk["can_verify"] = k.can_verify;
+                jk["extractable"] = k.extractable;
+                jk["key_size"] = k.key_size;
+                arr.push_back(std::move(jk));
+            }
+            resp["keys"] = std::move(arr);
+            return resp;
+        }
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API hsmListKeys failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -162,11 +177,11 @@ nlohmann::json PkiApiHandler::getTimestamp(const nlohmann::json& body) {
     try {
         if (!tsa_) {
             THEMIS_ERROR("PKI API: TSA not initialized");
-            return {{"error","Service Unavailable"},{"message","TSA not configured"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["message"] = "TSA not configured"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("data_b64")) {
-            return {{"error","Bad Request"},{"message","missing data_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing data_b64"; j["status_code"] = 400; return j;
         }
 
         std::string data_b64 = body["data_b64"].get<std::string>();
@@ -175,18 +190,18 @@ nlohmann::json PkiApiHandler::getTimestamp(const nlohmann::json& body) {
         auto token = tsa_->getTimestamp(data);
 
         if (!token.success) {
-            return {{"error","Internal Server Error"},{"message","TSA request failed"},{"status_code",500}};
+            nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = "TSA request failed"; j["status_code"] = 500; return j;
         }
 
-        return {
-            {"timestamp_token_b64", token.token_b64},
-            {"timestamp_utc", token.timestamp_utc},
-            {"serial_number", token.serial_number}
-        };
+        nlohmann::json resp;
+        resp["timestamp_token_b64"] = token.token_b64;
+        resp["timestamp_utc"] = token.timestamp_utc;
+        resp["serial_number"] = token.serial_number;
+        return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API getTimestamp failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -194,28 +209,27 @@ nlohmann::json PkiApiHandler::verifyTimestamp(const nlohmann::json& body) {
     try {
         if (!tsa_) {
             THEMIS_ERROR("PKI API: TSA not initialized");
-            return {{"error","Service Unavailable"},{"message","TSA not configured"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["message"] = "TSA not configured"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("timestamp_token_b64") || !body.contains("data_b64")) {
-            return {{"error","Bad Request"},{"message","missing timestamp_token_b64 or data_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing timestamp_token_b64 or data_b64"; j["status_code"] = 400; return j;
         }
 
         std::string token_b64 = body["timestamp_token_b64"].get<std::string>();
         std::string data_b64 = body["data_b64"].get<std::string>();
         auto data = base64_decode(data_b64);
-
-        auto result = tsa_->verifyTimestamp(token_b64, data);
-
-        return {
-            {"valid", result.verified},
-            {"timestamp_utc", result.timestamp_utc},
-            {"serial_number", result.serial_number}
-        };
+        auto token = tsa_->parseToken(token_b64);
+        bool ok = tsa_->verifyTimestamp(data, token);
+        nlohmann::json resp;
+        resp["valid"] = ok;
+        resp["timestamp_utc"] = token.timestamp_utc;
+        resp["serial_number"] = token.serial_number;
+        return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API verifyTimestamp failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -227,11 +241,11 @@ nlohmann::json PkiApiHandler::eidasSign(const nlohmann::json& body) {
     try {
         if (!hsm_provider_ || !tsa_) {
             THEMIS_ERROR("PKI API: HSM or TSA not initialized");
-            return {{"error","Service Unavailable"},{"message","eIDAS signing requires HSM and TSA"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["message"] = "eIDAS signing requires HSM and TSA"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("data_b64")) {
-            return {{"error","Bad Request"},{"message","missing data_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing data_b64"; j["status_code"] = 400; return j;
         }
 
         std::string data_b64 = body["data_b64"].get<std::string>();
@@ -240,7 +254,7 @@ nlohmann::json PkiApiHandler::eidasSign(const nlohmann::json& body) {
         // Step 1: Sign with HSM
         auto hsm_result = hsm_provider_->sign(data);
         if (!hsm_result.success) {
-            return {{"error","Internal Server Error"},{"message","HSM signing failed"},{"status_code",500}};
+            nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = "HSM signing failed"; j["status_code"] = 500; return j;
         }
 
         // Step 2: Get timestamp for signature
@@ -251,25 +265,24 @@ nlohmann::json PkiApiHandler::eidasSign(const nlohmann::json& body) {
         }
 
         // Step 3: Create qualified signature object (CAdES-like structure)
-        nlohmann::json qualified_sig = {
-            {"signature_b64", hsm_result.signature_b64},
-            {"algorithm", hsm_result.algorithm},
-            {"key_id", hsm_result.key_id},
-            {"cert_serial", hsm_result.cert_serial},
-            {"timestamp_token_b64", ts_token.success ? ts_token.token_b64 : ""},
-            {"timestamp_utc", ts_token.success ? ts_token.timestamp_utc : ""},
-            {"format", "eIDAS-QES"},
-            {"version", "1.0"}
-        };
+        nlohmann::json qualified_sig;
+        qualified_sig["signature_b64"] = hsm_result.signature_b64;
+        qualified_sig["algorithm"] = hsm_result.algorithm;
+        qualified_sig["key_id"] = hsm_result.key_id;
+        qualified_sig["cert_serial"] = hsm_result.cert_serial;
+        qualified_sig["timestamp_token_b64"] = ts_token.success ? ts_token.token_b64 : std::string("");
+        qualified_sig["timestamp_utc"] = ts_token.success ? ts_token.timestamp_utc : std::string("");
+        qualified_sig["format"] = "eIDAS-QES";
+        qualified_sig["version"] = "1.0";
 
-        return {
-            {"qualified_signature", qualified_sig},
-            {"timestamped", ts_token.success}
-        };
+        nlohmann::json resp;
+        resp["qualified_signature"] = qualified_sig;
+        resp["timestamped"] = ts_token.success;
+        return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API eidasSign failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 
@@ -277,11 +290,11 @@ nlohmann::json PkiApiHandler::eidasVerify(const nlohmann::json& body) {
     try {
         if (!hsm_provider_ || !tsa_) {
             THEMIS_ERROR("PKI API: HSM or TSA not initialized");
-            return {{"error","Service Unavailable"},{"message","eIDAS verification requires HSM and TSA"},{"status_code",503}};
+            nlohmann::json j; j["error"] = "Service Unavailable"; j["message"] = "eIDAS verification requires HSM and TSA"; j["status_code"] = 503; return j;
         }
 
         if (!body.contains("qualified_signature") || !body.contains("data_b64")) {
-            return {{"error","Bad Request"},{"message","missing qualified_signature or data_b64"},{"status_code",400}};
+            nlohmann::json j; j["error"] = "Bad Request"; j["message"] = "missing qualified_signature or data_b64"; j["status_code"] = 400; return j;
         }
 
         auto qualified_sig = body["qualified_signature"];
@@ -295,8 +308,7 @@ nlohmann::json PkiApiHandler::eidasVerify(const nlohmann::json& body) {
 
         std::string sig_b64 = qualified_sig["signature_b64"].get<std::string>();
         auto signature_bytes = base64_decode(sig_b64);
-        
-        bool sig_valid = hsm_provider_->verify(data, signature_bytes);
+        bool sig_valid = hsm_provider_->verify(data, sig_b64);
 
         // Step 2: Verify timestamp if present
         bool ts_valid = true;
@@ -304,22 +316,22 @@ nlohmann::json PkiApiHandler::eidasVerify(const nlohmann::json& body) {
             !qualified_sig["timestamp_token_b64"].get<std::string>().empty()) {
             
             std::string ts_token_b64 = qualified_sig["timestamp_token_b64"].get<std::string>();
-            auto ts_result = tsa_->verifyTimestamp(ts_token_b64, signature_bytes);
-            ts_valid = ts_result.verified;
+            auto ts_token = tsa_->parseToken(ts_token_b64);
+            ts_valid = tsa_->verifyTimestamp(signature_bytes, ts_token);
         }
 
-        return {
-            {"valid", sig_valid && ts_valid},
-            {"signature_valid", sig_valid},
-            {"timestamp_valid", ts_valid},
-            {"format", qualified_sig.value("format", "unknown")},
-            {"algorithm", qualified_sig.value("algorithm", "unknown")},
-            {"timestamp_utc", qualified_sig.value("timestamp_utc", "")}
-        };
+        nlohmann::json resp;
+        resp["valid"] = sig_valid && ts_valid;
+        resp["signature_valid"] = sig_valid;
+        resp["timestamp_valid"] = ts_valid;
+        resp["format"] = qualified_sig.value("format", "unknown");
+        resp["algorithm"] = qualified_sig.value("algorithm", "unknown");
+        resp["timestamp_utc"] = qualified_sig.value("timestamp_utc", "");
+        return resp;
 
     } catch (const std::exception& ex) {
         THEMIS_ERROR("PKI API eidasVerify failed: {}", ex.what());
-        return {{"error","Internal Server Error"},{"message",ex.what()},{"status_code",500}};
+        nlohmann::json j; j["error"] = "Internal Server Error"; j["message"] = ex.what(); j["status_code"] = 500; return j;
     }
 }
 

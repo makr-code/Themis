@@ -46,7 +46,7 @@ ExtractionResult TextProcessor::extract(
         result.metadata["is_code"] = true;
         
         // Simple line count
-        int line_count = std::count(result.text.begin(), result.text.end(), '\n') + 1;
+        auto line_count = static_cast<int64_t>(std::count(result.text.begin(), result.text.end(), '\n')) + 1;
         result.metadata["line_count"] = line_count;
     } else {
         result.metadata["is_code"] = false;

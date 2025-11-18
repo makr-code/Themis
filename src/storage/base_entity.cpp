@@ -529,6 +529,7 @@ void BaseEntity::setGeometry(const Blob& ewkb) {
         auto geom_info = geo::EWKBParser::parse(ewkb);
         geo_sidecar_ = geo::EWKBParser::computeSidecar(geom_info);
     } catch (const std::exception& e) {
+        (void)e;
         // Log warning but don't fail
         geo_sidecar_.reset();
     }

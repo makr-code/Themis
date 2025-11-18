@@ -2,6 +2,16 @@
 # Run this script from PowerShell
 
 param(
+    [string]$BuildType = "Release",
+    [string]$Generator = "",            # Optional: "Ninja" oder "Visual Studio 17 2022"
+    [string]$BuildDir = "build",         # Ziel-Build-Verzeichnis
+    [switch]$RunTests = $false,            # Tests nach Build ausführen
+    [switch]$EnableBenchmarks = $false,    # Benchmarks bauen
+    [switch]$EnableGPU = $false,           # GPU aktivieren
+    [switch]$EnableTracing = $true,        # OpenTelemetry aktivieren
+    [switch]$EnableASAN = $false,          # AddressSanitizer (nur clang/gcc)
+    [switch]$Strict = $false,              # Warnings as errors
+    [switch]$Clean = $false,               # Vorheriges Build-Verzeichnis löschen
     [switch]$WithSecurityScan = $false,
     [switch]$FailOnScanWarnings = $false
 )
@@ -24,25 +34,85 @@ if (-not $env:VCPKG_ROOT) {
 
 Write-Host "vcpkg found at: $env:VCPKG_ROOT" -ForegroundColor Green
 
-# Create build directory
-$buildDir = "build"
-if (-not (Test-Path $buildDir)) {
-    Write-Host "Creating build directory..." -ForegroundColor Yellow
-    New-Item -ItemType Directory -Path $buildDir | Out-Null
+# Auto-detect generator and adapt default build dir
+if (-not $Generator) {
+    if (Get-Command ninja -ErrorAction SilentlyContinue) {
+        $Generator = "Ninja"
+    } else {
+        $Generator = "Visual Studio 17 2022"
+    }
+}
+if ($BuildDir -eq "build") {
+    $BuildDir = if ($Generator -eq "Ninja") { "build-ninja" } else { "build-msvc" }
+}
+Write-Host "Generator: $Generator" -ForegroundColor Green
+
+if ($Clean -and (Test-Path $BuildDir)) {
+    Write-Host "Cleaning existing build directory '$BuildDir'..." -ForegroundColor Yellow
+    try {
+        Remove-Item -Recurse -Force $BuildDir -ErrorAction Stop
+    } catch {
+        Write-Warning "Konnte Verzeichnis nicht vollständig löschen (evtl. gelockte Dateien). Weiche auf neuen Pfad aus."
+        $orig = $BuildDir
+        $BuildDir = "$($BuildDir)-fresh"
+        Write-Host "Neues Build-Verzeichnis: $BuildDir (ursprünglich: $orig)" -ForegroundColor Yellow
+    }
+}
+if (-not (Test-Path $BuildDir)) {
+    Write-Host "Creating build directory '$BuildDir'..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $BuildDir | Out-Null
 }
 
-# Navigate to build directory
-Set-Location $buildDir
+Write-Host "Using build directory: $BuildDir" -ForegroundColor Green
+
+Write-Host "BuildType: $BuildType" -ForegroundColor Green
+Write-Host "Benchmarks: " + $(if ($EnableBenchmarks) {"ON"} else {"OFF"}) -ForegroundColor Green
+Write-Host "GPU: " + $(if ($EnableGPU) {"ON"} else {"OFF"}) -ForegroundColor Green
+Write-Host "Tracing: " + $(if ($EnableTracing) {"ON"} else {"OFF"}) -ForegroundColor Green
+
+if ($Generator -like "Visual Studio*") {
+    $archFlag = "-A x64"
+} else {
+    $archFlag = ""
+}
 
 Write-Host ""
 Write-Host "=== Configuring CMake ===" -ForegroundColor Cyan
 
-# Configure with CMake
 $toolchainFile = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
-cmake .. -DCMAKE_TOOLCHAIN_FILE="$toolchainFile" `
-         -DTHEMIS_BUILD_TESTS=ON `
-         -DTHEMIS_BUILD_BENCHMARKS=OFF `
-         -DTHEMIS_ENABLE_GPU=OFF
+
+$testsFlag = "ON" # Standard: Tests bauen (für lokale Entwicklung hilfreich)
+$benchFlag = if ($EnableBenchmarks) {"ON"} else {"OFF"}
+$gpuFlag = if ($EnableGPU) {"ON"} else {"OFF"}
+$tracingFlag = if ($EnableTracing) {"ON"} else {"OFF"}
+$asanFlag = if ($EnableASAN) {"ON"} else {"OFF"}
+$strictFlag = if ($Strict) {"ON"} else {"OFF"}
+
+Write-Host "Invoking CMake configure..." -ForegroundColor Cyan
+
+Push-Location $BuildDir
+
+if ($Generator -eq "Ninja") {
+    cmake .. -G Ninja `
+        -DCMAKE_BUILD_TYPE=$BuildType `
+        -DCMAKE_TOOLCHAIN_FILE="$toolchainFile" `
+        -DTHEMIS_BUILD_TESTS=$testsFlag `
+        -DTHEMIS_BUILD_BENCHMARKS=$benchFlag `
+        -DTHEMIS_ENABLE_GPU=$gpuFlag `
+        -DTHEMIS_ENABLE_TRACING=$tracingFlag `
+        -DTHEMIS_ENABLE_ASAN=$asanFlag `
+        -DTHEMIS_STRICT_BUILD=$strictFlag
+} else {
+    # Multi-Config Generator (Visual Studio)
+    cmake .. -G "$Generator" $archFlag `
+        -DCMAKE_TOOLCHAIN_FILE="$toolchainFile" `
+        -DTHEMIS_BUILD_TESTS=$testsFlag `
+        -DTHEMIS_BUILD_BENCHMARKS=$benchFlag `
+        -DTHEMIS_ENABLE_GPU=$gpuFlag `
+        -DTHEMIS_ENABLE_TRACING=$tracingFlag `
+        -DTHEMIS_ENABLE_ASAN=$asanFlag `
+        -DTHEMIS_STRICT_BUILD=$strictFlag
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed!" -ForegroundColor Red
@@ -53,8 +123,12 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "=== Building ===" -ForegroundColor Cyan
 
-# Build
-cmake --build . --config Release -j
+Write-Host "Starting build..." -ForegroundColor Cyan
+if ($Generator -eq "Ninja") {
+    cmake --build . -- -j
+} else {
+    cmake --build . --config $BuildType -- /m
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed!" -ForegroundColor Red
@@ -65,12 +139,25 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "=== Build successful! ===" -ForegroundColor Green
 Write-Host ""
+if ($Generator -eq "Ninja") {
+    $exePath = Join-Path (Get-Location) "themis_server.exe"
+} else {
+    $exePath = Join-Path (Get-Location) "$BuildType/themis_server.exe"
+}
 Write-Host "Executable location:" -ForegroundColor Cyan
-Write-Host "  .\build\Release\themis_server.exe" -ForegroundColor Gray
-Write-Host ""
+Write-Host "  $exePath" -ForegroundColor Gray
 Write-Host "To run the demo:" -ForegroundColor Cyan
-Write-Host "  .\build\Release\themis_server.exe" -ForegroundColor Gray
+Write-Host "  $exePath" -ForegroundColor Gray
 Write-Host ""
+
+if ($RunTests) {
+    Write-Host "=== Running tests ===" -ForegroundColor Cyan
+    if ($Generator -eq "Ninja") {
+        ctest --output-on-failure -C $BuildType
+    } else {
+        ctest --output-on-failure -C $BuildType
+    }
+}
 
 # Optional: Run security scan after successful build
 if ($WithSecurityScan) {
@@ -92,5 +179,5 @@ if ($WithSecurityScan) {
     }
 }
 
-# Return to project root
-Set-Location ..
+Pop-Location
+Write-Host "Done." -ForegroundColor Green

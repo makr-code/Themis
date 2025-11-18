@@ -1,5 +1,10 @@
 #include "utils/pki_client.h"
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4505)  // unreferenced local function
+#pragma warning(disable: 4189)  // unreferenced local variable
+#endif
+
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
@@ -66,6 +71,7 @@ static CURLcode ssl_ctx_callback(CURL* curl, void* ssl_ctx, void* userptr) {
         SSL* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(
             x509_ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
         SSL_CTX* ssl_ctx = ssl ? SSL_get_SSL_CTX(ssl) : nullptr;
+        (void)ssl_ctx; // not used currently
         
         // For simplicity, we'll store the PKIConfig in SSL_CTX ex_data
         // This is a workaround since we can't pass userdata directly to verify callback
@@ -78,6 +84,7 @@ static CURLcode ssl_ctx_callback(CURL* curl, void* ssl_ctx, void* userptr) {
     // Set verify mode and callback
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, 
         [](int preverify_ok, X509_STORE_CTX* x509_ctx) -> int {
+            (void)x509_ctx;
             // Simplified: just accept if preverify passed
             // In production, add fingerprint verification here
             return preverify_ok;
@@ -288,6 +295,7 @@ SignatureResult VCCPKIClient::signHash(const std::vector<uint8_t>& hash_bytes) c
 
     size_t expected_len = 0;
     int nid = nid_for_algorithm(res.algorithm, expected_len);
+    (void)nid;
 
     // If a PKI endpoint is configured, try REST signing first
     if (!cfg_.endpoint.empty()) {
@@ -428,6 +436,7 @@ bool VCCPKIClient::verifyHash(const std::vector<uint8_t>& hash_bytes, const Sign
 
     size_t expected_len = 0;
     int nid = nid_for_algorithm(sig.algorithm, expected_len);
+    (void)nid; (void)expected_len;
 
     // If a PKI endpoint is configured, try REST verify first
     if (!cfg_.endpoint.empty()) {
@@ -517,6 +526,7 @@ bool VCCPKIClient::verifyHash(const std::vector<uint8_t>& hash_bytes, const Sign
         if (pub) {
             // Use EVP_PKEY verification instead of deprecated RSA_verify
             int max_sig_len = EVP_PKEY_size(pub);
+            (void)max_sig_len;
             auto sig_bytes = base64_decode(sig.signature_b64);
             EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(pub, nullptr);
             if (ctx) {

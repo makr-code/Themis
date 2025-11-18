@@ -11,6 +11,9 @@
 
 namespace themis {
 
+// Minimal forward declarations for early usage
+namespace query { struct Expression; struct Query; class CTECache; }
+
 struct RecursivePathQuery {
     std::string start_node;
     std::string end_node;
@@ -57,8 +60,12 @@ class RocksDBWrapper;
 class SecondaryIndexManager;
 class BaseEntity;
 class VectorIndexManager;
+
+namespace index {
 class SpatialIndexManager;
-class AQLTranslator; // Phase 4.1: For CTEExecution struct
+}
+using SpatialIndexManager = index::SpatialIndexManager;
+class AQLTranslator; // avoid including translator in header
 
 // Forward declarations für AQL-Typen
 namespace query {
@@ -202,9 +209,14 @@ public:
     ) const;
     
     // Phase 4.1: CTE execution helper
-    // Executes all CTEs from TranslationResult and stores results in context
+    // Executes CTEs (decoupled from AQLTranslator types to avoid circular deps)
+    struct CTESpec {
+        std::string name;
+        std::shared_ptr<query::Query> subquery;
+        bool should_materialize = false;
+    };
     Status executeCTEs(
-        const std::vector<struct AQLTranslator::TranslationResult::CTEExecution>& ctes,
+        const std::vector<CTESpec>& ctes,
         EvaluationContext& context
     ) const;
 
@@ -235,6 +247,9 @@ public:
         const ContentGeoQuery& q
     ) const;
 
+    // Forward declaration for EvaluationContext (defined after private members)
+    struct EvaluationContext;
+
 private:
     RocksDBWrapper& db_;
     SecondaryIndexManager& secIdx_;
@@ -263,11 +278,6 @@ private:
     std::pair<Status, std::vector<std::string>> executeAndKeysRangeAware_(const ConjunctiveQuery& q) const;
     std::pair<Status, std::vector<BaseEntity>> executeAndEntitiesRangeAware_(const ConjunctiveQuery& q) const;
 };
-
-// Forward declaration for CTECache
-namespace query {
-    class CTECache;
-}
 
 // EvaluationContext Definition (moved from class body to avoid json dependency in header)
 struct QueryEngine::EvaluationContext {
@@ -311,33 +321,9 @@ struct QueryEngine::EvaluationContext {
         return it->second;
     }
     
-    // Phase 4.3: CTE access with cache fallback
-    void storeCTE(const std::string& name, std::vector<nlohmann::json> results) {
-        // Try cache first if available
-        if (cte_cache && !cte_cache->store(name, results)) {
-            // Fallback to in-memory if cache fails
-            cte_results[name] = std::move(results);
-        } else if (!cte_cache) {
-            // No cache, use in-memory
-            cte_results[name] = std::move(results);
-        }
-    }
-    
-    std::optional<std::vector<nlohmann::json>> getCTE(const std::string& name) const {
-        // Try cache first
-        if (cte_cache) {
-            auto cached = cte_cache->get(name);
-            if (cached.has_value()) {
-                return cached;
-            }
-        }
-        
-        // Fallback to in-memory
-        auto it = cte_results.find(name);
-        if (it != cte_results.end()) return std::make_optional(it->second);
-        
-        return std::nullopt;
-    }
+    // Phase 4.3: CTE access with cache fallback (out-of-line to avoid incomplete CTECache)
+    void storeCTE(const std::string& name, std::vector<nlohmann::json> results);
+    std::optional<std::vector<nlohmann::json>> getCTE(const std::string& name) const;
     
     // Phase 3.4: Create child context with parent chain
     EvaluationContext createChild() const {

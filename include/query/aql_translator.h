@@ -20,6 +20,8 @@ using query::LiteralValue;
 using query::ASTNodeType;
 using query::FunctionCallExpr;
 using query::BinaryOperator;
+using query::UnaryOperator;
+using query::UnaryOpExpr;
 using query::VariableExpr;
 using query::SimilarityCallExpr;
 using query::ProximityCallExpr;

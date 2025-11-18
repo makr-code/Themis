@@ -24,7 +24,7 @@ bool LetEvaluator::evaluateLet(const LetNode& node, const nlohmann::json& curren
 std::optional<nlohmann::json> LetEvaluator::resolveVariable(const std::string& varName) const {
     auto it = bindings_.find(varName);
     if (it != bindings_.end()) {
-        return it->second;
+        return std::optional<nlohmann::json>(it->second);
     }
     return std::nullopt;
 }
@@ -46,76 +46,70 @@ nlohmann::json LetEvaluator::evaluateExpression(
     }
 
     // Literal (number, string, bool, null, array, object)
-    if (auto lit = dynamic_cast<Expression::LiteralExpression*>(expr.get())) {
+    if (auto lit = dynamic_cast<query::LiteralExpr*>(expr.get())) {
         return evaluateLiteral(lit);
     }
 
     // Field Access (doc.age, doc.address.city)
-    if (auto fa = dynamic_cast<Expression::FieldAccessExpression*>(expr.get())) {
+    if (auto fa = dynamic_cast<query::FieldAccessExpr*>(expr.get())) {
         return evaluateFieldAccess(fa, currentDoc);
     }
 
     // Binary Operation (+, -, *, /, %, ==, !=, <, >, <=, >=, AND, OR)
-    if (auto binOp = dynamic_cast<Expression::BinaryOpExpression*>(expr.get())) {
+    if (auto binOp = dynamic_cast<query::BinaryOpExpr*>(expr.get())) {
         return evaluateBinaryOp(binOp, currentDoc);
     }
 
     // Unary Operation (-, NOT)
-    if (auto unaryOp = dynamic_cast<Expression::UnaryOpExpression*>(expr.get())) {
+    if (auto unaryOp = dynamic_cast<query::UnaryOpExpr*>(expr.get())) {
         return evaluateUnaryOp(unaryOp, currentDoc);
     }
 
+    // Variable (doc, user, let-bound variable)
+    if (auto var = dynamic_cast<query::VariableExpr*>(expr.get())) {
+        if (var->name == "doc") {
+            return currentDoc;
+        }
+        auto varValue = resolveVariable(var->name);
+        if (varValue.has_value()) {
+            return varValue.value();
+        }
+        throw std::runtime_error("Undefined variable: " + var->name);
+    }
+
     // Function Call (LENGTH, CONCAT, SUBSTRING, UPPER, LOWER, etc.)
-    if (auto funcCall = dynamic_cast<Expression::FunctionCallExpression*>(expr.get())) {
+    if (auto funcCall = dynamic_cast<query::FunctionCallExpr*>(expr.get())) {
         return evaluateFunctionCall(funcCall, currentDoc);
     }
 
     throw std::runtime_error("Unknown expression type in LET evaluator");
 }
 
-nlohmann::json LetEvaluator::evaluateLiteral(const Expression::LiteralExpression* lit) const {
-    return lit->value;
+nlohmann::json LetEvaluator::evaluateLiteral(const query::LiteralExpr* lit) const {
+    return std::visit([](const auto& val) -> nlohmann::json {
+        using T = std::decay_t<decltype(val)>;
+        if constexpr (std::is_same_v<T, std::nullptr_t>) {
+            return nullptr;
+        } else {
+            return val;
+        }
+    }, lit->value);
 }
 
 nlohmann::json LetEvaluator::evaluateFieldAccess(
-    const Expression::FieldAccessExpression* fieldAccess,
+    const query::FieldAccessExpr* fieldAccess,
     const nlohmann::json& currentDoc
 ) const {
-    // Check if it's a reference to a LET variable
-    if (fieldAccess->path.size() == 1) {
-        auto varValue = resolveVariable(fieldAccess->path[0]);
-        if (varValue.has_value()) {
-            return varValue.value();
-        }
+    // Evaluate the object first (could be Variable, another FieldAccess, etc.)
+    auto baseValue = evaluateExpression(fieldAccess->object, currentDoc);
+    
+    // Access the field on the base value
+    if (baseValue.is_object() && baseValue.contains(fieldAccess->field)) {
+        return baseValue[fieldAccess->field];
     }
-
-    // Check if it's a doc.field access
-    if (fieldAccess->path.empty()) {
-        return nlohmann::json(nullptr);
-    }
-
-    // Special case: "doc" refers to currentDoc
-    if (fieldAccess->path[0] == "doc") {
-        if (fieldAccess->path.size() == 1) {
-            return currentDoc;
-        }
-        // doc.field.subfield
-        std::vector<std::string> docPath(fieldAccess->path.begin() + 1, fieldAccess->path.end());
-        return getNestedValue(currentDoc, docPath);
-    }
-
-    // Variable access with nested fields (e.g., x.name where x is a LET variable)
-    auto varValue = resolveVariable(fieldAccess->path[0]);
-    if (varValue.has_value()) {
-        if (fieldAccess->path.size() == 1) {
-            return varValue.value();
-        }
-        std::vector<std::string> nestedPath(fieldAccess->path.begin() + 1, fieldAccess->path.end());
-        return getNestedValue(varValue.value(), nestedPath);
-    }
-
-    // Try as direct field access on currentDoc (fallback)
-    return getNestedValue(currentDoc, fieldAccess->path);
+    
+    // Field not found
+    return nlohmann::json(nullptr);
 }
 
 nlohmann::json LetEvaluator::getNestedValue(
@@ -146,30 +140,34 @@ nlohmann::json LetEvaluator::getNestedValue(
 }
 
 nlohmann::json LetEvaluator::evaluateBinaryOp(
-    const Expression::BinaryOpExpression* binOp,
+    const query::BinaryOpExpr* binOp,
     const nlohmann::json& currentDoc
 ) const {
     auto left = evaluateExpression(binOp->left, currentDoc);
     auto right = evaluateExpression(binOp->right, currentDoc);
 
-    const std::string& op = binOp->op;
+    using BO = query::BinaryOperator;
+    const auto& op = binOp->op;
 
     // Arithmetic operations
-    if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
-        return applyArithmeticOp(op, left, right);
+    if (op == BO::Add || op == BO::Sub || op == BO::Mul || op == BO::Div || op == BO::Mod) {
+        std::string opStr = (op == BO::Add ? "+" : op == BO::Sub ? "-" : op == BO::Mul ? "*" : op == BO::Div ? "/" : "%");
+        return applyArithmeticOp(opStr, left, right);
     }
 
     // Comparison operations
-    if (op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=") {
-        return applyComparisonOp(op, left, right);
+    if (op == BO::Eq || op == BO::Neq || op == BO::Lt || op == BO::Gt || op == BO::Lte || op == BO::Gte) {
+        std::string opStr = (op == BO::Eq ? "==" : op == BO::Neq ? "!=" : op == BO::Lt ? "<" : op == BO::Gt ? ">" : op == BO::Lte ? "<=" : ">=");
+        return applyComparisonOp(opStr, left, right);
     }
 
     // Logical operations
-    if (op == "AND" || op == "OR") {
-        return applyLogicalOp(op, left, right);
+    if (op == BO::And || op == BO::Or) {
+        std::string opStr = (op == BO::And ? "AND" : "OR");
+        return applyLogicalOp(opStr, left, right);
     }
 
-    throw std::runtime_error("Unknown binary operator: " + op);
+    throw std::runtime_error("Unknown binary operator");
 }
 
 nlohmann::json LetEvaluator::applyArithmeticOp(
@@ -253,27 +251,27 @@ nlohmann::json LetEvaluator::applyLogicalOp(
 }
 
 nlohmann::json LetEvaluator::evaluateUnaryOp(
-    const Expression::UnaryOpExpression* unaryOp,
+    const query::UnaryOpExpr* unaryOp,
     const nlohmann::json& currentDoc
 ) const {
     auto operand = evaluateExpression(unaryOp->operand, currentDoc);
 
-    if (unaryOp->op == "-") {
+    using UO = query::UnaryOperator; if (unaryOp->op == UO::Minus) {
         return -toNumber(operand);
     }
 
-    if (unaryOp->op == "NOT") {
+    if (unaryOp->op == UO::Not) {
         return !toBool(operand);
     }
 
-    throw std::runtime_error("Unknown unary operator: " + unaryOp->op);
+    throw std::runtime_error("Unknown unary operator");
 }
 
 nlohmann::json LetEvaluator::evaluateFunctionCall(
-    const Expression::FunctionCallExpression* funcCall,
+    const query::FunctionCallExpr* funcCall,
     const nlohmann::json& currentDoc
 ) const {
-    const std::string& funcName = funcCall->functionName;
+    const std::string& funcName = funcCall->name;
     const auto& args = funcCall->arguments;
 
     // LENGTH(value) - returns length of string, array, or object
@@ -457,45 +455,45 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
             std::vector<uint8_t> ewkb(ewkbStr.begin(), ewkbStr.end());
             
             try {
-                auto geomInfo = utils::geo::parseEWKB(ewkb);
+                auto geomInfo = geo::EWKBParser::parse(ewkb);
                 nlohmann::json geojson;
                 
                 // Map GeometryType to GeoJSON type string
                 switch (geomInfo.type) {
-                    case utils::geo::GeometryType::Point:
-                    case utils::geo::GeometryType::PointZ:
+                    case geo::GeometryType::Point:
+                    case geo::GeometryType::PointZ:
                         geojson["type"] = "Point";
-                        if (!geomInfo.coordinates.empty()) {
-                            const auto& c = geomInfo.coordinates[0];
+                        if (!geomInfo.coords.empty()) {
+                            const auto& c = geomInfo.coords[0];
                             geojson["coordinates"] = {c.x, c.y};
-                            if (geomInfo.type == utils::geo::GeometryType::PointZ) {
-                                geojson["coordinates"].push_back(c.z);
+                            if (geomInfo.type == geo::GeometryType::PointZ) {
+                                geojson["coordinates"].push_back(c.z.value_or(0.0));
                             }
                         }
                         break;
-                    case utils::geo::GeometryType::LineString:
-                    case utils::geo::GeometryType::LineStringZ:
+                    case geo::GeometryType::LineString:
+                    case geo::GeometryType::LineStringZ:
                         geojson["type"] = "LineString";
                         geojson["coordinates"] = nlohmann::json::array();
-                        for (const auto& c : geomInfo.coordinates) {
-                            if (geomInfo.type == utils::geo::GeometryType::LineStringZ) {
-                                geojson["coordinates"].push_back({c.x, c.y, c.z});
+                        for (const auto& c : geomInfo.coords) {
+                            if (geomInfo.type == geo::GeometryType::LineStringZ) {
+                                geojson["coordinates"].push_back({c.x, c.y, c.z.value_or(0.0)});
                             } else {
                                 geojson["coordinates"].push_back({c.x, c.y});
                             }
                         }
                         break;
-                    case utils::geo::GeometryType::Polygon:
-                    case utils::geo::GeometryType::PolygonZ:
+                    case geo::GeometryType::Polygon:
+                    case geo::GeometryType::PolygonZ:
                         geojson["type"] = "Polygon";
                         geojson["coordinates"] = nlohmann::json::array();
                         // Note: Polygon rings not fully parsed in current EWKB parser
                         // This is a simplified version
                         {
                             nlohmann::json ring = nlohmann::json::array();
-                            for (const auto& c : geomInfo.coordinates) {
-                                if (geomInfo.type == utils::geo::GeometryType::PolygonZ) {
-                                    ring.push_back({c.x, c.y, c.z});
+                            for (const auto& c : geomInfo.coords) {
+                                if (geomInfo.type == geo::GeometryType::PolygonZ) {
+                                    ring.push_back({c.x, c.y, c.z.value_or(0.0)});
                                 } else {
                                     ring.push_back({c.x, c.y});
                                 }
@@ -605,14 +603,14 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
             throw std::runtime_error("ST_Within: Expected Point geometry");
         };
         
-        auto extractMBR = [](const nlohmann::json& geojson) -> utils::geo::MBR {
+        auto extractMBR = [](const nlohmann::json& geojson) -> geo::MBR {
             // Extract MBR from Polygon or use Point as degenerate MBR
             if (geojson.is_object() && geojson.contains("type")) {
                 std::string type = geojson["type"];
                 if (type == "Point" && geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
                     double x = geojson["coordinates"][0].get<double>();
                     double y = geojson["coordinates"][1].get<double>();
-                    return utils::geo::MBR{x, y, x, y};
+                    return geo::MBR{x, y, x, y};
                 }
                 if (type == "Polygon" && geojson.contains("coordinates")) {
                     // Compute MBR from polygon exterior ring
@@ -636,7 +634,7 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
                                 }
                             }
                             
-                            return utils::geo::MBR{minx, miny, maxx, maxy};
+                            return geo::MBR{minx, miny, maxx, maxy};
                         }
                     }
                 }
@@ -700,13 +698,13 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
         // Simplified: MBR containment check
         // g1 contains g2 if g2's MBR is completely inside g1's MBR
         
-        auto extractMBR = [](const nlohmann::json& geojson) -> utils::geo::MBR {
+        auto extractMBR = [](const nlohmann::json& geojson) -> geo::MBR {
             if (geojson.is_object() && geojson.contains("type")) {
                 std::string type = geojson["type"];
                 if (type == "Point" && geojson.contains("coordinates") && geojson["coordinates"].size() >= 2) {
                     double x = geojson["coordinates"][0].get<double>();
                     double y = geojson["coordinates"][1].get<double>();
-                    return utils::geo::MBR{x, y, x, y};
+                    return geo::MBR{x, y, x, y};
                 }
                 if (type == "Polygon" && geojson.contains("coordinates")) {
                     const auto& rings = geojson["coordinates"];
@@ -729,7 +727,7 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
                                 }
                             }
                             
-                            return utils::geo::MBR{minx, miny, maxx, maxy};
+                            return geo::MBR{minx, miny, maxx, maxy};
                         }
                     }
                 }
@@ -1301,12 +1299,12 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
         }
         auto g1 = evaluateExpression(args[0], currentDoc);
         auto g2 = evaluateExpression(args[1], currentDoc);
-        auto mbrOf = [](const nlohmann::json& g) -> utils::geo::MBR {
+        auto mbrOf = [](const nlohmann::json& g) -> geo::MBR {
             if (g.is_object() && g.contains("type")) {
                 std::string t = g["type"];
                 if (t=="Point" && g.contains("coordinates") && g["coordinates"].size()>=2) {
                     double x=g["coordinates"][0].get<double>(), y=g["coordinates"][1].get<double>();
-                    return utils::geo::MBR{x,y,x,y};
+                    return geo::MBR{x,y,x,y};
                 }
                 if (t=="Polygon" && g.contains("coordinates")) {
                     const auto& rings = g["coordinates"]; if (rings.is_array() && !rings.empty()) {
@@ -1317,14 +1315,14 @@ nlohmann::json LetEvaluator::evaluateFunctionCall(
                             double x=pt[0].get<double>(), y=pt[1].get<double>();
                             minx=std::min(minx,x); miny=std::min(miny,y); maxx=std::max(maxx,x); maxy=std::max(maxy,y);
                         }
-                        return utils::geo::MBR{minx,miny,maxx,maxy};
+                        return geo::MBR{minx,miny,maxx,maxy};
                     }
                 }
             }
             throw std::runtime_error("ST_Union: Unsupported geometry type for MVP");
         };
         auto m1 = mbrOf(g1); auto m2 = mbrOf(g2);
-        utils::geo::MBR u{ std::min(m1.minx,m2.minx), std::min(m1.miny,m2.miny), std::max(m1.maxx,m2.maxx), std::max(m1.maxy,m2.maxy) };
+        geo::MBR u{ std::min(m1.minx,m2.minx), std::min(m1.miny,m2.miny), std::max(m1.maxx,m2.maxx), std::max(m1.maxy,m2.maxy) };
         nlohmann::json ring = nlohmann::json::array({ {u.minx,u.miny},{u.maxx,u.miny},{u.maxx,u.maxy},{u.minx,u.maxy},{u.minx,u.miny} });
         nlohmann::json poly; poly["type"]="Polygon"; poly["coordinates"]=nlohmann::json::array({ring});
         return poly;

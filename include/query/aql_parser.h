@@ -12,6 +12,7 @@ namespace query {
 // Forward declarations
 struct ASTNode;
 struct Expression;
+struct Query; // ensure Query is known before usage in SubqueryExpr
 
 // ============================================================================
 // AST Node Types
@@ -217,12 +218,7 @@ struct SubqueryExpr : Expression {
         : subquery(std::move(sq)) {}
     
     ASTNodeType getType() const override { return ASTNodeType::SubqueryExpr; }
-    nlohmann::json toJSON() const override {
-        return {
-            {"type", "subquery"},
-            {"query", subquery ? subquery->toJSON() : nlohmann::json()}
-        };
-    }
+    nlohmann::json toJSON() const override;
 };
 
 // ANY quantifier: ANY var IN array SATISFIES condition
@@ -408,21 +404,13 @@ struct CollectNode {
 // WITH Clause / CTEs (Phase 3)
 // ============================================================================
 
-// Forward declaration for Query
-struct Query;
+// Forward declaration for Query (already declared above)
 
 // Single CTE definition
 struct CTEDefinition {
     std::string name;                                  // CTE name (e.g., "expensiveHotels")
     std::shared_ptr<Query> subquery;                   // The subquery AST
-    
-    nlohmann::json toJSON() const {
-        return {
-            {"type", "cte_definition"},
-            {"name", name},
-            {"subquery", subquery ? subquery->toJSON() : nlohmann::json()}
-        };
-    }
+    nlohmann::json toJSON() const; // out-of-line defined in aql_parser.cpp
 };
 
 // WITH clause node

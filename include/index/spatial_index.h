@@ -1,15 +1,13 @@
 #pragma once
 
 #include "utils/geo/ewkb.h"
+#include "storage/rocksdb_wrapper.h"
 #include <string>
 #include <string_view>
 #include <vector>
 #include <memory>
 #include <optional>
-
-namespace themis {
-    class StorageEngine;  // Forward declaration
-}
+#include <cfloat>
 
 namespace themis {
 namespace index {
@@ -64,7 +62,15 @@ struct SpatialResult {
 // Spatial Index Manager (table-agnostic, works for all 5 models)
 class SpatialIndexManager {
 public:
-    SpatialIndexManager(std::shared_ptr<StorageEngine> storage);
+    struct Status {
+        bool ok = true;
+        std::string message;
+        static Status OK() { return {}; }
+        static Status Error(std::string msg) { return Status{false, std::move(msg)}; }
+        explicit operator bool() const { return ok; }
+    };
+
+    explicit SpatialIndexManager(RocksDBWrapper& db);
     ~SpatialIndexManager() = default;
     
     // ===== Index Management =====
@@ -176,7 +182,7 @@ public:
     ) const;
     
 private:
-    std::shared_ptr<StorageEngine> storage_;
+    RocksDBWrapper& db_;
     
     // RocksDB key prefixes
     std::string getSpatialKeyPrefix(std::string_view table) const;

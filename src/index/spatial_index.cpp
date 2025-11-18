@@ -2,6 +2,7 @@
 #include "utils/logger.h"
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
 #include <nlohmann/json.hpp>
 
 namespace themis {
@@ -11,7 +12,8 @@ using json = nlohmann::json;
 
 // Constants
 constexpr double EARTH_RADIUS_METERS = 6371000.0;
-constexpr double DEG_TO_RAD = M_PI / 180.0;
+constexpr double PI_CONST = 3.14159265358979323846;
+constexpr double DEG_TO_RAD = PI_CONST / 180.0;
 constexpr double Z_BUCKET_SIZE = 10.0;  // 10 meter buckets for elevation
 
 // ===== Morton Encoder Implementation =====
@@ -89,6 +91,7 @@ std::vector<std::pair<uint64_t, uint64_t>> MortonEncoder::getRanges(
     const geo::MBR& total_bounds,
     int max_ranges
 ) {
+    (void)max_ranges; // unused parameter
     // Simplified implementation: compute min/max Morton codes
     uint64_t min_code = encode2D(query_bbox.minx, query_bbox.miny, total_bounds);
     uint64_t max_code = encode2D(query_bbox.maxx, query_bbox.maxy, total_bounds);
@@ -100,8 +103,8 @@ std::vector<std::pair<uint64_t, uint64_t>> MortonEncoder::getRanges(
 
 // ===== SpatialIndexManager Implementation =====
 
-SpatialIndexManager::SpatialIndexManager(std::shared_ptr<StorageEngine> storage)
-    : storage_(storage) {}
+SpatialIndexManager::SpatialIndexManager(RocksDBWrapper& db)
+    : db_(db) {}
 
 // Key prefixes
 std::string SpatialIndexManager::getSpatialKeyPrefix(std::string_view table) const {
@@ -118,7 +121,7 @@ std::string SpatialIndexManager::getConfigKey(std::string_view table) const {
 
 std::string SpatialIndexManager::makeSpatialKey(std::string_view table, uint64_t morton_code) const {
     char buf[32];
-    snprintf(buf, sizeof(buf), "%016lx", morton_code);
+    snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(morton_code));
     return getSpatialKeyPrefix(table) + buf;
 }
 
@@ -130,11 +133,12 @@ std::string SpatialIndexManager::makeZRangeKey(std::string_view table, int z_buc
 
 // Config persistence
 std::optional<RTreeConfig> SpatialIndexManager::getConfig(std::string_view table) const {
-    auto value = storage_->get(getConfigKey(table));
+    auto value = db_.get(getConfigKey(table));
     if (!value) return std::nullopt;
     
     try {
-        auto j = json::parse(*value);
+        std::string s(reinterpret_cast<const char*>(value->data()), value->size());
+        auto j = json::parse(s);
         RTreeConfig config;
         config.max_entries_per_node = j.value("max_entries", 16);
         config.use_3d = j.value("use_3d", false);
@@ -153,7 +157,7 @@ std::optional<RTreeConfig> SpatialIndexManager::getConfig(std::string_view table
     }
 }
 
-Status SpatialIndexManager::saveConfig(std::string_view table, const RTreeConfig& config) {
+SpatialIndexManager::Status SpatialIndexManager::saveConfig(std::string_view table, const RTreeConfig& config) {
     json j;
     j["max_entries"] = config.max_entries_per_node;
     j["use_3d"] = config.use_3d;
@@ -164,15 +168,18 @@ Status SpatialIndexManager::saveConfig(std::string_view table, const RTreeConfig
         {"maxy", config.total_bounds.maxy}
     };
     
-    return storage_->put(getConfigKey(table), j.dump());
+    const auto dump = j.dump();
+    std::vector<uint8_t> bytes(dump.begin(), dump.end());
+    return db_.put(getConfigKey(table), bytes) ? Status::OK() : Status::Error("failed to save config");
 }
 
 // Create spatial index
-Status SpatialIndexManager::createSpatialIndex(
+SpatialIndexManager::Status SpatialIndexManager::createSpatialIndex(
     std::string_view table,
     std::string_view geometry_column,
     const RTreeConfig& config
 ) {
+    (void)geometry_column; // unused parameter
     // Save config
     RTreeConfig cfg = config;
     if (cfg.total_bounds.minx == 0.0 && cfg.total_bounds.maxx == 0.0) {
@@ -184,19 +191,18 @@ Status SpatialIndexManager::createSpatialIndex(
 }
 
 // Drop spatial index
-Status SpatialIndexManager::dropSpatialIndex(std::string_view table) {
+SpatialIndexManager::Status SpatialIndexManager::dropSpatialIndex(std::string_view table) {
     // Delete config
-    storage_->remove(getConfigKey(table));
+    db_.del(getConfigKey(table));
     
     // Delete all spatial keys (prefix scan + delete)
     std::string prefix = getSpatialKeyPrefix(table);
-    auto keys = storage_->scanKeys(prefix, prefix + "~");  // Scan range
+    db_.scanRange(prefix, prefix + "~", [this](std::string_view key, std::string_view /*value*/){
+        db_.del(key);
+        return true;
+    });
     
-    for (const auto& key : keys) {
-        storage_->remove(key);
-    }
-    
-    return Status::ok();
+    return Status::OK();
 }
 
 bool SpatialIndexManager::hasSpatialIndex(std::string_view table) const {
@@ -262,14 +268,14 @@ std::string SpatialIndexManager::serializeSidecarList(
 }
 
 // Insert
-Status SpatialIndexManager::insert(
+SpatialIndexManager::Status SpatialIndexManager::insert(
     std::string_view table,
     std::string_view primary_key,
     const geo::GeoSidecar& sidecar
 ) {
     auto config = getConfig(table);
     if (!config) {
-        return Status::error("Spatial index not found for table: " + std::string(table));
+        return Status::Error("Spatial index not found for table: " + std::string(table));
     }
     
     // Compute Morton code for centroid
@@ -282,11 +288,12 @@ Status SpatialIndexManager::insert(
     std::string key = makeSpatialKey(table, morton);
     
     // Get existing entries for this Morton bucket
-    auto value = storage_->get(key);
+    auto value = db_.get(key);
     std::vector<SidecarEntry> entries;
     
     if (value) {
-        entries = parseSidecarList(*value);
+        std::string s(reinterpret_cast<const char*>(value->data()), value->size());
+        entries = parseSidecarList(s);
     }
     
     // Add new entry
@@ -296,17 +303,19 @@ Status SpatialIndexManager::insert(
     entries.push_back(new_entry);
     
     // Save back
-    return storage_->put(key, serializeSidecarList(entries));
+    const auto dump = serializeSidecarList(entries);
+    std::vector<uint8_t> bytes(dump.begin(), dump.end());
+    return db_.put(key, bytes) ? Status::OK() : Status::Error("failed to insert");
 }
 
 // Remove
-Status SpatialIndexManager::remove(
+SpatialIndexManager::Status SpatialIndexManager::remove(
     std::string_view table,
     std::string_view primary_key,
     const geo::GeoSidecar& sidecar
 ) {
     auto config = getConfig(table);
-    if (!config) return Status::ok();
+    if (!config) return Status::OK();
     
     uint64_t morton = MortonEncoder::encode2D(
         sidecar.centroid.x,
@@ -315,11 +324,12 @@ Status SpatialIndexManager::remove(
     );
     
     std::string key = makeSpatialKey(table, morton);
-    auto value = storage_->get(key);
+    auto value = db_.get(key);
     
-    if (!value) return Status::ok();
+    if (!value) return Status::OK();
     
-    auto entries = parseSidecarList(*value);
+    std::string s(reinterpret_cast<const char*>(value->data()), value->size());
+    auto entries = parseSidecarList(s);
     
     // Remove matching entry
     entries.erase(
@@ -329,14 +339,16 @@ Status SpatialIndexManager::remove(
     );
     
     if (entries.empty()) {
-        return storage_->remove(key);
+        return db_.del(key) ? Status::OK() : Status::Error("failed to remove");
     } else {
-        return storage_->put(key, serializeSidecarList(entries));
+        const auto dump = serializeSidecarList(entries);
+        std::vector<uint8_t> bytes(dump.begin(), dump.end());
+        return db_.put(key, bytes) ? Status::OK() : Status::Error("failed to update bucket");
     }
 }
 
 // Update
-Status SpatialIndexManager::update(
+SpatialIndexManager::Status SpatialIndexManager::update(
     std::string_view table,
     std::string_view primary_key,
     const geo::GeoSidecar& old_sidecar,
@@ -380,7 +392,11 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
         std::string start_key = makeSpatialKey(table, min_code);
         std::string end_key = makeSpatialKey(table, max_code);
         
-        auto kvs = storage_->scanRange(start_key, end_key);
+        std::vector<std::pair<std::string,std::string>> kvs;
+        db_.scanRange(start_key, end_key, [&kvs](std::string_view k, std::string_view v){
+            kvs.emplace_back(std::string(k), std::string(v));
+            return true;
+        });
         
         for (const auto& [key, value] : kvs) {
             auto entries = parseSidecarList(value);
@@ -442,6 +458,7 @@ std::vector<SpatialResult> SpatialIndexManager::searchContains(
     double y,
     std::optional<double> z
 ) const {
+    (void)z; // unused parameter
     // Create small query box around point
     geo::MBR point_bbox(x - 0.0001, y - 0.0001, x + 0.0001, y + 0.0001);
     
@@ -468,6 +485,7 @@ std::vector<SpatialResult> SpatialIndexManager::searchNearby(
     std::optional<double> z,
     size_t limit
 ) const {
+    (void)z; // unused parameter
     // Expand to bbox (approximate)
     double degrees_delta = max_distance_meters / 111320.0;  // Rough approximation
     geo::MBR query_bbox(x - degrees_delta, y - degrees_delta, x + degrees_delta, y + degrees_delta);
@@ -511,19 +529,18 @@ SpatialIndexManager::IndexStats SpatialIndexManager::getStats(std::string_view t
     
     // Scan all spatial keys
     std::string prefix = getSpatialKeyPrefix(table);
-    auto kvs = storage_->scanRange(prefix, prefix + "~");
-    
-    stats.morton_buckets = kvs.size();
-    
+    size_t buckets = 0;
     double total_area = 0.0;
-    for (const auto& [key, value] : kvs) {
-        auto entries = parseSidecarList(value);
+    db_.scanRange(prefix, prefix + "~", [this, &buckets, &total_area, &stats](std::string_view /*k*/, std::string_view v){
+        ++buckets;
+        auto entries = parseSidecarList(std::string(v));
         stats.entry_count += entries.size();
-        
         for (const auto& entry : entries) {
             total_area += entry.sidecar.mbr.area();
         }
-    }
+        return true;
+    });
+    stats.morton_buckets = buckets;
     
     if (stats.entry_count > 0) {
         stats.avg_area = total_area / stats.entry_count;

@@ -8,6 +8,9 @@
 #include <map>
 #include <variant>
 #include "utils/geo/ewkb.h"  // For GeoSidecar definition
+
+namespace themis {
+
 /// Value type that can represent different data types
 using Value = std::variant<
     std::monostate,           // null

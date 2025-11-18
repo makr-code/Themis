@@ -521,6 +521,7 @@ void GraphIndexManager::addEdgeToTopology_(const std::string& edgeId, const std:
 }
 
 void GraphIndexManager::removeEdgeFromTopology_(const std::string& edgeId, const std::string& fromPk, const std::string& toPk, const std::string& graphId) {
+	(void)graphId;
 	std::lock_guard<std::mutex> lock(topology_mutex_);
 
 	// Remove from outEdges_

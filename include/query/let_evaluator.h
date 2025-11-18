@@ -84,30 +84,30 @@ private:
 
     // Helper: Evaluiert Field Access (z.B. doc.age, doc.address.city)
     nlohmann::json evaluateFieldAccess(
-        const Expression::FieldAccessExpression* fieldAccess,
+        const FieldAccessExpr* fieldAccess,
         const nlohmann::json& currentDoc
     ) const;
 
     // Helper: Evaluiert Binary Operations (+, -, *, /, %, ==, !=, <, >, etc.)
     nlohmann::json evaluateBinaryOp(
-        const Expression::BinaryOpExpression* binOp,
+        const BinaryOpExpr* binOp,
         const nlohmann::json& currentDoc
     ) const;
 
     // Helper: Evaluiert Unary Operations (-, NOT)
     nlohmann::json evaluateUnaryOp(
-        const Expression::UnaryOpExpression* unaryOp,
+        const UnaryOpExpr* unaryOp,
         const nlohmann::json& currentDoc
     ) const;
 
     // Helper: Evaluiert Function Calls (LENGTH, CONCAT, SUBSTRING, etc.)
     nlohmann::json evaluateFunctionCall(
-        const Expression::FunctionCallExpression* funcCall,
+        const FunctionCallExpr* funcCall,
         const nlohmann::json& currentDoc
     ) const;
 
     // Helper: Evaluiert Array/Object Literal
-    nlohmann::json evaluateLiteral(const Expression::LiteralExpression* lit) const;
+    nlohmann::json evaluateLiteral(const LiteralExpr* lit) const;
 
     // Helper: Holt Wert aus nested JSON object (z.B. ["address", "city"])
     nlohmann::json getNestedValue(

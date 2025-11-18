@@ -152,9 +152,13 @@ endif()
 # Optional: HNSW (if not using Faiss)
 find_package(hnswlib CONFIG)
 
-# Optional: Faiss for GPU support
+# Optional: Faiss for GPU support (graceful degradation if not found)
 if(THEMIS_ENABLE_GPU)
-    find_package(faiss CONFIG REQUIRED)
+    find_package(faiss CONFIG)
+    if(NOT faiss_FOUND)
+        message(WARNING "Faiss nicht gefunden – GPU-Unterstützung wird automatisch deaktiviert.")
+        set(THEMIS_ENABLE_GPU OFF CACHE BOOL "Enable GPU acceleration for vector search" FORCE)
+    endif()
 endif()
 
 # Optional: OpenTelemetry for distributed tracing

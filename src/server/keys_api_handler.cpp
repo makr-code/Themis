@@ -74,6 +74,7 @@ nlohmann::json KeysApiHandler::listKeys() {
 }
 
 nlohmann::json KeysApiHandler::rotateKey(const std::string& key_id, const nlohmann::json& body) {
+    (void)body;
     try {
         if (!key_provider_) {
             THEMIS_ERROR("Keys API: KeyProvider not initialized");

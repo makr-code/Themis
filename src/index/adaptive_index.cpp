@@ -151,6 +151,7 @@ SelectivityAnalyzer::analyze(const std::string& collection,
             total++;
             sampled++;
         } catch (const std::exception& e) {
+            (void)e;
             // Skip invalid JSON
             continue;
         }
@@ -300,8 +301,8 @@ IndexSuggestionEngine::generateSuggestions(const std::string& collection,
         suggestion.index_type = recommendIndexType(pattern, stats);
         suggestion.score = score;
         suggestion.reason = generateReason(pattern, stats, suggestion.index_type);
-        suggestion.queries_affected = pattern.count;
-        suggestion.estimated_speedup_ms = pattern.total_time_ms * 0.5;  // Estimate 50% speedup
+        suggestion.queries_affected = static_cast<int64_t>(pattern.count);
+        suggestion.estimated_speedup_ms = static_cast<int64_t>(pattern.total_time_ms * 0.5);  // Estimate 50% speedup
         
         suggestion.metadata = nlohmann::json{
             {"pattern", pattern.toJson()},
@@ -326,6 +327,7 @@ IndexSuggestionEngine::generateSuggestions(const std::string& collection,
 
 bool IndexSuggestionEngine::indexExists(const std::string& collection,
                                        const std::string& field) const {
+    (void)collection; (void)field;
     // TODO: Check actual index registry
     // For now, assume no indexes exist (always suggest)
     return false;

@@ -395,49 +395,46 @@ nlohmann::json AuditLogger::getChainState() const {
 // ============================================================================
 
 void AuditLogger::forwardToSiem(const nlohmann::json& event) {
+    (void)event;
     if (cfg_.siem_type == "syslog") {
-        // RFC 5424 Syslog format
+        // RFC 5424 Syslog format (POSIX only)
+#ifndef _WIN32
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) {
             THEMIS_ERROR("Failed to create syslog socket");
             return;
         }
-        
+
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
         addr.sin_port = htons(cfg_.siem_port);
         inet_pton(AF_INET, cfg_.siem_host.c_str(), &addr.sin_addr);
-        
-        // Syslog message: <pri>version timestamp hostname app-name procid msgid structured-data msg
+
         std::ostringstream syslog_msg;
-        syslog_msg << "<134>1 "; // Facility=16 (local use 0), Severity=6 (informational)
-        
-        // Timestamp (RFC 3339)
+        syslog_msg << "<134>1 ";
+
         auto now = std::chrono::system_clock::now();
         auto time_t_now = std::chrono::system_clock::to_time_t(now);
         std::tm tm_utc;
         gmtime_r(&time_t_now, &tm_utc);
         syslog_msg << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%S") << "Z ";
-        
+
         syslog_msg << "themisdb themis-audit - - - " << event.dump();
-        
+
         std::string msg = syslog_msg.str();
-        sendto(sock, msg.c_str(), msg.size(), 0, 
+        sendto(sock, msg.c_str(), msg.size(), 0,
                (struct sockaddr*)&addr, sizeof(addr));
-        
+
         close(sock);
+#else
+        THEMIS_WARN("Syslog SIEM forwarding is not supported on Windows");
+#endif
         
     } else if (cfg_.siem_type == "splunk") {
         // Splunk HEC (HTTP Event Collector) - would require libcurl
         THEMIS_WARN("Splunk SIEM forwarding not yet implemented");
         // TODO: HTTP POST to https://<host>:8088/services/collector/event
         // with Authorization: Splunk <token>
-    }
-}
-    
-    // Forward to SIEM if enabled
-    if (cfg_.enable_siem) {
-        forwardToSiem(event);
     }
 }
 

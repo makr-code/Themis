@@ -1,4 +1,5 @@
 #include "query/aql_runner.h"
+#include "storage/base_entity.h"
 
 namespace themis {
 
@@ -47,7 +48,7 @@ std::pair<QueryEngine::Status, nlohmann::json> executeAql(const std::string& aql
         auto [st, ents] = engine.executeOrEntitiesWithFallback(*tr.disjunctive, true);
         nlohmann::json arr = nlohmann::json::array();
         for (auto& e : ents) {
-            arr.push_back(e.toJSON());
+            arr.push_back(nlohmann::json::parse(e.toJson()));
         }
         return { st, nlohmann::json{{"type","or"},{"results", arr}} };
     }
@@ -75,7 +76,7 @@ std::pair<QueryEngine::Status, nlohmann::json> executeAql(const std::string& aql
     // Conjunctive (default) query
     auto [st, entities] = engine.executeAndEntitiesWithFallback(tr.query, true);
     nlohmann::json arr = nlohmann::json::array();
-    for (auto& e : entities) arr.push_back(e.toJSON());
+    for (auto& e : entities) arr.push_back(nlohmann::json::parse(e.toJson()));
     return { st, nlohmann::json{{"type","and"},{"results", arr}} };
 }
 

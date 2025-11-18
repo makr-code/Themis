@@ -29,30 +29,37 @@ public:
     // errors for the prototype to allow tests to instantiate the provider
     // when only signing is required.
     std::vector<uint8_t> getKey(const std::string& key_id) override {
+        (void)key_id;
         throw KeyOperationException("VaultSigningProvider: getKey not implemented");
     }
     std::vector<uint8_t> getKey(const std::string& key_id, uint32_t version) override {
+        (void)key_id; (void)version;
         throw KeyOperationException("VaultSigningProvider: getKey(version) not implemented");
     }
     uint32_t rotateKey(const std::string& key_id) override {
+        (void)key_id;
         throw KeyOperationException("VaultSigningProvider: rotateKey not implemented");
     }
     std::vector<KeyMetadata> listKeys() override {
         throw KeyOperationException("VaultSigningProvider: listKeys not implemented");
     }
     KeyMetadata getKeyMetadata(const std::string& key_id, uint32_t version = 0) override {
+        (void)key_id; (void)version;
         throw KeyOperationException("VaultSigningProvider: getKeyMetadata not implemented");
     }
     void deleteKey(const std::string& key_id, uint32_t version) override {
+        (void)key_id; (void)version;
         throw KeyOperationException("VaultSigningProvider: deleteKey not implemented");
     }
     bool hasKey(const std::string& key_id, uint32_t version = 0) override {
+        (void)key_id; (void)version;
         throw KeyOperationException("VaultSigningProvider: hasKey not implemented");
     }
     uint32_t createKeyFromBytes(
         const std::string& key_id,
         const std::vector<uint8_t>& key_bytes,
         const KeyMetadata& metadata = KeyMetadata()) override {
+        (void)key_id; (void)key_bytes; (void)metadata;
         throw KeyOperationException("VaultSigningProvider: createKeyFromBytes not implemented");
     }
 };

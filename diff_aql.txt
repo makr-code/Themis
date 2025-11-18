@@ -1,0 +1,315 @@
+Vergleichen der Dateien SRC\QUERY\aql_translator.cpp und SRC\QUERY\AQL_TRANSLATOR.CPP.CORRUPTED
+***** SRC\QUERY\aql_translator.cpp
+    1:  #
+    2:  i
+    3:  n
+    4:  c
+    5:  l
+    6:  u
+    7:  d
+    8:  e
+    9:   
+   10:  "
+   11:  q
+   12:  u
+   13:  e
+   14:  r
+   15:  y
+   16:  /
+   17:  a
+   18:  q
+   19:  l
+   20:  _
+   21:  t
+   22:  r
+   23:  a
+   24:  n
+   25:  s
+   26:  l
+   27:  a
+   28:  t
+   29:  o
+   30:  r
+   31:  .
+   32:  h
+   33:  "
+   34:  
+   35:  
+   36:  
+   37:  #
+   38:  i
+   39:  n
+   40:  c
+   41:  l
+   42:  u
+   43:  d
+   44:  e
+   45:   
+   46:  <
+   47:  s
+   48:  s
+   49:  t
+   50:  r
+   51:  e
+   52:  a
+   53:  m
+   54:  >
+   55:  
+   56:  
+   57:  
+   58:  #
+   59:  i
+   60:  n
+   61:  c
+   62:  l
+   63:  u
+   64:  d
+   65:  e
+   66:   
+   67:  <
+   68:  v
+   69:  a
+   70:  r
+   71:  i
+   72:  a
+   73:  n
+   74:  t
+   75:  >
+   76:  
+   77:  
+   78:  
+   79:  
+   80:  
+   81:  
+   82:  n
+   83:  a
+   84:  m
+   85:  e
+   86:  s
+   87:  p
+   88:  a
+   89:  c
+   90:  e
+   91:   
+   92:  t
+   93:  h
+   94:  e
+   95:  m
+   96:  i
+   97:  s
+   98:   
+   99:  {
+  100:  
+***** SRC\QUERY\AQL_TRANSLATOR.CPP.CORRUPTED
+    1:  ´++#include "query/aql_translator.h"
+    2:  #include "query/subquery_optimizer.h"
+    3:  #include <sstream>
+    4:  #include <variant>
+    5:  
+*****
+
+Neusynchronisation fehlgeschlagen. Dateien sind zu verschieden.
+***** SRC\QUERY\aql_translator.cpp
+  100:  
+  101:  
+  102:  
+  103:  
+  104:  
+  105:  
+  106:  A
+  107:  Q
+  108:  L
+  109:  T
+  110:  r
+  111:  a
+  112:  n
+  113:  s
+  114:  l
+  115:  a
+  116:  t
+  117:  o
+  118:  r
+  119:  :
+  120:  :
+  121:  T
+  122:  r
+  123:  a
+  124:  n
+  125:  s
+  126:  l
+  127:  a
+  128:  t
+  129:  i
+  130:  o
+  131:  n
+  132:  R
+  133:  e
+  134:  s
+  135:  u
+  136:  l
+  137:  t
+  138:   
+  139:  A
+  140:  Q
+  141:  L
+  142:  T
+  143:  r
+  144:  a
+  145:  n
+  146:  s
+  147:  l
+  148:  a
+  149:  t
+  150:  o
+  151:  r
+  152:  :
+  153:  :
+  154:  t
+  155:  r
+  156:  a
+  157:  n
+  158:  s
+  159:  l
+  160:  a
+  161:  t
+  162:  e
+  163:  (
+  164:  c
+  165:  o
+  166:  n
+  167:  s
+  168:  t
+  169:   
+  170:  s
+  171:  t
+  172:  d
+  173:  :
+  174:  :
+  175:  s
+  176:  h
+  177:  a
+  178:  r
+  179:  e
+  180:  d
+  181:  _
+  182:  p
+  183:  t
+  184:  r
+  185:  <
+  186:  Q
+  187:  u
+  188:  e
+  189:  r
+  190:  y
+  191:  >
+  192:  &
+  193:   
+  194:  a
+  195:  s
+  196:  t
+  197:  )
+  198:   
+  199:  {
+***** SRC\QUERY\AQL_TRANSLATOR.CPP.CORRUPTED
+    5:  
+    6:  // Import query types - must be outside namespace themis
+    7:  using themis::query::BinaryOpExpr;
+    8:  using themis::query::FieldAccessExpr;
+    9:  using themis::query::LiteralExpr;
+   10:  using themis::query::ASTNodeType;
+   11:  using themis::query::FunctionCallExpr;
+   12:  using themis::query::BinaryOperator;
+   13:  using themis::query::UnaryOperator;
+   14:  using themis::query::UnaryOpExpr;
+   15:  using themis::query::VariableExpr;
+   16:  using themis::query::SimilarityCallExpr;
+   17:  using themis::query::ProximityCallExpr;
+   18:  using themis::query::ArrayLiteralExpr;
+   19:  using themis::query::Expression;
+   20:  using themis::query::LiteralValue;
+   21:  using themis::query::Query;
+   22:  
+   23:  namespace themis {
+   24:  
+   25:  AQLTranslator::TranslationResult AQLTranslator::translate(const std::shared_ptr<Query>& ast) {
+   26:      if (!ast) {
+   27:          return TranslationResult::Error("Null AST provided");
+   28:      }
+   29:      
+   30:      // Phase 4.1: WITH clause processing
+   31:      // Analyze CTEs and prepare execution metadata before translating main query
+   32:      std::vector<TranslationResult::CTEExecution> cte_executions;
+   33:      if (ast->with_clause) {
+   34:          query::SubqueryOptimizer optimizer;
+   35:          
+   36:          for (const auto& cte_def : ast->with_clause->ctes) {
+   37:              if (!cte_def.subquery) {
+   38:                  return TranslationResult::Error("CTE '" + cte_def.name + "' has null query");
+   39:              }
+   40:              
+   41:              // Determine materialization strategy using optimizer heuristics
+   42:              // Count references in main query to decide if materialization is beneficial
+   43:              size_t ref_count = countCTEReferences(ast, cte_def.name);
+   44:              bool should_materialize = optimizer.shouldMaterializeCTE(cte_def, ref_count);
+   45:              
+   46:              TranslationResult::CTEExecution cte_exec;
+   47:              cte_exec.name = cte_def.name;
+   48:              cte_exec.subquery = cte_def.subquery;
+   49:              cte_exec.should_materialize = should_materialize;
+   50:              
+   51:              cte_executions.push_back(std::move(cte_exec));
+   52:          }
+   53:      }
+   54:      
+   55:      // Graph-Traversal Unterst++tzung: Wenn Traversal-Klausel vorhanden ist,
+   56:      // ++bersetzen wir in eine TraversalQuery und umgehen die relationale Pfadlogik.
+   57:      if (ast->traversal) {
+   58:          TranslationResult::TraversalQuery tq;
+   59:          tq.variable = ast->traversal->varVertex;
+   60:          tq.minDepth = ast->traversal->minDepth;
+   61:          tq.maxDepth = ast->traversal->maxDepth;
+   62:          // Mappe Richtung
+   63:          switch (ast->traversal->direction) {
+   64:              case Query::TraversalNode::Direction::Outbound: tq.direction = TranslationResult::TraversalQuery::Direction::Outbou
+   65:  nd; break;
+   66:              case Query::TraversalNode::Direction::Inbound:  tq.direction = TranslationResult::TraversalQuery::Direction::Inboun
+   67:  d;  break;
+   68:              case Query::TraversalNode::Direction::Any:      tq.direction = TranslationResult::TraversalQuery::Direction::Any;  
+   69:      break;
+   70:          }
+   71:          tq.startVertex = ast->traversal->startVertex;
+   72:          tq.graphName = ast->traversal->graphName;
+   73:          if (ast->traversal->shortestPath) {
+   74:              tq.shortestPath = true;
+   75:              tq.endVertex = ast->traversal->shortestPathTarget;
+   76:          }
+   77:          auto tr_result = TranslationResult::SuccessTraversal(std::move(tq));
+   78:          attachCTEs(tr_result, std::move(cte_executions));
+   79:          return tr_result;
+   80:      }
+   81:      
+   82:      // Multi-FOR Join: Wenn mehr als eine FOR-Klausel vorhanden ist, als Join behandeln
+   83:      if (ast->for_nodes.size() > 1 || !ast->let_nodes.empty() || ast->collect) {
+   84:          // Sonderfall: Single LET mit Similarity/Proximity f++r Hybrid-Erkennung
+   85:          if (ast->for_nodes.size()==1 && ast->let_nodes.size()==1 && !ast->collect && ast->sort && ast->sort->specifications.siz
+   86:  e()==1) {
+   87:              auto letNode = ast->let_nodes[0];
+   88:              auto sortExpr = ast->sort->specifications[0].expression;
+   89:              // Variable in SORT?
+   90:              if (sortExpr->getType()==ASTNodeType::Variable) {
+   91:                  auto varName = std::static_pointer_cast<VariableExpr>(sortExpr)->name;
+   92:                  if (varName == letNode.variable) {
+   93:                      // Pr++fe ob LET Ausdruck SimilarityCall/ProximityCall ist
+   94:                      if (letNode.expression->getType()==ASTNodeType::SimilarityCall) {
+   95:                          auto sim = std::static_pointer_cast<SimilarityCallExpr>(letNode.expression);
+   96:                          if (sim->arguments.size()>=2) {
+   97:                              // Reuse existing Similarity translation path
+   98:                              std::vector<std::shared_ptr<Expression>> fakeArgs = sim->arguments; // [field, vector, optional k]
+   99:                              // Erzeuge tempor+ñre SortNode ohne LET f++r regul+ñre Pfadlogik -> dupliziere Code minimal
+  100:                              // Direkt ++bersetzen +ñhnlich wie oben (Refactoring vermeiden hier)
+  101:                              if (sim->arguments[0]->getType()!=ASTNodeType::FieldAccess) return TranslationResult::Error("SIMILA
+  102:  RITY() LET first arg must be field access");
+  103:                              std::string vectorField = extractColumnName(sim->arguments[0]);
+  104:                              if (sim->arguments[1]->getType()!=ASTNodeType::ArrayLiteral) return TranslationResult::Error("SIMIL
+*****
+

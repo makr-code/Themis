@@ -1182,5 +1182,22 @@ nlohmann::json ObjectConstructExpr::toJSON() const {
     };
 }
 
+// Out-of-line toJSON for CTEDefinition (requires complete Query)
+nlohmann::json CTEDefinition::toJSON() const {
+    return {
+        {"type", "cte_definition"},
+        {"name", name},
+        {"subquery", subquery ? subquery->toJSON() : nlohmann::json()}
+    };
+}
+
+// Out-of-line toJSON for SubqueryExpr to ensure Query is complete
+nlohmann::json SubqueryExpr::toJSON() const {
+    return {
+        {"type", "subquery"},
+        {"query", subquery ? subquery->toJSON() : nlohmann::json()}
+    };
+}
+
 }  // namespace query
 }  // namespace themis

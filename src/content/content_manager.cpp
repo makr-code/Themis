@@ -7,6 +7,10 @@
 #include "utils/hkdf_helper.h"
 #include "utils/hkdf_cache.h"
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4505)  // unreferenced local function
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <random>
@@ -129,6 +133,7 @@ static std::vector<std::string> buildChunkWhitelist(
     std::vector<std::string> whitelist;
     // Scan all content metas
     storage.scanPrefix("content:", [&](std::string_view key, std::string_view val){
+        (void)key;
         // Ignore non-meta keys like content:chunks lists by checking JSON
         try {
             std::string s(val);
