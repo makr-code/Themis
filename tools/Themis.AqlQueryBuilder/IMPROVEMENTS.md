@@ -2,46 +2,73 @@
 
 Based on research of industry best practices, WPF MVVM patterns, and OOP principles, here are recommended enhancements for the Themis AQL Query Builder.
 
+**Philosophy**: Minimize third-party dependencies, focus on built-in .NET features, open-source, and on-premise deployment.
+
 ## 1. Architecture & Design Patterns
 
-### 1.1 Service Layer (Dependency Injection)
+### 1.1 Service Layer (Manual Dependency Injection)
 **Current**: ViewModel directly instantiates HttpClient
-**Improvement**: Implement proper DI container
+**Improvement**: Implement lightweight manual DI pattern
 
 ```csharp
-// Add to App.xaml.cs
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-
+// Add to App.xaml.cs - No third-party dependencies
 public partial class App : Application
 {
-    private readonly IHost _host;
+    private static ServiceContainer? _services;
     
-    public App()
+    protected override void OnStartup(StartupEventArgs e)
     {
-        _host = Host.CreateDefaultBuilder()
-            .ConfigureServices((context, services) =>
-            {
-                // Services
-                services.AddHttpClient<IAqlQueryService, AqlQueryService>();
-                services.AddSingleton<ISchemaService, SchemaService>();
-                services.AddSingleton<IConnectionService, ConnectionService>();
-                
-                // ViewModels
-                services.AddTransient<MainViewModel>();
-                
-                // Views
-                services.AddTransient<MainWindow>();
-            })
-            .Build();
+        base.OnStartup(e);
+        
+        // Manual service registration
+        _services = new ServiceContainer();
+        _services.RegisterSingleton<ISchemaService, SchemaService>();
+        _services.RegisterSingleton<IConnectionService, ConnectionService>();
+        _services.RegisterTransient<IAqlQueryService, AqlQueryService>();
+        _services.RegisterTransient<MainViewModel>();
+        
+        // Create main window
+        var mainWindow = _services.Resolve<MainWindow>();
+        mainWindow.DataContext = _services.Resolve<MainViewModel>();
+        mainWindow.Show();
+    }
+}
+
+// Simple built-in DI container (no external dependencies)
+public class ServiceContainer
+{
+    private readonly Dictionary<Type, Func<object>> _services = new();
+    private readonly Dictionary<Type, object> _singletons = new();
+    
+    public void RegisterSingleton<TInterface, TImplementation>() 
+        where TImplementation : TInterface, new()
+    {
+        _services[typeof(TInterface)] = () =>
+        {
+            if (!_singletons.ContainsKey(typeof(TInterface)))
+                _singletons[typeof(TInterface)] = new TImplementation();
+            return _singletons[typeof(TInterface)];
+        };
+    }
+    
+    public void RegisterTransient<TInterface, TImplementation>() 
+        where TImplementation : TInterface, new()
+    {
+        _services[typeof(TInterface)] = () => new TImplementation();
+    }
+    
+    public T Resolve<T>()
+    {
+        return (T)_services[typeof(T)]();
     }
 }
 ```
 
 **Benefits**:
+- No external dependencies
 - Better testability
 - Loose coupling
-- Easier to mock dependencies
+- Full control over service lifetime
 - Follows SOLID principles
 
 ### 1.2 Repository Pattern for Data Access
@@ -72,84 +99,135 @@ public interface ISchemaRepository
 **Improvement**: Extract complex commands to separate classes
 
 ```csharp
+// No external logging dependencies - use Debug or custom logger
 public class ExecuteQueryCommand : IAsyncRelayCommand
 {
     private readonly IAqlQueryRepository _repository;
-    private readonly ILogger<ExecuteQueryCommand> _logger;
     
-    public ExecuteQueryCommand(IAqlQueryRepository repository, ILogger<ExecuteQueryCommand> logger)
+    public ExecuteQueryCommand(IAqlQueryRepository repository)
     {
         _repository = repository;
-        _logger = logger;
     }
     
     public async Task ExecuteAsync(object? parameter)
     {
         try
         {
-            _logger.LogInformation("Executing AQL query");
+            Debug.WriteLine("Executing AQL query");
             var result = await _repository.ExecuteQueryAsync(parameter as string);
             // Handle result
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Query execution failed");
+            Debug.WriteLine($"Query execution failed: {ex.Message}");
             throw;
         }
     }
 }
+
+// Optional: Simple custom logger (no dependencies)
+public interface ISimpleLogger
+{
+    void LogInfo(string message);
+    void LogError(string message, Exception? ex = null);
+}
+
+public class DebugLogger : ISimpleLogger
+{
+    public void LogInfo(string message) => Debug.WriteLine($"[INFO] {message}");
+    public void LogError(string message, Exception? ex = null) 
+        => Debug.WriteLine($"[ERROR] {message}: {ex?.Message}");
+}
 ```
 
 **Benefits**:
+- No external dependencies
 - Reusable logic
 - Better error handling
 - Easier testing
+- Uses built-in Debug class
 
 ## 2. Code Quality & Best Practices
 
 ### 2.1 Validation Layer
 **Current**: No input validation
-**Improvement**: Add FluentValidation
+**Improvement**: Add built-in validation using INotifyDataErrorInfo
 
 ```csharp
-public class AqlQueryModelValidator : AbstractValidator<AqlQueryModel>
+// No external dependencies - using built-in .NET validation
+public partial class AqlQueryModel : ObservableObject, INotifyDataErrorInfo
 {
-    public AqlQueryModelValidator()
+    private readonly Dictionary<string, List<string>> _errors = new();
+    
+    public bool HasErrors => _errors.Any();
+    
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+    
+    public IEnumerable GetErrors(string? propertyName)
     {
-        RuleFor(x => x.ForClauses)
-            .NotEmpty()
-            .WithMessage("At least one FOR clause is required");
+        return propertyName != null && _errors.ContainsKey(propertyName)
+            ? _errors[propertyName]
+            : Enumerable.Empty<string>();
+    }
+    
+    public ValidationResult Validate()
+    {
+        _errors.Clear();
+        
+        // Validate FOR clauses
+        if (!ForClauses.Any())
+            AddError(nameof(ForClauses), "At least one FOR clause is required");
             
-        RuleForEach(x => x.ForClauses)
-            .SetValidator(new ForClauseValidator());
+        foreach (var forClause in ForClauses)
+        {
+            if (!IsValidIdentifier(forClause.Variable))
+                AddError(nameof(ForClauses), $"Invalid variable name: {forClause.Variable}");
+                
+            if (string.IsNullOrWhiteSpace(forClause.Collection))
+                AddError(nameof(ForClauses), "Collection name is required");
+        }
+        
+        // Validate LIMIT
+        if (Limit != null && (Limit.Count <= 0 || Limit.Count > 10000))
+            AddError(nameof(Limit), "Limit must be between 1 and 10000");
             
-        RuleFor(x => x.Limit.Count)
-            .GreaterThan(0)
-            .LessThanOrEqualTo(10000)
-            .WithMessage("Limit must be between 1 and 10000");
+        return new ValidationResult(HasErrors, _errors);
+    }
+    
+    private void AddError(string propertyName, string error)
+    {
+        if (!_errors.ContainsKey(propertyName))
+            _errors[propertyName] = new List<string>();
+            
+        _errors[propertyName].Add(error);
+        ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(propertyName));
+    }
+    
+    private static bool IsValidIdentifier(string identifier)
+    {
+        return !string.IsNullOrWhiteSpace(identifier) && 
+               Regex.IsMatch(identifier, @"^[a-zA-Z_][a-zA-Z0-9_]*$");
     }
 }
 
-public class ForClauseValidator : AbstractValidator<ForClause>
+public class ValidationResult
 {
-    public ForClauseValidator()
+    public bool IsValid { get; }
+    public Dictionary<string, List<string>> Errors { get; }
+    
+    public ValidationResult(bool hasErrors, Dictionary<string, List<string>> errors)
     {
-        RuleFor(x => x.Variable)
-            .NotEmpty()
-            .Matches(@"^[a-zA-Z_][a-zA-Z0-9_]*$")
-            .WithMessage("Variable must be a valid identifier");
-            
-        RuleFor(x => x.Collection)
-            .NotEmpty()
-            .WithMessage("Collection name is required");
+        IsValid = !hasErrors;
+        Errors = errors;
     }
 }
 ```
 
 **Benefits**:
+- No external dependencies
+- Built-in WPF validation support
 - Prevents invalid queries
 - Better user feedback
-- Consistent validation rules
 
 ### 2.2 Error Handling Strategy
 **Current**: Basic try-catch
@@ -335,25 +413,44 @@ public class ExecutionStep
 
 ### 4.2 Lazy Loading for Schema
 **Current**: All schema loaded upfront
-**Improvement**: Load schema on-demand
+**Improvement**: Lazy loading using built-in Lazy<T>
 
 ```csharp
+// Using built-in Lazy<T> - no external dependencies
 public class SchemaService : ISchemaService
 {
-    private readonly AsyncLazy<IEnumerable<SchemaCollection>> _schemaCache;
+    private readonly Lazy<Task<IEnumerable<SchemaCollection>>> _schemaCache;
+    private readonly ISchemaRepository _repository;
     
     public SchemaService(ISchemaRepository repository)
     {
-        _schemaCache = new AsyncLazy<IEnumerable<SchemaCollection>>(
-            async () => await repository.GetAllCollectionsAsync());
+        _repository = repository;
+        _schemaCache = new Lazy<Task<IEnumerable<SchemaCollection>>>(
+            async () => await _repository.GetAllCollectionsAsync());
     }
     
     public async Task<IEnumerable<SchemaCollection>> GetCollectionsAsync()
     {
         return await _schemaCache.Value;
     }
+    
+    public void ClearCache()
+    {
+        // Reset lazy if needed
+        if (_schemaCache.IsValueCreated)
+        {
+            _schemaCache = new Lazy<Task<IEnumerable<SchemaCollection>>>(
+                async () => await _repository.GetAllCollectionsAsync());
+        }
+    }
 }
 ```
+
+**Benefits**:
+- Built-in .NET feature
+- No external dependencies
+- Thread-safe initialization
+- Improved startup performance
 
 ### 4.3 Debouncing for Real-time Query Generation
 **Current**: Updates on every keystroke
@@ -389,18 +486,19 @@ public class DebouncedRelayCommand : IAsyncRelayCommand
 ## 5. Testing Infrastructure
 
 ### 5.1 Unit Tests for ViewModels
-**New**: Add comprehensive unit tests
+**New**: Add comprehensive unit tests using built-in patterns
 
 ```csharp
+// Using manual mocking - no Moq dependency
 public class MainViewModelTests
 {
-    private readonly Mock<IAqlQueryRepository> _mockRepository;
+    private readonly MockAqlQueryRepository _mockRepository;
     private readonly MainViewModel _viewModel;
     
     public MainViewModelTests()
     {
-        _mockRepository = new Mock<IAqlQueryRepository>();
-        _viewModel = new MainViewModel(_mockRepository.Object);
+        _mockRepository = new MockAqlQueryRepository();
+        _viewModel = new MainViewModel(_mockRepository);
     }
     
     [Fact]
@@ -408,9 +506,7 @@ public class MainViewModelTests
     {
         // Arrange
         var expectedResult = new QueryResult { /* ... */ };
-        _mockRepository
-            .Setup(r => r.ExecuteQueryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<QueryResult>.Success(expectedResult));
+        _mockRepository.SetupExecuteQuery(expectedResult);
             
         // Act
         await _viewModel.ExecuteQueryCommand.ExecuteAsync(null);
@@ -420,19 +516,59 @@ public class MainViewModelTests
         Assert.NotNull(_viewModel.QueryResult);
     }
 }
+
+// Manual mock implementation (no Moq dependency)
+public class MockAqlQueryRepository : IAqlQueryRepository
+{
+    private QueryResult? _queryResult;
+    private bool _connectionResult;
+    
+    public void SetupExecuteQuery(QueryResult result)
+    {
+        _queryResult = result;
+    }
+    
+    public void SetupTestConnection(bool success)
+    {
+        _connectionResult = success;
+    }
+    
+    public Task<Result<QueryResult>> ExecuteQueryAsync(string aql, CancellationToken ct = default)
+    {
+        return Task.FromResult(_queryResult != null
+            ? Result<QueryResult>.Success(_queryResult)
+            : Result<QueryResult>.Failure("No result configured"));
+    }
+    
+    public Task<bool> TestConnectionAsync(string serverUrl, CancellationToken ct = default)
+    {
+        return Task.FromResult(_connectionResult);
+    }
+}
 ```
 
+**Benefits**:
+- No Moq dependency
+- Full control over test doubles
+- Simple and maintainable
+- Works with xUnit (minimal dependency)
+
 ### 5.2 Integration Tests
-**New**: Test actual API integration
+**New**: Test actual API integration using built-in HttpClient
 
 ```csharp
-public class AqlQueryServiceIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+// No WebApplicationFactory dependency - direct HttpClient testing
+public class AqlQueryServiceIntegrationTests
 {
     private readonly HttpClient _client;
     
-    public AqlQueryServiceIntegrationTests(WebApplicationFactory<Program> factory)
+    public AqlQueryServiceIntegrationTests()
     {
-        _client = factory.CreateClient();
+        // Direct HttpClient usage - no additional dependencies
+        _client = new HttpClient
+        {
+            BaseAddress = new Uri("http://localhost:8080")
+        };
     }
     
     [Fact]
@@ -449,8 +585,27 @@ public class AqlQueryServiceIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
     }
+    
+    [Fact]
+    public async Task TestConnection_ValidServer_ReturnsTrue()
+    {
+        // Arrange
+        var service = new AqlQueryService(_client);
+        
+        // Act
+        var connected = await service.TestConnectionAsync("http://localhost:8080");
+        
+        // Assert
+        Assert.True(connected);
+    }
 }
 ```
+
+**Benefits**:
+- No external test framework dependencies beyond xUnit
+- Tests real HTTP communication
+- Simple and direct
+- Easy to understand and maintain
 
 ## 6. Documentation & Maintainability
 
@@ -514,41 +669,128 @@ public class QuerySanitizer
 
 ### 7.2 Secure Connection Configuration
 **Current**: Plain text passwords
-**Improvement**: Use Windows Credential Manager or encrypted storage
+**Improvement**: Use Windows DPAPI for encryption (built-in)
 
 ```csharp
+using System.Security.Cryptography;
+
+// Using built-in Windows Data Protection API - no external dependencies
 public class SecureConnectionConfig
 {
-    private readonly ICredentialService _credentialService;
-    
     public async Task SaveConnectionAsync(ConnectionConfig config)
     {
         if (!string.IsNullOrEmpty(config.Password))
         {
-            await _credentialService.SaveCredentialAsync(
-                $"ThemisDB_{config.ServerUrl}", 
-                config.Username, 
-                config.Password);
+            // Encrypt using Windows DPAPI
+            var passwordBytes = Encoding.UTF8.GetBytes(config.Password);
+            var encryptedBytes = ProtectedData.Protect(
+                passwordBytes, 
+                null, 
+                DataProtectionScope.CurrentUser);
             
-            config.Password = null; // Don't store in memory
+            // Save encrypted password
+            var encryptedPassword = Convert.ToBase64String(encryptedBytes);
+            await SaveToFileAsync(config.ServerUrl, config.Username, encryptedPassword);
+            
+            config.Password = null; // Don't keep in memory
         }
+    }
+    
+    public async Task<string?> RetrievePasswordAsync(string serverUrl, string username)
+    {
+        var encryptedPassword = await LoadFromFileAsync(serverUrl, username);
+        if (string.IsNullOrEmpty(encryptedPassword))
+            return null;
+            
+        // Decrypt using Windows DPAPI
+        var encryptedBytes = Convert.FromBase64String(encryptedPassword);
+        var decryptedBytes = ProtectedData.Unprotect(
+            encryptedBytes, 
+            null, 
+            DataProtectionScope.CurrentUser);
+            
+        return Encoding.UTF8.GetString(decryptedBytes);
+    }
+    
+    private async Task SaveToFileAsync(string server, string user, string encryptedPwd)
+    {
+        var configPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ThemisDB", "connections.json");
+            
+        // Save to file (implementation details)
     }
 }
 ```
 
+**Benefits**:
+- No external dependencies
+- Windows built-in encryption
+- Secure credential storage
+- Per-user protection
+
 ## 8. Additional Features
 
 ### 8.1 Export Query Results
-**New**: Export to JSON, CSV, Excel
+**New**: Export to JSON, CSV using built-in .NET features
 
 ```csharp
+// No external dependencies - using built-in .NET features
 public interface IQueryResultExporter
 {
     Task ExportToCsvAsync(QueryResult result, string filePath);
     Task ExportToJsonAsync(QueryResult result, string filePath);
-    Task ExportToExcelAsync(QueryResult result, string filePath);
+}
+
+public class QueryResultExporter : IQueryResultExporter
+{
+    public async Task ExportToJsonAsync(QueryResult result, string filePath)
+    {
+        // Using System.Text.Json (built-in .NET)
+        var options = new JsonSerializerOptions 
+        { 
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+        
+        var json = JsonSerializer.Serialize(result, options);
+        await File.WriteAllTextAsync(filePath, json);
+    }
+    
+    public async Task ExportToCsvAsync(QueryResult result, string filePath)
+    {
+        // Manual CSV generation - no external library needed
+        using var writer = new StreamWriter(filePath);
+        
+        // Write headers
+        if (result.Rows.Any())
+        {
+            var headers = string.Join(",", result.Columns.Select(EscapeCsv));
+            await writer.WriteLineAsync(headers);
+            
+            // Write data
+            foreach (var row in result.Rows)
+            {
+                var values = row.Select(v => EscapeCsv(v?.ToString() ?? ""));
+                await writer.WriteLineAsync(string.Join(",", values));
+            }
+        }
+    }
+    
+    private static string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
 }
 ```
+
+**Benefits**:
+- No external dependencies
+- Built-in JSON serialization (System.Text.Json)
+- Simple CSV generation
+- Full control over export format
 
 ### 8.2 Query Templates
 **New**: Pre-built query templates for common scenarios
@@ -616,25 +858,73 @@ public class ThemeService : IThemeService
 
 ## Package Recommendations
 
-Add these NuGet packages:
+**Minimal Dependencies Philosophy**: Use built-in .NET features where possible.
+
+### Essential Only (if needed)
 
 ```xml
-<!-- Dependency Injection -->
-<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-
-<!-- Logging -->
-<PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
-<PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
-
-<!-- Validation -->
-<PackageReference Include="FluentValidation" Version="11.9.0" />
-
-<!-- Testing -->
+<!-- Unit Testing Framework - minimal and standard -->
 <PackageReference Include="xUnit" Version="2.6.2" />
-<PackageReference Include="Moq" Version="4.20.69" />
-<PackageReference Include="FluentAssertions" Version="6.12.0" />
+<PackageReference Include="xUnit.runner.visualstudio" Version="2.5.6" />
 
-<!-- Utilities -->
-<PackageReference Include="Polly" Version="8.2.0" /> <!-- Retry policies -->
-<PackageReference Include="AsyncLazy" Version="1.1.0" />
+<!-- Already included in project -->
+<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+```
+
+### Optional (Evaluate on a case-by-case basis)
+
+```xml
+<!-- Retry logic - consider implementing manually first -->
+<!-- <PackageReference Include="Polly" Version="8.2.0" /> -->
+
+<!-- Logging - consider using built-in ILogger first -->
+<!-- <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" /> -->
+
+<!-- Validation - use built-in INotifyDataErrorInfo first -->
+<!-- <PackageReference Include="FluentValidation" Version="11.9.0" /> -->
+```
+
+### Built-in .NET Features to Use Instead
+
+**Instead of Microsoft.Extensions.DependencyInjection:**
+- Use manual service container (see Section 1.1)
+
+**Instead of FluentValidation:**
+- Use INotifyDataErrorInfo (see Section 2.1)
+
+**Instead of Moq:**
+- Use manual mock implementations (see Section 5.1)
+
+**Instead of Serilog:**
+- Use System.Diagnostics.Debug or built-in ILogger
+
+**Instead of AsyncLazy:**
+- Use built-in Lazy<Task<T>> (see Section 4.2)
+
+**Instead of credential libraries:**
+- Use Windows DPAPI (ProtectedData) (see Section 7.2)
+
+**Instead of CSV/Excel libraries:**
+- Manual CSV generation (see Section 8.1)
+- System.Text.Json for JSON (built-in)
+
+### On-Premise Considerations
+
+**Database Connection:**
+- Direct C# API integration (no network dependencies)
+- Direct C++ P/Invoke (native performance)
+- HTTP/Socket/UDP for flexibility
+
+**Data Storage:**
+- Local file system for query history
+- SQLite for local database (if needed - lightweight, embedded)
+
+**No Cloud Dependencies:**
+- All features work offline
+- No telemetry or external services
+- Full data sovereignty
+
+**Security:**
+- Windows DPAPI for encryption
+- Local credential storage
+- No external authentication services
