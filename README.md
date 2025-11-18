@@ -12,6 +12,23 @@
 
 The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Database System Based on LSM Tree
 
+## Dokumentation
+
+- Primärquelle: GitHub Wiki unter https://github.com/makr-code/ThemisDB/wiki
+- Änderungen bitte im Verzeichnis `docs/` vornehmen und per Sync ins Wiki übertragen:
+
+```powershell
+./sync-wiki.ps1
+```
+
+- Lokale Vorschau (MkDocs) für Entwickelnde:
+
+```powershell
+./build-docs.ps1
+```
+
+Erzeugt die Ausgabe in `site/` (nicht committen). Das GitHub Pages Deployment ist deaktiviert; maßgeblich ist das Wiki.
+
 ## Developer Quickstart
 
 - **Server defaults:** The API server binary `themis_server` uses the following defaults unless overridden by `--config` or CLI flags:
