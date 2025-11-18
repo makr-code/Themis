@@ -107,12 +107,26 @@ bool JWTValidator::verifySignatureRS256(const std::string& header_payload,
     BIGNUM* n = BN_bin2bn(n_bytes.data(), (int)n_bytes.size(), nullptr);
     BIGNUM* e = BN_bin2bn(e_bytes.data(), (int)e_bytes.size(), nullptr);
     if (!n || !e) { if (n) BN_free(n); if (e) BN_free(e); return false; }
-    RSA* rsa = RSA_new();
-    if (RSA_set0_key(rsa, n, e, nullptr) != 1) { RSA_free(rsa); return false; }
-    // Verify using EVP_DigestVerify to compute SHA256 and PKCS#1 v1.5
+    
+    // Use EVP_PKEY directly instead of deprecated RSA_new()
     EVP_PKEY* pkey = EVP_PKEY_new();
-    if (!pkey) { RSA_free(rsa); return false; }
+    if (!pkey) { BN_free(n); BN_free(e); return false; }
+    
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4996)  // OpenSSL deprecated APIs
+#endif
+    RSA* rsa = RSA_new();
+    if (!rsa || RSA_set0_key(rsa, n, e, nullptr) != 1) { 
+        EVP_PKEY_free(pkey); 
+        if (rsa) RSA_free(rsa); else { BN_free(n); BN_free(e); }
+        return false; 
+    }
     if (EVP_PKEY_assign_RSA(pkey, rsa) != 1) { RSA_free(rsa); EVP_PKEY_free(pkey); return false; }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+    // Verify using EVP_DigestVerify to compute SHA256 and PKCS#1 v1.5
     EVP_MD_CTX* mctx = EVP_MD_CTX_new();
     if (!mctx) { EVP_PKEY_free(pkey); return false; }
     int ok = EVP_DigestVerifyInit(mctx, nullptr, EVP_sha256(), nullptr, pkey);

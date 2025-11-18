@@ -7,12 +7,9 @@
 #include <vector>
 #include <map>
 #include <variant>
+#include "utils/geo/ewkb.h"  // For GeoSidecar definition
 
-// Forward declaration for Geo support
 namespace themis {
-namespace geo {
-    struct GeoSidecar;
-}
 
 /// Value type that can represent different data types
 using Value = std::variant<

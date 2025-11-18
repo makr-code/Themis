@@ -43,16 +43,7 @@ namespace query {
  * FOR o IN org_tree RETURN o
  */
 
-/**
- * @brief CTE Definition
- */
-struct CTEDefinition {
-    std::string name;                          // CTE name (e.g., "high_earners")
-    std::shared_ptr<Query> query;              // CTE query (full AQL query)
-    bool recursive = false;                    // Recursive CTE (Phase 2)
-    
-    nlohmann::json toJSON() const;
-};
+// Use CTEDefinition from aql_parser.h
 
 /**
  * @brief CTE Evaluator
@@ -123,34 +114,7 @@ private:
  *    }
  */
 
-/**
- * @brief Subquery Type
- */
-enum class SubqueryType {
-    SCALAR,        // Returns single value: (SELECT ...)
-    IN,            // Returns set: x IN (SELECT ...)
-    EXISTS,        // Existence check: EXISTS (SELECT ...)
-    NOT_EXISTS     // Non-existence: NOT EXISTS (SELECT ...)
-};
-
-/**
- * @brief Subquery Expression
- */
-struct SubqueryExpr : Expression {
-    SubqueryType type;
-    std::shared_ptr<Query> query;         // Subquery (full AQL query)
-    bool correlated = false;              // Correlated (references outer query variables)
-    
-    // For correlated subqueries: outer variable bindings
-    std::unordered_map<std::string, nlohmann::json> outerBindings;
-    
-    ASTNodeType getType() const override {
-        // Reuse existing type or define new one
-        return ASTNodeType::FunctionCall;  // Temporary: use FunctionCall type
-    }
-    
-    nlohmann::json toJSON() const override;
-};
+// Use SubqueryExpr from aql_parser.h
 
 /**
  * @brief Subquery Evaluator
@@ -167,7 +131,7 @@ public:
      * @return Subquery Result (scalar value, array, or boolean)
      */
     nlohmann::json evaluateSubquery(
-        const SubqueryExpr& subquery,
+        const query::SubqueryExpr& subquery,
         class QueryEngine& queryEngine,
         const nlohmann::json& outerRow = nlohmann::json()
     );
@@ -180,7 +144,7 @@ public:
      * @return Scalar value oder null
      */
     nlohmann::json evaluateScalarSubquery(
-        const std::shared_ptr<Query>& query,
+        const std::shared_ptr<query::Query>& query,
         class QueryEngine& queryEngine,
         const nlohmann::json& outerRow
     );
@@ -195,7 +159,7 @@ public:
      */
     bool evaluateInSubquery(
         const nlohmann::json& value,
-        const std::shared_ptr<Query>& query,
+        const std::shared_ptr<query::Query>& query,
         class QueryEngine& queryEngine,
         const nlohmann::json& outerRow
     );
@@ -208,7 +172,7 @@ public:
      * @return true wenn Subquery mindestens ein Result liefert
      */
     bool evaluateExistsSubquery(
-        const std::shared_ptr<Query>& query,
+        const std::shared_ptr<query::Query>& query,
         class QueryEngine& queryEngine,
         const nlohmann::json& outerRow
     );
@@ -220,7 +184,7 @@ private:
      * @param outerRow Outer Row
      */
     void bindOuterVariables(
-        const std::shared_ptr<Query>& query,
+        const std::shared_ptr<query::Query>& query,
         const nlohmann::json& outerRow
     );
 };

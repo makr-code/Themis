@@ -208,6 +208,7 @@ bool RBAC::loadFromJson(const nlohmann::json& j) {
 }
 
 bool RBAC::loadFromYaml(const std::string& content) {
+    (void)content; // unused parameter
     // Simple YAML-to-JSON conversion (limited parser)
     // For production, use a real YAML library (yaml-cpp)
     THEMIS_WARN("YAML support not fully implemented, falling back to JSON");

@@ -5,26 +5,7 @@
 
 namespace themis {
 
-// Helper: list metric names by scanning prefix keys
-static std::vector<std::string> list_metrics(rocksdb::TransactionDB* db, rocksdb::ColumnFamilyHandle* cf) {
-    std::vector<std::string> out;
-    rocksdb::ReadOptions ro;
-    std::unique_ptr<rocksdb::Iterator> it;
-    if (cf) it.reset(db->NewIterator(ro, cf)); else it.reset(db->NewIterator(ro));
-    std::string prefix = "ts:";
-    it->Seek(prefix);
-    std::unordered_set<std::string> seen;
-    while (it->Valid()) {
-        auto k = it->key().ToString();
-        if (k.compare(0, prefix.size(), prefix) != 0) break;
-        auto p2 = k.find(':', prefix.size());
-        if (p2 == std::string::npos) { it->Next(); continue; }
-        std::string metric = k.substr(prefix.size(), p2 - prefix.size());
-        if (!seen.count(metric)) { seen.insert(metric); out.push_back(metric); }
-        it->Next();
-    }
-    return out;
-}
+// (removed) list_metrics helper was unused; removed to avoid C4505 warning
 
 size_t RetentionManager::apply() {
     if (!store_) return 0;

@@ -11,6 +11,9 @@
 
 namespace themis {
 
+// Minimal forward declarations for early usage
+namespace query { struct Expression; struct Query; class CTECache; }
+
 struct RecursivePathQuery {
     std::string start_node;
     std::string end_node;
@@ -20,11 +23,49 @@ struct RecursivePathQuery {
     std::optional<std::string> valid_from;
     std::optional<std::string> valid_to;
     // Optional: weitere Filter auf Knoten/Kanten
+    
+    // Spatial constraints for Graph+Geo hybrid queries
+    struct SpatialConstraint {
+        std::string vertex_geom_field = "location"; // field containing geometry in vertex
+        std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_Within(v.location, @region)
+    };
+    std::optional<SpatialConstraint> spatial_constraint;
+};
+
+// Vector + Geo Hybrid Query
+struct VectorGeoQuery {
+    std::string table;
+    std::string vector_field = "embedding";
+    std::string geom_field = "location";
+    std::vector<float> query_vector;
+    size_t k = 10; // top-k results
+    std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_Within(location, @region)
+    // Additional non-spatial predicates (equality / range) allowed now
+    std::vector<std::shared_ptr<query::Expression>> extra_filters; // evaluated conjunctively
+};
+
+// Content + Geo Hybrid Query
+struct ContentGeoQuery {
+    std::string table;
+    std::string text_field;
+    std::string fulltext_query;
+    std::string geom_field = "location";
+    std::shared_ptr<query::Expression> spatial_filter; // e.g., ST_DWithin(location, @center, 5000)
+    size_t limit = 100;
+    bool boost_by_distance = false; // if true, re-rank by spatial proximity
+    std::optional<std::vector<float>> center_point; // for distance boosting: [lon, lat]
 };
 
 class RocksDBWrapper;
 class SecondaryIndexManager;
 class BaseEntity;
+class VectorIndexManager;
+
+namespace index {
+class SpatialIndexManager;
+}
+using SpatialIndexManager = index::SpatialIndexManager;
+class AQLTranslator; // avoid including translator in header
 
 // Forward declarations für AQL-Typen
 namespace query {
@@ -98,6 +139,8 @@ public:
     
     QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx);
     QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx, GraphIndexManager& graphIdx);
+    QueryEngine(RocksDBWrapper& db, SecondaryIndexManager& secIdx, GraphIndexManager& graphIdx,
+                VectorIndexManager* vectorIdx, SpatialIndexManager* spatialIdx);
     // Rekursive Pfadabfrage (Multi-Hop Traversal)
     std::pair<Status, std::vector<std::vector<std::string>>> executeRecursivePathQuery(const RecursivePathQuery& q) const;
 
@@ -154,7 +197,8 @@ public:
         const std::vector<query::LetNode>& let_nodes,
         const std::shared_ptr<query::ReturnNode>& return_node,
         const std::shared_ptr<query::SortNode>& sort,
-        const std::shared_ptr<query::LimitNode>& limit
+        const std::shared_ptr<query::LimitNode>& limit,
+        const EvaluationContext* parent_context = nullptr  // Phase 4.1: For CTE results
     ) const;
     
     std::pair<Status, std::vector<nlohmann::json>> executeGroupBy(
@@ -163,11 +207,55 @@ public:
         const std::vector<std::shared_ptr<query::FilterNode>>& filters,
         const std::shared_ptr<query::ReturnNode>& return_node
     ) const;
+    
+    // Phase 4.1: CTE execution helper
+    // Executes CTEs (decoupled from AQLTranslator types to avoid circular deps)
+    struct CTESpec {
+        std::string name;
+        std::shared_ptr<query::Query> subquery;
+        bool should_materialize = false;
+    };
+    Status executeCTEs(
+        const std::vector<CTESpec>& ctes,
+        EvaluationContext& context
+    ) const;
+
+    // ============================================================================
+    // Hybrid Multi-Model Queries
+    // ============================================================================
+    
+    // Vector + Geo: Spatial-filtered ANN search
+    // Returns top-k vectors that satisfy spatial constraint
+    struct VectorGeoResult {
+        std::string pk;
+        float vector_distance;
+        nlohmann::json entity;
+    };
+    std::pair<Status, std::vector<VectorGeoResult>> executeVectorGeoQuery(
+        const VectorGeoQuery& q
+    ) const;
+    
+    // Content + Geo: Fulltext + Spatial hybrid search
+    // Returns documents matching fulltext query within spatial constraint
+    struct ContentGeoResult {
+        std::string pk;
+        double bm25_score;
+        std::optional<double> geo_distance; // if boost_by_distance enabled
+        nlohmann::json entity;
+    };
+    std::pair<Status, std::vector<ContentGeoResult>> executeContentGeoQuery(
+        const ContentGeoQuery& q
+    ) const;
+
+    // Forward declaration for EvaluationContext (defined after private members)
+    struct EvaluationContext;
 
 private:
     RocksDBWrapper& db_;
     SecondaryIndexManager& secIdx_;
-    GraphIndexManager* graphIdx_ = nullptr; // Optional: für Graph-Queries
+    GraphIndexManager* graphIdx_ = nullptr;
+    VectorIndexManager* vectorIdx_ = nullptr;  // Optional for Vector+Geo optimization
+    SpatialIndexManager* spatialIdx_ = nullptr;  // Optional for Spatial pre-filtering // Optional: für Graph-Queries
     
     // Expression evaluation helpers (implemented in cpp)
     nlohmann::json evaluateExpression(
@@ -197,15 +285,32 @@ struct QueryEngine::EvaluationContext {
     // Optional: BM25/FULLTEXT score context, keyed by primary key ("_key")
     std::shared_ptr<std::unordered_map<std::string, double>> bm25_scores;
     
+    // Phase 3: CTE materialization storage (legacy - use cte_cache for large CTEs)
+    std::unordered_map<std::string, std::vector<nlohmann::json>> cte_results;
+    
+    // Phase 4.3: Managed CTE cache with spill-to-disk
+    std::shared_ptr<query::CTECache> cte_cache;
+    
+    // Phase 3.4: Parent context for correlated subqueries
+    const EvaluationContext* parent = nullptr;
+    
     void bind(const std::string& var, nlohmann::json value) {
         bindings[var] = std::move(value);
     }
     
     std::optional<nlohmann::json> get(const std::string& var) const {
+        // First check local bindings
         auto it = bindings.find(var);
         if (it != bindings.end()) return std::make_optional(it->second);
+        
+        // Phase 3.4: Check parent context for correlated variables
+        if (parent) {
+            return parent->get(var);
+        }
+        
         return std::nullopt;
     }
+    
     void setBm25Scores(std::shared_ptr<std::unordered_map<std::string, double>> scores) {
         bm25_scores = std::move(scores);
     }
@@ -214,6 +319,20 @@ struct QueryEngine::EvaluationContext {
         auto it = bm25_scores->find(pk);
         if (it == bm25_scores->end()) return 0.0;
         return it->second;
+    }
+    
+    // Phase 4.3: CTE access with cache fallback (out-of-line to avoid incomplete CTECache)
+    void storeCTE(const std::string& name, std::vector<nlohmann::json> results);
+    std::optional<std::vector<nlohmann::json>> getCTE(const std::string& name) const;
+    
+    // Phase 3.4: Create child context with parent chain
+    EvaluationContext createChild() const {
+        EvaluationContext child;
+        child.parent = this;
+        child.bm25_scores = bm25_scores; // Share BM25 scores
+        child.cte_results = cte_results;  // Share CTE results
+        child.cte_cache = cte_cache;      // Share CTE cache
+        return child;
     }
 };
 

@@ -1,23 +1,16 @@
 #include "query/cte_subquery.h"
 #include "query/query_engine.h"
+
+#ifdef _MSC_VER
+#pragma warning(disable: 4100)  // unreferenced formal parameter
+#endif
+
 #include <algorithm>
 
 namespace themis {
 namespace query {
 
-// ============================================================================
-// CTEDefinition JSON Serialization
-// ============================================================================
-
-nlohmann::json CTEDefinition::toJSON() const {
-    nlohmann::json j;
-    j["name"] = name;
-    j["recursive"] = recursive;
-    if (query) {
-        j["query"] = "...";  // Simplified: full query serialization would be complex
-    }
-    return j;
-}
+// CTEDefinition JSON is provided in aql_parser.h
 
 // ============================================================================
 // CTEEvaluator Implementation
@@ -60,57 +53,23 @@ void CTEEvaluator::clear() {
     cteResults_.clear();
 }
 
-// ============================================================================
-// SubqueryExpr JSON Serialization
-// ============================================================================
-
-nlohmann::json SubqueryExpr::toJSON() const {
-    nlohmann::json j;
-    
-    std::string typeStr;
-    switch (type) {
-        case SubqueryType::SCALAR: typeStr = "SCALAR"; break;
-        case SubqueryType::IN: typeStr = "IN"; break;
-        case SubqueryType::EXISTS: typeStr = "EXISTS"; break;
-        case SubqueryType::NOT_EXISTS: typeStr = "NOT_EXISTS"; break;
-    }
-    j["type"] = typeStr;
-    j["correlated"] = correlated;
-    
-    return j;
-}
+// SubqueryExpr JSON is provided in aql_parser.h
 
 // ============================================================================
 // SubqueryEvaluator Implementation
 // ============================================================================
 
 nlohmann::json SubqueryEvaluator::evaluateSubquery(
-    const SubqueryExpr& subquery,
+    const query::SubqueryExpr& subquery,
     QueryEngine& queryEngine,
     const nlohmann::json& outerRow
 ) {
-    switch (subquery.type) {
-        case SubqueryType::SCALAR:
-            return evaluateScalarSubquery(subquery.query, queryEngine, outerRow);
-        
-        case SubqueryType::EXISTS:
-            return evaluateExistsSubquery(subquery.query, queryEngine, outerRow);
-        
-        case SubqueryType::NOT_EXISTS:
-            return !evaluateExistsSubquery(subquery.query, queryEngine, outerRow);
-        
-        case SubqueryType::IN:
-            // IN requires a value to compare against
-            // This would be called from BinaryOpExpr evaluation: value IN (subquery)
-            return nullptr;  // Handled separately in evaluateInSubquery
-        
-        default:
-            return nullptr;
-    }
+    // Phase 1 stub: treat as scalar subquery; real behavior handled elsewhere
+    return evaluateScalarSubquery(subquery.subquery, queryEngine, outerRow);
 }
 
 nlohmann::json SubqueryEvaluator::evaluateScalarSubquery(
-    const std::shared_ptr<Query>& query,
+    const std::shared_ptr<query::Query>& query,
     QueryEngine& queryEngine,
     const nlohmann::json& outerRow
 ) {
@@ -131,7 +90,7 @@ nlohmann::json SubqueryEvaluator::evaluateScalarSubquery(
 
 bool SubqueryEvaluator::evaluateInSubquery(
     const nlohmann::json& value,
-    const std::shared_ptr<Query>& query,
+    const std::shared_ptr<query::Query>& query,
     QueryEngine& queryEngine,
     const nlohmann::json& outerRow
 ) {
@@ -149,7 +108,7 @@ bool SubqueryEvaluator::evaluateInSubquery(
 }
 
 bool SubqueryEvaluator::evaluateExistsSubquery(
-    const std::shared_ptr<Query>& query,
+    const std::shared_ptr<query::Query>& query,
     QueryEngine& queryEngine,
     const nlohmann::json& outerRow
 ) {
@@ -167,7 +126,7 @@ bool SubqueryEvaluator::evaluateExistsSubquery(
 }
 
 void SubqueryEvaluator::bindOuterVariables(
-    const std::shared_ptr<Query>& query,
+    const std::shared_ptr<query::Query>& query,
     const nlohmann::json& outerRow
 ) {
     // Bind outer query variables to subquery context

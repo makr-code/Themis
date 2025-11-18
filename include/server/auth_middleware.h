@@ -20,6 +20,10 @@ namespace auth {
 /// Supports both static API tokens and dynamic JWT validation (Keycloak, etc.)
 class AuthMiddleware {
 public:
+    struct AuthContext {
+        std::string user_id;
+        std::vector<std::string> groups;
+    };
     struct AuthResult {
         bool authorized = false;
         std::string user_id;
@@ -70,6 +74,9 @@ public:
 
     /// Check if token is valid (any scope)
     AuthResult validateToken(std::string_view token) const;
+
+    /// Extract basic context (user_id, groups) from token if valid
+    std::optional<AuthContext> extractContext(std::string_view token) const;
 
     /// Extract token from "Bearer <token>" header value
     static std::optional<std::string> extractBearerToken(std::string_view auth_header);

@@ -76,6 +76,7 @@ bool RetentionManager::shouldArchive(
     const std::string& entity_id,
     std::chrono::system_clock::time_point created_at,
     const std::string& policy_name) const {
+    (void)entity_id;
     
     const auto* policy = getPolicy(policy_name);
     if (!policy) {
@@ -92,6 +93,7 @@ bool RetentionManager::shouldPurge(
     const std::string& entity_id,
     std::chrono::system_clock::time_point created_at,
     const std::string& policy_name) const {
+    (void)entity_id;
     
     const auto* policy = getPolicy(policy_name);
     if (!policy || !policy->auto_purge_enabled) {

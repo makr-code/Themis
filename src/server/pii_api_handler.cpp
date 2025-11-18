@@ -110,7 +110,6 @@ json PIIApiHandler::listMappings(const PiiQueryFilter& filter) {
     int index = 0;
 
     for (it->Seek(prefix); it->Valid() && it->key().starts_with(prefix); it->Next()) {
-        const auto& k = it->key();
         const auto& v = it->value();
         try {
             json j = json::parse(v.ToString());

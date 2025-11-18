@@ -20,6 +20,25 @@ The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Databa
   - database path: `./data/themis_server`
 - **Config files:** The server will auto‑load a config from `./config.yaml`, `./config/config.yaml`, `./config.json` or `/etc/vccdb/config.*` unless `--config` is provided.
 - **WSL / local builds:** Development builds on Windows/WSL commonly use the `build-wsl` directory as the build output. Some helper scripts (for example `.tools/vault_dev_run.ps1`) assume the test binary is available at `build-wsl/themis_tests` or the server binary at `build-wsl/themis_server`.
+
+### Build Scripts (Windows, Linux, WSL)
+
+- **Windows (PowerShell):**
+  - Erstsetup: `./setup.ps1`
+  - Build (Auto-Generator, default Verzeichnisse):
+    - Visual Studio: `./build.ps1 -BuildType Debug` → nutzt `build-msvc/`
+    - Ninja (falls installiert): `./build.ps1 -BuildType Debug -Generator Ninja` → nutzt `build-ninja/`
+  - Beispiele: `./build.ps1 -BuildType Release -RunTests`, `./build.ps1 -EnableBenchmarks`, `./build.ps1 -Clean`
+
+- **Linux/WSL (bash):**
+  - Erstsetup: `./setup.sh`
+  - Build: `./build.sh BUILD_TYPE=Debug RUN_TESTS=1`
+  - Standard-Build-Verzeichnis:
+    - WSL: `build-wsl/` (automatisch)
+    - Linux/macOS: `build/`
+  - Anpassungen via Umgebungsvariablen: `BUILD_DIR`, `GENERATOR` (z. B. Ninja), `ENABLE_TESTS`, `ENABLE_BENCHMARKS`, `ENABLE_GPU`, `STRICT`
+
+- **Toolchain/Dependencies:** vcpkg Toolchain wird automatisch genutzt, wenn `VCPKG_ROOT` gesetzt ist. OpenSSL, Arrow, RocksDB, Boost, spdlog etc. werden über `vcpkg.json` im Manifest-Modus aufgelöst.
 - **Notes on container/runtime:** `Dockerfile.runtime` uses `/usr/local/bin/themis_server --config /etc/themis/config.json` as entrypoint and also exposes ports `8080` and `18765` in the image — these are image-level ports and may be mapped to the server's configured port (default `8765`) at runtime; when running the binary directly prefer to use the `--port` flag or a config file to guarantee port choice.
 
 

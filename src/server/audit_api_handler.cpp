@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <cctype>
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4505)  // unreferenced local function
+#pragma warning(disable: 4101)  // unreferenced local variable
+#endif
+
 namespace themis {
 namespace server {
 
@@ -186,6 +191,7 @@ std::vector<AuditLogEntry> AuditApiHandler::readAuditLogs(const AuditQueryFilter
             entries.push_back(entry);
             
         } catch (const std::exception& e) {
+            (void)e;
             // Skip malformed lines
             continue;
         }

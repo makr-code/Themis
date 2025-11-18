@@ -1,5 +1,11 @@
 #include "query/window_evaluator.h"
 #include "query/let_evaluator.h"
+
+#ifdef _MSC_VER
+#pragma warning(disable: 4100)  // unreferenced formal parameter
+#pragma warning(disable: 4101)  // unreferenced local variable
+#endif
+
 #include <algorithm>
 #include <map>
 #include <sstream>

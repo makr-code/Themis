@@ -88,6 +88,7 @@ AuthMiddleware::AuthResult AuthMiddleware::authorize(std::string_view token, std
 }
 
 AuthMiddleware::AuthResult AuthMiddleware::authorizeViaJWT(std::string_view token, std::string_view required_scope) const {
+    (void)required_scope;
     // Note: mutex is already locked by caller (authorize)
     
     if (!jwt_validator_) {
@@ -179,6 +180,18 @@ std::optional<std::string> AuthMiddleware::extractBearerToken(std::string_view a
     }
 
     return token.substr(start, end - start + 1);
+}
+
+std::optional<AuthMiddleware::AuthContext> AuthMiddleware::extractContext(std::string_view token) const {
+    // Do not lock validateToken again; it already locks internally.
+    auto res = validateToken(token);
+    if (res.authorized) {
+        AuthContext ctx;
+        ctx.user_id = std::move(res.user_id);
+        ctx.groups = std::move(res.groups);
+        return ctx;
+    }
+    return std::nullopt;
 }
 
 } // namespace themis

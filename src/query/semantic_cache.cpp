@@ -404,10 +404,10 @@ SemanticQueryCache::loadCacheEntry_(std::string_view query) const {
     }
     
     auto hitOpt = entity.getFieldAsInt("hit_count");
-    if (hitOpt.has_value()) entry.hit_count = *hitOpt;
+    if (hitOpt.has_value()) entry.hit_count = static_cast<int>(*hitOpt);
     
     auto sizeOpt = entity.getFieldAsInt("result_size");
-    if (sizeOpt.has_value()) entry.result_size = *sizeOpt;
+    if (sizeOpt.has_value()) entry.result_size = static_cast<int>(*sizeOpt);
     
     return entry;
 }
@@ -485,8 +485,8 @@ std::vector<std::string> SemanticQueryCache::tokenizeQuery_(std::string_view que
     std::string current;
     
     for (char c : query) {
-        if (std::isalnum(c) || c == '_') {
-            current += std::tolower(c);
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+            current += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         } else if (!current.empty()) {
             tokens.push_back(current);
             current.clear();

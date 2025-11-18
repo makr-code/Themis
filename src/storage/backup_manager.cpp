@@ -1,6 +1,6 @@
 #include "storage/backup_manager.h"
 #include "storage/rocksdb_wrapper.h"
-#include "core/logging.h"
+#include "utils/logger.h"
 #include <filesystem>
 #include <fstream>
 #include <chrono>
@@ -101,6 +101,7 @@ uint64_t BackupManager::getCurrentSequenceNumber() const {
 
 bool BackupManager::copyWALFiles(const std::string& src_dir, const std::string& dest_dir,
                                  uint64_t min_sequence, std::error_code& ec) {
+    (void)min_sequence;
     namespace fs = std::filesystem;
     try {
         fs::create_directories(dest_dir, ec);

@@ -147,13 +147,13 @@ std::vector<uint8_t> PKIKeyProvider::loadOrCreateDEK(uint32_t version) {
     } else {
         // Generate new DEK
         std::vector<uint8_t> dek(32); // 256-bit
-        if (RAND_bytes(dek.data(), dek.size()) != 1) {
+        if (RAND_bytes(dek.data(), static_cast<int>(dek.size())) != 1) {
             throw std::runtime_error("Failed to generate random DEK");
         }
         
         // Encrypt DEK with KEK using AES-GCM
         std::vector<uint8_t> iv(12);
-        if (RAND_bytes(iv.data(), iv.size()) != 1) {
+        if (RAND_bytes(iv.data(), static_cast<int>(iv.size())) != 1) {
             throw std::runtime_error("Failed to generate IV for DEK encryption");
         }
         
@@ -168,7 +168,7 @@ std::vector<uint8_t> PKIKeyProvider::loadOrCreateDEK(uint32_t version) {
         std::vector<uint8_t> ciphertext(dek.size() + 16);
         int len = 0;
         
-        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, dek.data(), dek.size()) != 1) {
+        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, dek.data(), static_cast<int>(dek.size())) != 1) {
             EVP_CIPHER_CTX_free(ctx);
             throw std::runtime_error("EncryptUpdate failed");
         }
@@ -182,7 +182,7 @@ std::vector<uint8_t> PKIKeyProvider::loadOrCreateDEK(uint32_t version) {
         ciphertext.resize(len + final_len);
         
         std::vector<uint8_t> tag(16);
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, tag.size(), tag.data()) != 1) {
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, static_cast<int>(tag.size()), tag.data()) != 1) {
             EVP_CIPHER_CTX_free(ctx);
             throw std::runtime_error("Get tag failed");
         }
@@ -290,6 +290,7 @@ KeyMetadata PKIKeyProvider::getKeyMetadata(const std::string& key_id, uint32_t v
 }
 
 void PKIKeyProvider::deleteKey(const std::string& key_id, uint32_t version) {
+    (void)version; // unused parameter
     std::scoped_lock lk(mu_);
     
     if (key_id == "dek") {
@@ -316,6 +317,7 @@ uint32_t PKIKeyProvider::createKeyFromBytes(
     const std::string& key_id,
     const std::vector<uint8_t>& key_bytes,
     const KeyMetadata& metadata) {
+    (void)metadata; // unused parameter
     
     std::scoped_lock lk(mu_);
     field_key_cache_[key_id] = key_bytes;

@@ -5,6 +5,10 @@
 #include <stdexcept>
 #include <nlohmann/json.hpp>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace themis {
 namespace geo {
 
@@ -172,8 +176,11 @@ GeometryInfo EWKBParser::parsePoint(const uint8_t*& ptr, bool has_z, bool is_lit
     double x = readDouble(ptr, is_little_endian);
     double y = readDouble(ptr, is_little_endian);
     double z = has_z ? readDouble(ptr, is_little_endian) : 0.0;
-    
-    geom.coords.emplace_back(x, y, has_z ? std::optional<double>(z) : std::nullopt);
+    if (has_z) {
+        geom.coords.emplace_back(x, y, z);
+    } else {
+        geom.coords.emplace_back(x, y);
+    }
     return geom;
 }
 
@@ -189,8 +196,11 @@ GeometryInfo EWKBParser::parseLineString(const uint8_t*& ptr, bool has_z, bool i
         double x = readDouble(ptr, is_little_endian);
         double y = readDouble(ptr, is_little_endian);
         double z = has_z ? readDouble(ptr, is_little_endian) : 0.0;
-        
-        geom.coords.emplace_back(x, y, has_z ? std::optional<double>(z) : std::nullopt);
+        if (has_z) {
+            geom.coords.emplace_back(x, y, z);
+        } else {
+            geom.coords.emplace_back(x, y);
+        }
     }
     
     return geom;
@@ -211,9 +221,12 @@ GeometryInfo EWKBParser::parsePolygon(const uint8_t*& ptr, bool has_z, bool is_l
         for (uint32_t i = 0; i < num_points; ++i) {
             double x = readDouble(ptr, is_little_endian);
             double y = readDouble(ptr, is_little_endian);
-            double z = has_z ? readDouble(ptr, is_little_endian) : 0.0;
-            
-            geom.rings[r].emplace_back(x, y, has_z ? std::optional<double>(z) : std::nullopt);
+            if (has_z) {
+                double z = readDouble(ptr, is_little_endian);
+                geom.rings[r].emplace_back(x, y, z);
+            } else {
+                geom.rings[r].emplace_back(x, y);
+            }
         }
     }
     
@@ -289,16 +302,16 @@ std::vector<uint8_t> EWKBParser::serialize(const GeometryInfo& geom) {
         writeDouble(buf, c.y, is_little_endian);
         if (geom.has_z) writeDouble(buf, c.getZ(), is_little_endian);
     } else if (geom.isLineString()) {
-        writeUInt32(buf, geom.coords.size(), is_little_endian);
+        writeUInt32(buf, static_cast<uint32_t>(geom.coords.size()), is_little_endian);
         for (const auto& c : geom.coords) {
             writeDouble(buf, c.x, is_little_endian);
             writeDouble(buf, c.y, is_little_endian);
             if (geom.has_z) writeDouble(buf, c.getZ(), is_little_endian);
         }
     } else if (geom.isPolygon()) {
-        writeUInt32(buf, geom.rings.size(), is_little_endian);
+        writeUInt32(buf, static_cast<uint32_t>(geom.rings.size()), is_little_endian);
         for (const auto& ring : geom.rings) {
-            writeUInt32(buf, ring.size(), is_little_endian);
+            writeUInt32(buf, static_cast<uint32_t>(ring.size()), is_little_endian);
             for (const auto& c : ring) {
                 writeDouble(buf, c.x, is_little_endian);
                 writeDouble(buf, c.y, is_little_endian);
