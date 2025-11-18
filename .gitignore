@@ -93,6 +93,12 @@ node_modules/
 npm-debug.log*
 yarn-error.log*
 
+# Documentation build artifacts
+site/
+wiki-temp/
+wiki/
+*.wiki/
+
 # Docker / containers
 docker-compose.override.yml
 
