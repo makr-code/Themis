@@ -82,6 +82,26 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _graphAql = string.Empty;
 
+    // Phase 3: Vector search support
+    public ObservableCollection<VectorFilter> VectorMetadataFilters { get; } = new();
+    public ObservableCollection<VectorWeight> VectorWeights { get; } = new();
+    
+    [ObservableProperty]
+    private VectorQuery _vectorQuery = new();
+    
+    [ObservableProperty]
+    private string _vectorAql = string.Empty;
+
+    public ObservableCollection<string> DistanceMetrics { get; } = new()
+    {
+        "Cosine", "Euclidean", "DotProduct", "Manhattan"
+    };
+
+    public ObservableCollection<string> VectorSearchModes { get; } = new()
+    {
+        "Similarity", "MultiVector", "Range"
+    };
+
     public MainViewModel()
     {
         _httpClient = new HttpClient();
@@ -636,5 +656,140 @@ public partial class MainViewModel : ObservableObject
         {
             return json;
         }
+    }
+
+    // ===== Phase 3: Vector Search Commands =====
+
+    [RelayCommand]
+    private void AddVectorFilter()
+    {
+        var filter = new VectorFilter
+        {
+            Field = "category",
+            Operator = FilterOperator.Equals,
+            Value = "\"technology\""
+        };
+        VectorMetadataFilters.Add(filter);
+        VectorQuery.MetadataFilters.Add(filter);
+    }
+
+    [RelayCommand]
+    private void RemoveVectorFilter(VectorFilter filter)
+    {
+        VectorMetadataFilters.Remove(filter);
+        VectorQuery.MetadataFilters.Remove(filter);
+    }
+
+    [RelayCommand]
+    private void AddVectorWeight()
+    {
+        var weight = new VectorWeight
+        {
+            VectorField = $"vector{VectorWeights.Count + 1}",
+            ReferenceVector = "[]",
+            Weight = 1.0,
+            Label = $"Vector {VectorWeights.Count + 1}"
+        };
+        VectorWeights.Add(weight);
+        VectorQuery.MultiVectorWeights.Add(weight);
+    }
+
+    [RelayCommand]
+    private void RemoveVectorWeight(VectorWeight weight)
+    {
+        VectorWeights.Remove(weight);
+        VectorQuery.MultiVectorWeights.Remove(weight);
+    }
+
+    [RelayCommand]
+    private void UpdateVectorAql()
+    {
+        VectorAql = VectorQuery.ToAql();
+        GeneratedQuery = VectorAql;
+    }
+
+    [RelayCommand]
+    private void AddSampleVectorQuery()
+    {
+        // Clear existing
+        VectorMetadataFilters.Clear();
+        VectorWeights.Clear();
+        VectorQuery.MetadataFilters.Clear();
+        VectorQuery.MultiVectorWeights.Clear();
+
+        // Set up sample similarity search
+        VectorQuery.VectorCollection = "product_embeddings";
+        VectorQuery.VectorField = "description_vector";
+        VectorQuery.SearchMode = VectorSearchMode.Similarity;
+        VectorQuery.DistanceMetric = DistanceMetric.Cosine;
+        VectorQuery.TopK = 10;
+        VectorQuery.SimilarityThreshold = 0.75;
+        VectorQuery.UseThreshold = true;
+        VectorQuery.HybridSearch = true;
+
+        // Add reference vector (example 384-dim embedding, truncated for display)
+        VectorQuery.ReferenceVector = "[0.1, 0.2, 0.3, ..., 0.384]";
+
+        // Add metadata filter for hybrid search
+        var filter = new VectorFilter
+        {
+            Field = "category",
+            Operator = FilterOperator.Equals,
+            Value = "\"electronics\""
+        };
+        VectorMetadataFilters.Add(filter);
+        VectorQuery.MetadataFilters.Add(filter);
+
+        var filter2 = new VectorFilter
+        {
+            Field = "price",
+            Operator = FilterOperator.LessThan,
+            Value = "1000"
+        };
+        VectorMetadataFilters.Add(filter2);
+        VectorQuery.MetadataFilters.Add(filter2);
+
+        // Generate AQL
+        UpdateVectorAql();
+    }
+
+    [RelayCommand]
+    private void AddSampleMultiVectorQuery()
+    {
+        // Clear existing
+        VectorMetadataFilters.Clear();
+        VectorWeights.Clear();
+        VectorQuery.MetadataFilters.Clear();
+        VectorQuery.MultiVectorWeights.Clear();
+
+        // Set up multi-vector weighted search
+        VectorQuery.VectorCollection = "documents";
+        VectorQuery.SearchMode = VectorSearchMode.MultiVector;
+        VectorQuery.DistanceMetric = DistanceMetric.Cosine;
+        VectorQuery.TopK = 5;
+
+        // Add multiple vectors with weights
+        var weight1 = new VectorWeight
+        {
+            VectorField = "title_vector",
+            ReferenceVector = "[0.5, 0.3, ...]",
+            Weight = 0.6,
+            Label = "Title (60%)"
+        };
+        VectorWeights.Add(weight1);
+        VectorQuery.MultiVectorWeights.Add(weight1);
+
+        var weight2 = new VectorWeight
+        {
+            VectorField = "content_vector",
+            ReferenceVector = "[0.2, 0.4, ...]",
+            Weight = 0.4,
+            Label = "Content (40%)"
+        };
+        VectorWeights.Add(weight2);
+        VectorQuery.MultiVectorWeights.Add(weight2);
+
+        // Generate AQL
+        UpdateVectorAql();
     }
 }

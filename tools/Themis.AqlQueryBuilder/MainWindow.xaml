@@ -33,7 +33,7 @@
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="#2D2D30" Padding="10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="📊 Themis AQL Query Builder - Phase 2" 
+                <TextBlock Text="📊 Themis AQL Query Builder - Phase 3" 
                           Foreground="White" 
                           FontSize="18" 
                           FontWeight="Bold" 
@@ -731,14 +731,305 @@
             </ScrollViewer>
         </TabItem>
         
-        <!-- Vector Query Tab (Placeholder) -->
-        <TabItem Header="🔢 Vector Search" IsEnabled="False">
-            <StackPanel Margin="20" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="🔢 Vector Similarity Search" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
-                <TextBlock Text="Coming in Phase 3" Foreground="Gray" FontSize="14"/>
-                <TextBlock Text="Features: Similarity threshold, distance metrics, hybrid filtering" 
-                          Foreground="Gray" FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
-            </StackPanel>
+        <!-- Vector Search Tab (Phase 3) -->
+        <TabItem Header="🔢 Vector Search">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="#FAFAFA">
+                <StackPanel Margin="15">
+                    
+                    <!-- Phase 3 Banner -->
+                    <Border Background="#FFF9C4" BorderBrush="#FFC107" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
+                        <StackPanel>
+                            <TextBlock Text="✅ Phase 3: Vector Similarity Search" FontWeight="Bold" FontSize="14" Foreground="#F57C00"/>
+                            <TextBlock Text="New: Vector Embeddings • Distance Metrics • K-NN Search • Hybrid Filtering • Multi-Vector Weighting" 
+                                      FontSize="11" Foreground="#424242" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Vector Search Info -->
+                    <Border Background="#E1F5FE" BorderBrush="#03A9F4" BorderThickness="1" Padding="10" Margin="0,0,0,15" CornerRadius="3">
+                        <StackPanel>
+                            <TextBlock Text="💡 Find similar items using vector embeddings" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="Search by similarity using embeddings from text, images, or other data. Combine with metadata filters for hybrid search." 
+                                      FontSize="10" Foreground="#666" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Vector Collection Settings -->
+                    <GroupBox Header="Vector Collection Settings" Margin="0,0,0,10" BorderBrush="#FF6F00" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#FF6F00" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Collection:" VerticalAlignment="Center" Margin="5"/>
+                            <ComboBox Grid.Row="0" Grid.Column="1" 
+                                     Text="{Binding VectorQuery.VectorCollection, UpdateSourceTrigger=PropertyChanged}"
+                                     ItemsSource="{Binding AvailableCollections}"
+                                     IsEditable="True"
+                                     Margin="5" Padding="5"/>
+                            
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Vector Field:" VerticalAlignment="Center" Margin="5"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" 
+                                    Text="{Binding VectorQuery.VectorField, UpdateSourceTrigger=PropertyChanged}"
+                                    Margin="5" Padding="5"/>
+                            
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Search Mode:" VerticalAlignment="Center" Margin="5"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1"
+                                     SelectedItem="{Binding VectorQuery.SearchMode}"
+                                     Margin="5" Padding="5">
+                                <ComboBoxItem Content="Similarity Search" Tag="Similarity"/>
+                                <ComboBoxItem Content="Multi-Vector Weighted" Tag="MultiVector"/>
+                                <ComboBoxItem Content="Range Search" Tag="Range"/>
+                            </ComboBox>
+                            
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Distance Metric:" VerticalAlignment="Center" Margin="5"/>
+                            <ComboBox Grid.Row="3" Grid.Column="1"
+                                     SelectedItem="{Binding VectorQuery.DistanceMetric}"
+                                     Margin="5" Padding="5">
+                                <ComboBoxItem Content="Cosine Similarity" Tag="Cosine"/>
+                                <ComboBoxItem Content="Euclidean (L2)" Tag="Euclidean"/>
+                                <ComboBoxItem Content="Dot Product" Tag="DotProduct"/>
+                                <ComboBoxItem Content="Manhattan (L1)" Tag="Manhattan"/>
+                            </ComboBox>
+                        </Grid>
+                    </GroupBox>
+                    
+                    <!-- Reference Vector -->
+                    <GroupBox Header="Reference Vector / Query Item" Margin="0,0,0,10" BorderBrush="#9C27B0" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#9C27B0" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="💡 Specify reference vector or item ID to find similar items" 
+                                      FontSize="10" Foreground="#666" Margin="5,0,5,8" TextWrapping="Wrap"/>
+                            
+                            <TextBlock Text="Reference Item ID (find similar to this item):" Margin="5,5,5,3" FontWeight="SemiBold" FontSize="11"/>
+                            <TextBox Text="{Binding VectorQuery.ReferenceItemId, UpdateSourceTrigger=PropertyChanged}"
+                                    Margin="5" Padding="5"
+                                    ToolTip="Document ID to use as reference (e.g., 'products/12345')"/>
+                            
+                            <TextBlock Text="- OR -" HorizontalAlignment="Center" Margin="0,8" FontStyle="Italic" Foreground="#999"/>
+                            
+                            <TextBlock Text="Reference Vector (array of numbers):" Margin="5,5,5,3" FontWeight="SemiBold" FontSize="11"/>
+                            <TextBox Text="{Binding VectorQuery.ReferenceVector, UpdateSourceTrigger=PropertyChanged}"
+                                    Margin="5" Padding="5" MinHeight="60" TextWrapping="Wrap"
+                                    AcceptsReturn="True"
+                                    ToolTip="Vector array, e.g., [0.1, 0.2, 0.3, ...]"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Search Parameters -->
+                    <GroupBox Header="Search Parameters (K-NN)" Margin="0,0,0,10" BorderBrush="#00BCD4" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#00BCD4" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Top K Results:" VerticalAlignment="Center" Margin="5"/>
+                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="5">
+                                <TextBox Text="{Binding VectorQuery.TopK, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="80" Padding="5" Margin="0,0,10,0"/>
+                                <TextBlock Text="(Return top K most similar items)" VerticalAlignment="Center" Foreground="#666" FontSize="10"/>
+                            </StackPanel>
+                            
+                            <CheckBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                     Content="Use Similarity Threshold"
+                                     IsChecked="{Binding VectorQuery.UseThreshold}"
+                                     Margin="5" FontWeight="SemiBold"/>
+                            
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Threshold:" VerticalAlignment="Center" Margin="5,0,5,5"/>
+                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="5,0,5,5">
+                                <Slider Value="{Binding VectorQuery.SimilarityThreshold}"
+                                       Minimum="0" Maximum="1" Width="200"
+                                       TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="{Binding VectorQuery.SimilarityThreshold, StringFormat='{}{0:F2}'}"
+                                          VerticalAlignment="Center" FontWeight="Bold" Width="40"/>
+                                <TextBlock Text="(Only return items with similarity ≥ threshold)" 
+                                          VerticalAlignment="Center" Foreground="#666" FontSize="10" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </GroupBox>
+                    
+                    <!-- Hybrid Search: Metadata Filters -->
+                    <GroupBox Header="Hybrid Search: Metadata Filters (Optional)" Margin="0,0,0,10" BorderBrush="#4CAF50" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#4CAF50" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <CheckBox Content="Enable Hybrid Search (Combine vector similarity with metadata filters)"
+                                     IsChecked="{Binding VectorQuery.HybridSearch}"
+                                     Margin="5" FontWeight="SemiBold"/>
+                            
+                            <TextBlock Text="💡 Add metadata filters to narrow search before vector comparison" 
+                                      FontSize="10" Foreground="#666" Margin="5,5,5,8" TextWrapping="Wrap"/>
+                            
+                            <ItemsControl ItemsSource="{Binding VectorMetadataFilters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#4CAF50" BorderThickness="1" Padding="8" Margin="0,3" Background="#E8F5E9" CornerRadius="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <TextBox Grid.Column="0" Text="{Binding Field, UpdateSourceTrigger=PropertyChanged}" 
+                                                        Margin="0,0,5,0" Padding="4"/>
+                                                <ComboBox Grid.Column="1" SelectedItem="{Binding Operator}" Margin="0,0,5,0" Padding="4" Width="120">
+                                                    <ComboBoxItem Content="==" Tag="Equals"/>
+                                                    <ComboBoxItem Content="!=" Tag="NotEquals"/>
+                                                    <ComboBoxItem Content="&gt;" Tag="GreaterThan"/>
+                                                    <ComboBoxItem Content="&lt;" Tag="LessThan"/>
+                                                    <ComboBoxItem Content="≥" Tag="GreaterThanOrEqual"/>
+                                                    <ComboBoxItem Content="≤" Tag="LessThanOrEqual"/>
+                                                    <ComboBoxItem Content="IN" Tag="In"/>
+                                                </ComboBox>
+                                                <TextBox Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" 
+                                                        Margin="0,0,5,0" Padding="4"/>
+                                                <Button Grid.Column="3" Content="✕" 
+                                                       Command="{Binding DataContext.RemoveVectorFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Width="28" Height="28"
+                                                       Background="#FFE5E5"
+                                                       BorderBrush="#F44336"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Metadata Filter" 
+                                   Command="{Binding AddVectorFilterCommand}"
+                                   HorizontalAlignment="Left" 
+                                   Margin="0,8,0,0"
+                                   Padding="12,6"
+                                   Background="#E8F5E9"
+                                   BorderBrush="#4CAF50"
+                                   FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Multi-Vector Weights (for Multi-Vector mode) -->
+                    <GroupBox Header="Multi-Vector Weights (for Multi-Vector mode)" Margin="0,0,0,10" BorderBrush="#E91E63" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#E91E63" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="💡 Combine multiple vector fields with different weights (e.g., title: 60%, content: 40%)" 
+                                      FontSize="10" Foreground="#666" Margin="5,0,5,8" TextWrapping="Wrap"/>
+                            
+                            <ItemsControl ItemsSource="{Binding VectorWeights}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#E91E63" BorderThickness="1" Padding="8" Margin="0,3" Background="#FCE4EC" CornerRadius="3">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="100"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Field:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding VectorField, UpdateSourceTrigger=PropertyChanged}" 
+                                                        Margin="0,0,5,0" Padding="4"/>
+                                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Weight:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                <TextBox Grid.Row="0" Grid.Column="3" Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" 
+                                                        Margin="0,0,5,0" Padding="4"/>
+                                                <Button Grid.Row="0" Grid.Column="4" Content="✕" 
+                                                       Command="{Binding DataContext.RemoveVectorWeightCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Width="28" Height="28"
+                                                       Background="#FFE5E5"
+                                                       BorderBrush="#F44336"/>
+                                                
+                                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Vector:" VerticalAlignment="Center" Margin="0,5,5,0"/>
+                                                <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                                                        Text="{Binding ReferenceVector, UpdateSourceTrigger=PropertyChanged}"
+                                                        Margin="0,5,5,0" Padding="4"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Vector Weight" 
+                                   Command="{Binding AddVectorWeightCommand}"
+                                   HorizontalAlignment="Left" 
+                                   Margin="0,8,0,0"
+                                   Padding="12,6"
+                                   Background="#FCE4EC"
+                                   BorderBrush="#E91E63"
+                                   FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Action Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,10">
+                        <Button Content="📋 Sample Similarity Search" 
+                               Command="{Binding AddSampleVectorQueryCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#FFF9C4"
+                               BorderBrush="#FFC107"/>
+                        <Button Content="📊 Sample Multi-Vector" 
+                               Command="{Binding AddSampleMultiVectorQueryCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#FCE4EC"
+                               BorderBrush="#E91E63"/>
+                        <Button Content="🔄 Generate AQL" 
+                               Command="{Binding UpdateVectorAqlCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#FF6F00"
+                               Foreground="White"
+                               FontWeight="Bold"/>
+                        <Button Content="🗑️ Clear" 
+                               Command="{Binding ClearQueryCommand}"
+                               Padding="15,8"
+                               Margin="5"
+                               Background="#FFE5E5"
+                               BorderBrush="#F44336"/>
+                    </StackPanel>
+                    
+                </StackPanel>
+            </ScrollViewer>
         </TabItem>
         
         <!-- Geo Query Tab (Placeholder) -->
@@ -813,7 +1104,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="✅ Phase 2 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBlock Text="✅ Phase 3 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
                     <TextBlock Text="|" Foreground="White" Margin="0,0,10,0"/>
                     <TextBlock Text="{Binding SchemaCollections.Count, StringFormat='{0} collections'}" 
                               Foreground="White" 
