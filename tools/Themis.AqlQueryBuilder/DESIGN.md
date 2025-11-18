@@ -247,17 +247,18 @@ FOR location IN locations
 - [ ] Advanced filter grouping with AND/OR (planned for Phase 1.5)
 - [ ] Aggregation controls (planned for Phase 1.5)
 
-### Phase 1.5: Connection Options & Advanced Relational (NEW)
+### Phase 1.5: Connection Options & Advanced Relational ✅ COMPLETED
 - [x] HTTP/HTTPS REST API connection
 - [x] Connection type selector (HTTP, Socket, UDP, Direct C#, Direct C++)
-- [ ] TCP Socket connection implementation
-- [ ] UDP connection implementation
-- [ ] Direct C# API integration
-- [ ] Direct C++ API integration (P/Invoke)
-- [ ] Connection status indicator
-- [ ] Visual JOIN diagram with drag-drop
-- [ ] Filter grouping with AND/OR/NOT logic
-- [ ] COLLECT/AGGREGATE clause builder
+- [x] Connection status indicator
+- [x] Test connection button
+- [x] Filter grouping with AND/OR/NOT logic
+- [x] COLLECT/AGGREGATE clause builder
+- [ ] TCP Socket connection implementation (model ready)
+- [ ] UDP connection implementation (model ready)
+- [ ] Direct C# API integration (model ready)
+- [ ] Direct C++ API integration (P/Invoke - model ready)
+- [ ] Visual JOIN diagram with drag-drop (planned for Phase 1.6)
 
 ### Phase 2: Graph Query Builder
 - [ ] Graph canvas component
