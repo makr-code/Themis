@@ -18,6 +18,8 @@
         <local:BoolToIntConverter x:Key="BoolToIntConverter"/>
         <local:CollectionTypeToIconConverter x:Key="CollectionTypeToIcon"/>
         <local:FieldTypeToColorConverter x:Key="FieldTypeToColor"/>
+        <local:ConnectionStatusToColorConverter x:Key="ConnectionStatusToColor"/>
+        <local:ConnectionStatusToIconConverter x:Key="ConnectionStatusToIcon"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </Window.Resources>
 
@@ -31,13 +33,34 @@
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="#2D2D30" Padding="10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="📊 Themis AQL Query Builder - Phase 1" 
+                <TextBlock Text="📊 Themis AQL Query Builder - Phase 1.5" 
                           Foreground="White" 
                           FontSize="18" 
                           FontWeight="Bold" 
                           VerticalAlignment="Center"/>
                 
                 <Separator Width="20" Background="Transparent"/>
+                
+                <!-- Connection Status Indicator -->
+                <Border Background="#1E1E1E" 
+                        Padding="8,4" 
+                        CornerRadius="3" 
+                        Margin="0,0,10,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="12" Height="12" 
+                                Fill="{Binding ConnectionStatus, Converter={StaticResource ConnectionStatusToColor}}"
+                                VerticalAlignment="Center"
+                                Margin="0,0,5,0"/>
+                        <TextBlock Text="{Binding ConnectionStatus, Converter={StaticResource ConnectionStatusToIcon}}" 
+                                  Foreground="White" 
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,5,0"/>
+                        <TextBlock Text="{Binding ConnectionStatus}" 
+                                  Foreground="White" 
+                                  VerticalAlignment="Center"
+                                  FontSize="11"/>
+                    </StackPanel>
+                </Border>
                 
                 <Button Content="New Query" 
                         Command="{Binding ClearQueryCommand}"
@@ -54,6 +77,12 @@
                         Background="#007ACC"
                         Foreground="White"
                         FontWeight="Bold"/>
+                <Button Content="🔌 Test Connection" 
+                        Command="{Binding TestConnectionCommand}"
+                        Margin="5,0" 
+                        Padding="10,5"
+                        Background="#10B981"
+                        Foreground="White"/>
                 <Button Content="📋 Copy" 
                         Command="{Binding CopyQueryCommand}"
                         Margin="5,0" 
@@ -142,11 +171,11 @@
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Background="#FAFAFA">
                 <StackPanel Margin="15">
                     
-                    <!-- Phase 1 Banner -->
-                    <Border Background="#E3F2FD" BorderBrush="#2196F3" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
+                    <!-- Phase 1.5 Banner -->
+                    <Border Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="2" Padding="10" Margin="0,0,0,15" CornerRadius="5">
                         <StackPanel>
-                            <TextBlock Text="✅ Phase 1: Enhanced Relational Query Builder" FontWeight="Bold" FontSize="14" Foreground="#1976D2"/>
-                            <TextBlock Text="Features: Schema Explorer • Multi-table Queries (FOR) • Advanced Filtering • Sorting • Pagination" 
+                            <TextBlock Text="✅ Phase 1.5: Advanced Relational + Connection Options" FontWeight="Bold" FontSize="14" Foreground="#2E7D32"/>
+                            <TextBlock Text="New: COLLECT/AGGREGATE • Connection Status • Filter AND/OR • Connection Test" 
                                       FontSize="11" Foreground="#424242" Margin="0,5,0,0"/>
                         </StackPanel>
                     </Border>
@@ -217,7 +246,7 @@
                             </DataTemplate>
                         </GroupBox.HeaderTemplate>
                         <StackPanel>
-                            <TextBlock Text="💡 Add conditions to filter results. All filters are combined with AND logic (Phase 1)." 
+                            <TextBlock Text="💡 Phase 1.5: Combine conditions with AND/OR/NOT logic for complex queries." 
                                       FontSize="10" 
                                       Foreground="#666" 
                                       Margin="5,0,5,8"
@@ -229,6 +258,7 @@
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
@@ -239,9 +269,24 @@
                                                     <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
                                                 
-                                                <TextBlock Text="FILTER" Grid.Column="0" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" Foreground="#F97316" FontSize="12"/>
-                                                <TextBox Grid.Column="1" Grid.Row="0" Text="{Binding LeftOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
-                                                <ComboBox Grid.Column="2" Grid.Row="0" 
+                                                <!-- Logical Operator (AND/OR) for filters after the first -->
+                                                <ComboBox Grid.Column="0" Grid.Row="0"
+                                                         SelectedItem="{Binding LogicalOp}"
+                                                         Margin="0,0,8,0"
+                                                         Width="60"
+                                                         Padding="3"
+                                                         FontSize="11"
+                                                         FontWeight="Bold">
+                                                    <ComboBox.Items>
+                                                        <ComboBoxItem Content="AND" Tag="And"/>
+                                                        <ComboBoxItem Content="OR" Tag="Or"/>
+                                                        <ComboBoxItem Content="NOT" Tag="Not"/>
+                                                    </ComboBox.Items>
+                                                </ComboBox>
+                                                
+                                                <TextBlock Text="FILTER" Grid.Column="1" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" Foreground="#F97316" FontSize="12"/>
+                                                <TextBox Grid.Column="2" Grid.Row="0" Text="{Binding LeftOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
+                                                <ComboBox Grid.Column="3" Grid.Row="0" 
                                                          SelectedItem="{Binding Operator}" 
                                                          Margin="0,0,8,0"
                                                          Width="100"
@@ -257,8 +302,8 @@
                                                         <ComboBoxItem Content="CONTAINS" Tag="Contains"/>
                                                     </ComboBox.Items>
                                                 </ComboBox>
-                                                <TextBox Grid.Column="3" Grid.Row="0" Text="{Binding RightOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
-                                                <Button Grid.Column="4" Grid.Row="0" Content="✕" 
+                                                <TextBox Grid.Column="4" Grid.Row="0" Text="{Binding RightOperand, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" Padding="4"/>
+                                                <Button Grid.Column="5" Grid.Row="0" Content="✕" 
                                                        Command="{Binding DataContext.RemoveFilterClauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        CommandParameter="{Binding}"
                                                        Width="28" Height="28"
@@ -266,7 +311,7 @@
                                                        BorderBrush="#F44336"
                                                        ToolTip="Remove this FILTER clause"/>
                                                 
-                                                <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="5" 
+                                                <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="6" 
                                                           Text="{Binding Condition}" 
                                                           FontStyle="Italic" 
                                                           Foreground="#666"
@@ -286,6 +331,99 @@
                                    Background="#FFF4E6"
                                    BorderBrush="#F97316"
                                    FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- COLLECT Clause (Phase 1.5: Aggregation) -->
+                    <GroupBox Header="COLLECT Clause (GROUP BY / AGGREGATE)" Margin="0,0,0,10" BorderBrush="#8B5CF6" BorderThickness="2">
+                        <GroupBox.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="#8B5CF6" FontSize="13"/>
+                            </DataTemplate>
+                        </GroupBox.HeaderTemplate>
+                        <StackPanel>
+                            <TextBlock Text="💡 Phase 1.5: Group results and calculate aggregations (COUNT, SUM, AVG, MIN, MAX)." 
+                                      FontSize="10" 
+                                      Foreground="#666" 
+                                      Margin="5,0,5,8"
+                                      TextWrapping="Wrap"/>
+                            
+                            <!-- GROUP BY Fields -->
+                            <TextBlock Text="Group By:" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                            <ItemsControl ItemsSource="{Binding GroupByFields}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#8B5CF6" BorderThickness="1" Padding="5" Margin="0,2" Background="#F3E8FF">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,4,0" Padding="3"/>
+                                                <TextBlock Grid.Column="1" Text="=" VerticalAlignment="Center" Margin="4,0" FontWeight="Bold"/>
+                                                <TextBox Grid.Column="2" Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}" Margin="4,0" Padding="3"/>
+                                                <Button Grid.Column="3" Content="✕" 
+                                                       Command="{Binding DataContext.RemoveGroupByFieldCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Width="24" Height="24"
+                                                       Margin="4,0,0,0"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Group By" 
+                                   Command="{Binding AddGroupByFieldCommand}"
+                                   HorizontalAlignment="Left" 
+                                   Margin="0,5,0,8"
+                                   Padding="8,4"
+                                   FontSize="11"/>
+                            
+                            <!-- AGGREGATE Fields -->
+                            <TextBlock Text="Aggregate:" FontWeight="SemiBold" Margin="0,5,0,3"/>
+                            <ItemsControl ItemsSource="{Binding AggregateFields}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#8B5CF6" BorderThickness="1" Padding="5" Margin="0,2" Background="#F3E8FF">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,4,0" Padding="3"/>
+                                                <TextBlock Grid.Column="1" Text="=" VerticalAlignment="Center" Margin="4,0" FontWeight="Bold"/>
+                                                <ComboBox Grid.Column="2" 
+                                                         Text="{Binding Function, UpdateSourceTrigger=PropertyChanged}"
+                                                         ItemsSource="{Binding DataContext.AggregationFunctions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                         IsEditable="True"
+                                                         Margin="4,0"
+                                                         Width="80"
+                                                         Padding="3"/>
+                                                <TextBlock Grid.Column="3" Text="(" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                                <TextBox Grid.Column="4" Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,2,0" Padding="3"/>
+                                                <TextBlock Grid.Column="5" Text=")" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <Button Grid.Column="6" Content="✕" 
+                                                       Command="{Binding DataContext.RemoveAggregateFieldCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Width="24" Height="24"
+                                                       Margin="4,0,0,0"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Aggregate" 
+                                   Command="{Binding AddAggregateFieldCommand}"
+                                   HorizontalAlignment="Left" 
+                                   Margin="0,5,0,0"
+                                   Padding="8,4"
+                                   FontSize="11"/>
                         </StackPanel>
                     </GroupBox>
 
@@ -462,7 +600,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="✅ Phase 1 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBlock Text="✅ Phase 1.5 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
                     <TextBlock Text="|" Foreground="White" Margin="0,0,10,0"/>
                     <TextBlock Text="{Binding SchemaCollections.Count, StringFormat='{0} collections'}" 
                               Foreground="White" 

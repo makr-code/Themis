@@ -37,6 +37,10 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<LetClause> LetClauses { get; } = new();
     public ObservableCollection<FilterClause> FilterClauses { get; } = new();
     public ObservableCollection<SortClause> SortClauses { get; } = new();
+    
+    // Phase 1.5: COLLECT clause support
+    public ObservableCollection<GroupByField> GroupByFields { get; } = new();
+    public ObservableCollection<AggregateField> AggregateFields { get; } = new();
 
     public ObservableCollection<string> AvailableCollections { get; } = new()
     {
@@ -234,6 +238,54 @@ public partial class MainViewModel : ObservableObject
         UpdateGeneratedQuery();
     }
 
+    // Phase 1.5: COLLECT clause commands
+    [RelayCommand]
+    private void AddGroupByField()
+    {
+        var groupBy = new GroupByField
+        {
+            Variable = $"group{GroupByFields.Count + 1}",
+            Expression = ForClauses.FirstOrDefault()?.Variable + ".field" ?? "doc.field"
+        };
+        GroupByFields.Add(groupBy);
+        if (Query.Collect == null)
+            Query.Collect = new CollectClause();
+        Query.Collect.GroupByFields.Add(groupBy);
+        UpdateGeneratedQuery();
+    }
+
+    [RelayCommand]
+    private void RemoveGroupByField(GroupByField groupBy)
+    {
+        GroupByFields.Remove(groupBy);
+        Query.Collect?.GroupByFields.Remove(groupBy);
+        UpdateGeneratedQuery();
+    }
+
+    [RelayCommand]
+    private void AddAggregateField()
+    {
+        var aggregate = new AggregateField
+        {
+            Variable = $"agg{AggregateFields.Count + 1}",
+            Function = "COUNT",
+            Expression = "1"
+        };
+        AggregateFields.Add(aggregate);
+        if (Query.Collect == null)
+            Query.Collect = new CollectClause();
+        Query.Collect.AggregateFields.Add(aggregate);
+        UpdateGeneratedQuery();
+    }
+
+    [RelayCommand]
+    private void RemoveAggregateField(AggregateField aggregate)
+    {
+        AggregateFields.Remove(aggregate);
+        Query.Collect?.AggregateFields.Remove(aggregate);
+        UpdateGeneratedQuery();
+    }
+
     [RelayCommand]
     private void UpdateLimit()
     {
@@ -264,6 +316,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         IsExecuting = true;
+        ConnectionStatus = ConnectionStatus.Connecting;
         QueryResult = "Executing query...";
 
         try
@@ -284,21 +337,56 @@ public partial class MainViewModel : ObservableObject
             
             if (response.IsSuccessStatusCode)
             {
+                ConnectionStatus = ConnectionStatus.Connected;
                 var resultJson = await response.Content.ReadAsStringAsync();
                 QueryResult = FormatJson(resultJson);
             }
             else
             {
+                ConnectionStatus = ConnectionStatus.Error;
                 QueryResult = $"Error: {response.StatusCode}\n{await response.Content.ReadAsStringAsync()}";
             }
         }
         catch (Exception ex)
         {
+            ConnectionStatus = ConnectionStatus.Error;
             QueryResult = $"Error executing query:\n{ex.Message}\n\nNote: Make sure the Themis server is running at {ServerUrl}";
         }
         finally
         {
             IsExecuting = false;
+        }
+    }
+
+    // Phase 1.5: Connection test command
+    [RelayCommand]
+    private async Task TestConnection()
+    {
+        ConnectionStatus = ConnectionStatus.Connecting;
+        QueryResult = "Testing connection...";
+
+        try
+        {
+            _httpClient.BaseAddress = new Uri(ServerUrl);
+            _httpClient.Timeout = TimeSpan.FromSeconds(5);
+            
+            var response = await _httpClient.GetAsync("/api/health");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                ConnectionStatus = ConnectionStatus.Connected;
+                QueryResult = $"✅ Connected to {ServerUrl}\n{await response.Content.ReadAsStringAsync()}";
+            }
+            else
+            {
+                ConnectionStatus = ConnectionStatus.Error;
+                QueryResult = $"❌ Connection failed: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus = ConnectionStatus.Error;
+            QueryResult = $"❌ Connection error:\n{ex.Message}";
         }
     }
 
@@ -309,6 +397,8 @@ public partial class MainViewModel : ObservableObject
         LetClauses.Clear();
         FilterClauses.Clear();
         SortClauses.Clear();
+        GroupByFields.Clear();
+        AggregateFields.Clear();
         Query = new AqlQueryModel();
         GeneratedQuery = string.Empty;
         QueryResult = string.Empty;

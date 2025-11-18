@@ -32,10 +32,47 @@ public class AqlQueryModel
             query.Add($"  LET {letClause.Variable} = {letClause.Expression}");
         }
 
-        // FILTER clauses
-        foreach (var filterClause in FilterClauses)
+        // FILTER clauses with AND/OR support (Phase 1.5)
+        if (FilterClauses.Any())
         {
-            query.Add($"  FILTER {filterClause.Condition}");
+            var filterExpressions = new List<string>();
+            for (int i = 0; i < FilterClauses.Count; i++)
+            {
+                var filter = FilterClauses[i];
+                var condition = filter.Condition;
+                
+                if (i > 0)
+                {
+                    // Add logical operator before condition
+                    var logicalOp = filter.LogicalOp switch
+                    {
+                        LogicalOperator.And => "AND",
+                        LogicalOperator.Or => "OR",
+                        LogicalOperator.Not => "NOT",
+                        _ => "AND"
+                    };
+                    
+                    // For simple case, combine in one FILTER statement
+                    if (!filter.IsGrouped)
+                    {
+                        filterExpressions.Add($"{logicalOp} {condition}");
+                    }
+                    else
+                    {
+                        // For grouped filters, create separate FILTER statements
+                        query.Add($"  FILTER {condition}");
+                    }
+                }
+                else
+                {
+                    filterExpressions.Add(condition);
+                }
+            }
+            
+            if (filterExpressions.Any())
+            {
+                query.Add($"  FILTER {string.Join(" ", filterExpressions)}");
+            }
         }
 
         // SORT clauses
@@ -109,6 +146,11 @@ public class FilterClause
     public FilterOperator Operator { get; set; } = FilterOperator.Equals;
     public string LeftOperand { get; set; } = string.Empty;
     public string RightOperand { get; set; } = string.Empty;
+    
+    // For grouped filters (Phase 1.5)
+    public LogicalOperator LogicalOp { get; set; } = LogicalOperator.And;
+    public bool IsGrouped { get; set; }
+    public int GroupLevel { get; set; }
 
     public void UpdateCondition()
     {
@@ -125,6 +167,16 @@ public class FilterClause
             _ => Condition
         };
     }
+}
+
+/// <summary>
+/// Logical operators for combining filters
+/// </summary>
+public enum LogicalOperator
+{
+    And,
+    Or,
+    Not
 }
 
 /// <summary>
