@@ -1,5 +1,7 @@
 # Exclude build artifacts and local environment files from Docker build context
 build/
+build-msvc/
+build-wsl/
 .git/
 vcpkg_installed/
 vcpkg-configuration.json
