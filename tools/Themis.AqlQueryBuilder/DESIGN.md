@@ -272,12 +272,20 @@ FOR location IN locations
 - [ ] Advanced canvas with drag-drop (planned for Phase 2.1)
 - [ ] Visual graph rendering library integration (planned for Phase 2.1)
 
-### Phase 3: Vector Query Builder
-- [ ] Reference item input
-- [ ] Similarity controls UI
-- [ ] Vector function support in AQL
-- [ ] Similarity score display
-- [ ] Hybrid query support
+### Phase 3: Vector Similarity Search Builder ✅ COMPLETED
+- [x] Vector search models (VectorQuery, VectorFilter, VectorWeight)
+- [x] Distance metrics (Cosine, Euclidean, DotProduct, Manhattan)
+- [x] K-NN search with top-K parameter
+- [x] Similarity threshold with slider control
+- [x] Reference item input (ID or vector array)
+- [x] Similarity controls UI
+- [x] Vector function support in AQL (COSINE_SIMILARITY, L2_DISTANCE, etc.)
+- [x] Similarity score display in results
+- [x] Hybrid query support (vector + metadata filters)
+- [x] Multi-vector weighted search
+- [x] Sample queries (similarity and multi-vector)
+- [ ] Advanced: Vector index visualization (planned for Phase 3.1)
+- [ ] Advanced: Embedding model selector (planned for Phase 3.1)
 
 ### Phase 4: Geo Query Builder
 - [ ] Map component integration (Mapsui)
