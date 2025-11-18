@@ -119,3 +119,32 @@ public class ConnectionStatusToIconConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts Enum to string for ComboBox binding
+/// </summary>
+public class EnumToStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value == null) return string.Empty;
+        return value.ToString();
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string str && !string.IsNullOrEmpty(str))
+        {
+            try
+            {
+                return Enum.Parse(targetType, str);
+            }
+            catch
+            {
+                return Enum.GetValues(targetType).GetValue(0);
+            }
+        }
+        return Enum.GetValues(targetType).GetValue(0);
+    }
+}
+

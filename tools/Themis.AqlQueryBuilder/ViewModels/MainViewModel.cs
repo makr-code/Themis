@@ -792,4 +792,131 @@ public partial class MainViewModel : ObservableObject
         // Generate AQL
         UpdateVectorAql();
     }
+
+    // ==================== Phase 4: Geo Query Commands ====================
+
+    // Phase 4: Geo search support
+    public ObservableCollection<GeoFilter> GeoMetadataFilters { get; } = new();
+    
+    [ObservableProperty]
+    private GeoQuery _geoQuery = new();
+    
+    [ObservableProperty]
+    private string _geoAql = string.Empty;
+
+    public ObservableCollection<string> ShapeTypes { get; } = new()
+    {
+        "Point", "LineString", "Polygon", "Circle", "BoundingBox"
+    };
+
+    public ObservableCollection<string> SpatialOperators { get; } = new()
+    {
+        "Distance", "Within", "Contains", "Intersects", "Near"
+    };
+
+    public ObservableCollection<string> DistanceUnits { get; } = new()
+    {
+        "Meters", "Kilometers", "Miles", "Feet"
+    };
+
+    [RelayCommand]
+    private void AddGeoFilter()
+    {
+        var filter = new GeoFilter
+        {
+            Field = "category",
+            Operator = "==",
+            Value = "\"restaurant\""
+        };
+        GeoMetadataFilters.Add(filter);
+        GeoQuery.MetadataFilters.Add(filter);
+        UpdateGeoAql();
+    }
+
+    [RelayCommand]
+    private void RemoveGeoFilter(GeoFilter filter)
+    {
+        GeoMetadataFilters.Remove(filter);
+        GeoQuery.MetadataFilters.Remove(filter);
+        UpdateGeoAql();
+    }
+
+    [RelayCommand]
+    private void UpdateGeoAql()
+    {
+        try
+        {
+            GeoAql = GeoQuery.ToAql();
+        }
+        catch (Exception ex)
+        {
+            GeoAql = $"// Error generating AQL: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void AddSamplePointSearch()
+    {
+        // Clear existing
+        GeoMetadataFilters.Clear();
+        GeoQuery.MetadataFilters.Clear();
+
+        // Set up point search for nearby restaurants
+        GeoQuery.GeoCollection = "stores";
+        GeoQuery.GeoField = "location";
+        GeoQuery.Shape = new GeoShape
+        {
+            Type = ShapeType.Point,
+            Coordinates = "52.5200, 13.4050" // Berlin center
+        };
+        GeoQuery.Operator = SpatialOperator.Distance;
+        GeoQuery.DistanceValue = 5;
+        GeoQuery.DistanceUnit = DistanceUnit.Kilometers;
+        GeoQuery.HybridSearch = true;
+
+        // Add metadata filter
+        var filter = new GeoFilter
+        {
+            Field = "category",
+            Operator = "==",
+            Value = "\"restaurant\""
+        };
+        GeoMetadataFilters.Add(filter);
+        GeoQuery.MetadataFilters.Add(filter);
+
+        // Generate AQL
+        UpdateGeoAql();
+    }
+
+    [RelayCommand]
+    private void AddSamplePolygonSearch()
+    {
+        // Clear existing
+        GeoMetadataFilters.Clear();
+        GeoQuery.MetadataFilters.Clear();
+
+        // Set up polygon search for stores in district
+        GeoQuery.GeoCollection = "stores";
+        GeoQuery.GeoField = "location";
+        GeoQuery.Shape = new GeoShape
+        {
+            Type = ShapeType.Polygon,
+            Coordinates = "" // Will use default polygon
+        };
+        GeoQuery.Operator = SpatialOperator.Within;
+        GeoQuery.HybridSearch = true;
+
+        // Add metadata filter
+        var filter = new GeoFilter
+        {
+            Field = "type",
+            Operator = "==",
+            Value = "\"retail\""
+        };
+        GeoMetadataFilters.Add(filter);
+        GeoQuery.MetadataFilters.Add(filter);
+
+        // Generate AQL
+        UpdateGeoAql();
+    }
 }

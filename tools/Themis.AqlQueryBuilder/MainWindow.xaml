@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:Themis.AqlQueryBuilder"
         xmlns:vm="clr-namespace:Themis.AqlQueryBuilder.ViewModels"
         mc:Ignorable="d"
-        Title="Themis AQL Multi-Model Query Builder - Phase 1" Height="900" Width="1600"
+        Title="Themis AQL Multi-Model Query Builder - Phase 4" Height="900" Width="1600"
         WindowStartupLocation="CenterScreen">
     
     <Window.DataContext>
@@ -20,6 +20,7 @@
         <local:FieldTypeToColorConverter x:Key="FieldTypeToColor"/>
         <local:ConnectionStatusToColorConverter x:Key="ConnectionStatusToColor"/>
         <local:ConnectionStatusToIconConverter x:Key="ConnectionStatusToIcon"/>
+        <local:EnumToStringConverter x:Key="EnumToStringConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </Window.Resources>
 
@@ -33,7 +34,7 @@
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="#2D2D30" Padding="10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="📊 Themis AQL Query Builder - Phase 3" 
+                <TextBlock Text="📊 Themis AQL Query Builder - Phase 4" 
                           Foreground="White" 
                           FontSize="18" 
                           FontWeight="Bold" 
@@ -1033,13 +1034,205 @@
         </TabItem>
         
         <!-- Geo Query Tab (Placeholder) -->
-        <TabItem Header="📍 Geo Query" IsEnabled="False">
-            <StackPanel Margin="20" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="📍 Geospatial Query Builder" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
-                <TextBlock Text="Coming in Phase 4" Foreground="Gray" FontSize="14"/>
-                <TextBlock Text="Features: Interactive map, spatial operators, drawing tools" 
-                          Foreground="Gray" FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
-            </StackPanel>
+        <!-- Phase 4: Geo Query Builder -->
+        <TabItem Header="📍 Geo Query">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="15">
+                    <!-- Phase 4 Banner -->
+                    <Border Background="#4CAF50" Padding="12,8" Margin="0,0,0,15" CornerRadius="4">
+                        <TextBlock Text="✅ Phase 4 Complete: Geo Spatial Query Builder" 
+                                  Foreground="White" 
+                                  FontSize="14" 
+                                  FontWeight="Bold"/>
+                    </Border>
+
+                    <!-- Collection Settings -->
+                    <GroupBox Header="📍 Collection Settings" Margin="0,0,0,10" 
+                             BorderBrush="#4CAF50" BorderThickness="2" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="Collection:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
+                            <TextBox Text="{Binding GeoQuery.GeoCollection, UpdateSourceTrigger=PropertyChanged}" 
+                                    Grid.Row="0" Grid.Column="1" Margin="0,5"
+                                    ToolTip="Collection with geospatial data"/>
+
+                            <TextBlock Text="Geo Field:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
+                            <TextBox Text="{Binding GeoQuery.GeoField, UpdateSourceTrigger=PropertyChanged}" 
+                                    Grid.Row="1" Grid.Column="1" Margin="0,5"
+                                    ToolTip="Field containing geo coordinates"/>
+
+                            <TextBlock Text="Shape Type:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
+                            <ComboBox ItemsSource="{Binding ShapeTypes}" 
+                                     SelectedItem="{Binding GeoQuery.Shape.Type, Converter={StaticResource EnumToStringConverter}}"
+                                     Grid.Row="2" Grid.Column="1" Margin="0,5"
+                                     ToolTip="Type of geometric shape"/>
+
+                            <TextBlock Text="Spatial Operator:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
+                            <ComboBox ItemsSource="{Binding SpatialOperators}" 
+                                     SelectedItem="{Binding GeoQuery.Operator, Converter={StaticResource EnumToStringConverter}}"
+                                     Grid.Row="3" Grid.Column="1" Margin="0,5"
+                                     ToolTip="Spatial query operator"/>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Shape Definition -->
+                    <GroupBox Header="🗺️ Shape Definition" Margin="0,0,0,10" 
+                             BorderBrush="#009688" BorderThickness="2" Padding="10">
+                        <StackPanel>
+                            <TextBlock Text="Coordinates (lat, lon):" Margin="0,0,0,5" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding GeoQuery.Shape.Coordinates, UpdateSourceTrigger=PropertyChanged}" 
+                                    Margin="0,0,0,10"
+                                    ToolTip="Coordinates e.g., 52.5200, 13.4050 (Berlin)"/>
+
+                            <TextBlock Text="GeoJSON (optional):" Margin="0,0,0,5" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding GeoQuery.Shape.GeoJsonInput, UpdateSourceTrigger=PropertyChanged}" 
+                                    Margin="0,0,0,10" Height="60" TextWrapping="Wrap" AcceptsReturn="True"
+                                    ToolTip="GeoJSON format: {&quot;type&quot;: &quot;Point&quot;, &quot;coordinates&quot;: [13.4050, 52.5200]}"/>
+
+                            <TextBlock Text="WKT (optional):" Margin="0,0,0,5" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding GeoQuery.Shape.WktInput, UpdateSourceTrigger=PropertyChanged}" 
+                                    Margin="0,0,0,5" Height="60" TextWrapping="Wrap" AcceptsReturn="True"
+                                    ToolTip="Well-Known Text: POINT(13.4050 52.5200)"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Distance Parameters -->
+                    <GroupBox Header="📏 Distance Parameters" Margin="0,0,0,10" 
+                             BorderBrush="#2196F3" BorderThickness="2" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="Distance:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
+                            <TextBox Text="{Binding GeoQuery.DistanceValue, UpdateSourceTrigger=PropertyChanged}" 
+                                    Grid.Row="0" Grid.Column="1" Margin="0,5"
+                                    ToolTip="Search radius distance"/>
+
+                            <TextBlock Text="Unit:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
+                            <ComboBox ItemsSource="{Binding DistanceUnits}" 
+                                     SelectedItem="{Binding GeoQuery.DistanceUnit, Converter={StaticResource EnumToStringConverter}}"
+                                     Grid.Row="1" Grid.Column="1" Margin="0,5"
+                                     ToolTip="Distance unit"/>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Hybrid Search Filters -->
+                    <GroupBox Header="🔍 Hybrid Search (Metadata Filters)" Margin="0,0,0,10" 
+                             BorderBrush="#FF9800" BorderThickness="2" Padding="10">
+                        <StackPanel>
+                            <CheckBox Content="Enable Hybrid Search" 
+                                     IsChecked="{Binding GeoQuery.HybridSearch}"
+                                     Margin="0,0,0,10"
+                                     ToolTip="Combine spatial search with metadata filters"/>
+
+                            <Button Content="+ Add Filter" 
+                                   Command="{Binding AddGeoFilterCommand}" 
+                                   Margin="0,0,0,10"
+                                   Padding="10,5"
+                                   Background="#FF9800"
+                                   Foreground="White"/>
+
+                            <ItemsControl ItemsSource="{Binding GeoMetadataFilters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#FF9800" BorderThickness="1" Padding="8" Margin="0,5" CornerRadius="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox Text="{Binding Field, UpdateSourceTrigger=PropertyChanged}" 
+                                                        Grid.Column="0" Margin="0,0,5,0" 
+                                                        ToolTip="Field name"/>
+                                                <ComboBox Grid.Column="1" Margin="0,0,5,0" Width="60"
+                                                         SelectedItem="{Binding Operator}"
+                                                         ToolTip="Comparison operator">
+                                                    <ComboBoxItem Content="=="/>
+                                                    <ComboBoxItem Content="!="/>
+                                                    <ComboBoxItem Content="&lt;"/>
+                                                    <ComboBoxItem Content="&gt;"/>
+                                                    <ComboBoxItem Content="&lt;="/>
+                                                    <ComboBoxItem Content="&gt;="/>
+                                                </ComboBox>
+                                                <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" 
+                                                        Grid.Column="2" Margin="0,0,5,0"
+                                                        ToolTip="Filter value"/>
+                                                <Button Content="✕" 
+                                                       Command="{Binding DataContext.RemoveGeoFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       CommandParameter="{Binding}"
+                                                       Grid.Column="3"
+                                                       Background="#F44336"
+                                                       Foreground="White"
+                                                       Padding="8,0"
+                                                       ToolTip="Remove filter"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Action Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10">
+                        <Button Content="📍 Sample Point Search" 
+                               Command="{Binding AddSamplePointSearchCommand}"
+                               Margin="5" 
+                               Padding="15,8"
+                               Background="#4CAF50"
+                               Foreground="White"
+                               ToolTip="Load example: Find restaurants within 5km of Berlin"/>
+                        <Button Content="🗺️ Sample Polygon Search" 
+                               Command="{Binding AddSamplePolygonSearchCommand}"
+                               Margin="5" 
+                               Padding="15,8"
+                               Background="#2196F3"
+                               Foreground="White"
+                               ToolTip="Load example: Find stores in a district"/>
+                        <Button Content="🔄 Generate AQL" 
+                               Command="{Binding UpdateGeoAqlCommand}"
+                               Margin="5" 
+                               Padding="15,8"
+                               Background="#FF9800"
+                               Foreground="White"/>
+                        <Button Content="🗑️ Clear" 
+                               Command="{Binding ClearQueryCommand}"
+                               Margin="5" 
+                               Padding="15,8"/>
+                    </StackPanel>
+
+                    <!-- Generated AQL Preview -->
+                    <GroupBox Header="📜 Generated AQL" Margin="0,15,0,0" Padding="10">
+                        <TextBox Text="{Binding GeoAql, Mode=OneWay}" 
+                                Height="180" 
+                                TextWrapping="Wrap" 
+                                AcceptsReturn="True" 
+                                IsReadOnly="True"
+                                FontFamily="Consolas"
+                                Background="#F5F5F5"
+                                VerticalScrollBarVisibility="Auto"/>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
         </TabItem>
     </TabControl>
 
@@ -1104,7 +1297,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="✅ Phase 3 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBlock Text="✅ Phase 4 Complete" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
                     <TextBlock Text="|" Foreground="White" Margin="0,0,10,0"/>
                     <TextBlock Text="{Binding SchemaCollections.Count, StringFormat='{0} collections'}" 
                               Foreground="White" 
