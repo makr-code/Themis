@@ -110,6 +110,7 @@ nav:
   - Entwicklung:
       - Code Quality Pipeline: code_quality.md
       - Developers Guide: development/developers.md
+      - Cost Models: development/cost-models.md
       - Todo Liste: development/todo.md
       - Tool Todo: development/tool_todo.md
       - Priorities: development/priorities.md
