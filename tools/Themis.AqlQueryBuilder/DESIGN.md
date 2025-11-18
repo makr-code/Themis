@@ -287,12 +287,18 @@ FOR location IN locations
 - [ ] Advanced: Vector index visualization (planned for Phase 3.1)
 - [ ] Advanced: Embedding model selector (planned for Phase 3.1)
 
-### Phase 4: Geo Query Builder
-- [ ] Map component integration (Mapsui)
-- [ ] Drawing tools
-- [ ] Spatial operator builder
-- [ ] Geometry input/output
-- [ ] Map-based result display
+### Phase 4: Geo Query Builder ✅ COMPLETED
+- [x] Geo query models (GeoQuery, GeoFilter, GeoShape)
+- [x] Shape types (Point, LineString, Polygon, Circle, BoundingBox)
+- [x] Spatial operators (Within, Contains, Intersects, Near, Distance)
+- [x] Distance-based queries with unit selection
+- [x] Geometry input (GeoJSON, WKT, coordinates)
+- [x] Hybrid geo search (spatial + metadata)
+- [x] Sample queries (point search, polygon search)
+- [x] Visual geo query builder UI
+- [ ] Map component integration (optional Phase 4.1)
+- [ ] Drawing tools (optional Phase 4.1)
+- [ ] Map-based result display (optional Phase 4.1)
 
 ### Phase 5: Hybrid & Polish
 - [ ] Query flow builder
