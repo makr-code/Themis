@@ -1,8 +1,12 @@
 ﻿using System.Configuration;
 using System.Data;
 using System.Globalization;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Data;
+using Themis.AqlQueryBuilder.Infrastructure;
+using Themis.AqlQueryBuilder.Services;
+using Themis.AqlQueryBuilder.ViewModels;
 
 namespace Themis.AqlQueryBuilder;
 
@@ -11,6 +15,34 @@ namespace Themis.AqlQueryBuilder;
 /// </summary>
 public partial class App : Application
 {
+    private static ServiceContainer? _services;
+    
+    /// <summary>
+    /// Gets the global service container instance
+    /// </summary>
+    public static ServiceContainer Services => _services ?? throw new InvalidOperationException("Service container not initialized");
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        
+        // Initialize service container
+        _services = new ServiceContainer();
+        
+        // Register services (singleton instances)
+        _services.RegisterSingleton<ISchemaService, SchemaService>();
+        _services.RegisterSingleton<IQueryHistoryService, QueryHistoryService>();
+        
+        // Register HttpClient as singleton
+        _services.RegisterSingleton<HttpClient>(() => new HttpClient());
+        
+        // Register AqlQueryService with factory that injects HttpClient and server URL
+        _services.RegisterSingleton<IAqlQueryService>(() => 
+            new AqlQueryService(_services.Resolve<HttpClient>(), "http://localhost:8080"));
+        
+        // Note: MainViewModel is not registered here as it needs to be created by the window
+        // The window will use the constructor to inject dependencies
+    }
 }
 
 /// <summary>
