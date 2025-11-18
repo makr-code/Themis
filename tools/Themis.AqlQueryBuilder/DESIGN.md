@@ -260,12 +260,17 @@ FOR location IN locations
 - [ ] Direct C++ API integration (P/Invoke - model ready)
 - [ ] Visual JOIN diagram with drag-drop (planned for Phase 1.6)
 
-### Phase 2: Graph Query Builder
-- [ ] Graph canvas component
-- [ ] Node/Edge palette
-- [ ] Drag-drop pattern builder
-- [ ] Traversal syntax generation
-- [ ] Graph result visualization
+### Phase 2: Graph Query Builder ✅ COMPLETED
+- [x] Graph canvas component (simplified visual builder)
+- [x] Node/Edge palette (form-based builder)
+- [x] Pattern builder (add/remove nodes and edges)
+- [x] Traversal syntax generation (GraphPattern.ToAql())
+- [x] Graph result visualization (text-based pattern info)
+- [x] Edge direction support (Outbound, Inbound, Any)
+- [x] Node and edge property filtering
+- [x] Sample graph patterns
+- [ ] Advanced canvas with drag-drop (planned for Phase 2.1)
+- [ ] Visual graph rendering library integration (planned for Phase 2.1)
 
 ### Phase 3: Vector Query Builder
 - [ ] Reference item input
