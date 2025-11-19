@@ -74,7 +74,7 @@
 ---
 
 ### 🛠️ Operations
-* [Deployment Guide](deployment.md)
+* [Deployment Guide](deployment_consolidated.md)
 * [Operations Runbook](operations_runbook.md)
 * [Admin Tools Guide](admin_tools_user_guide.md)
 * [Security Hardening](security_hardening_guide.md)
@@ -82,8 +82,8 @@
 ---
 
 ### 👨‍💻 Development
+* [Implementation Status](IMPLEMENTATION_STATUS.md)
 * [Developer Guide](development/developers.md)
-* [Implementation Status](development/implementation_status.md)
 * [Code Quality](code_quality.md)
 * [Contributing](../CONTRIBUTING.md)
 

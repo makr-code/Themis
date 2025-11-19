@@ -35,9 +35,10 @@ markdown_extensions:
       permalink: true
 
 nav:
+  - Home: Home.md
   - Übersicht: index.md
-  - Ecosystem Overview: ECOSYSTEM_OVERVIEW.md
   - Architektur: architecture.md
+  - Implementation Status: IMPLEMENTATION_STATUS.md
   - Basismodell:
       - Base Entity & Keys: base_entity.md
       - Pfad-Constraints: path_constraints.md
@@ -102,19 +103,21 @@ nav:
       - Security/Compliance Review: security/security_compliance_review.md
       - Compliance: compliance.md
   - Deployment & Betrieb:
-      - Deployment: deployment.md
+      - Deployment Guide (Consolidated): deployment_consolidated.md
+      - Deployment (Original): deployment.md
       - Tracing & Observability: tracing.md
       - Prometheus Metrics: observability/prometheus_metrics.md
       - Change Data Capture (CDC): change_data_capture.md
       - Operations Runbook: operations_runbook.md
   - Entwicklung:
+      - Implementation Status: IMPLEMENTATION_STATUS.md
       - Code Quality Pipeline: code_quality.md
       - Developers Guide: development/developers.md
       - Cost Models: development/cost-models.md
       - Todo Liste: development/todo.md
       - Tool Todo: development/tool_todo.md
       - Priorities: development/priorities.md
-      - Implementation Status: development/implementation_status.md
+      - Legacy Status (Archive): development/implementation_status.md
       - Audit API Implementation: development/audit_api_implementation.md
       - SAGA API Implementation: development/saga_api_implementation.md
       - Code Audit Mockups/Stubs: development/code_audit_mockups_stubs.md
