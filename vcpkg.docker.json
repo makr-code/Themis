@@ -1,8 +1,8 @@
-﻿{
+{
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "themis",
   "version": "0.1.0",
-  "description": "Themis Multi-Model Database System",
+  "description": "Themis Multi-Model Database System - Docker Build",
   "homepage": "https://github.com/makr-code/VCC",
   "license": "MIT",
   "dependencies": [
@@ -10,25 +10,14 @@
     { "name": "rocksdb", "features": ["lz4", "zstd"] },
     { "name": "simdjson" },
     { "name": "tbb" },
-    { "name": "arrow", "features": ["parquet", "compute"] },
+    { "name": "arrow", "features": ["json", "filesystem"] },
     { "name": "hnswlib" },
-    { "name": "gtest" },
-    { "name": "benchmark" },
     { "name": "boost-asio" },
     { "name": "boost-beast" },
     { "name": "spdlog" },
     { "name": "nlohmann-json" },
-    { "name": "opentelemetry-cpp", "features": ["otlp-http"] },
     { "name": "curl" },
     { "name": "yaml-cpp" },
     { "name": "zstd" }
-  ],
-  "features": {
-    "gpu": {
-      "description": "Enable GPU acceleration for vector search",
-      "dependencies": [
-        "faiss"
-      ]
-    }
-  }
+  ]
 }

@@ -7,6 +7,7 @@
 #include <memory>
 #include <stdexcept>
 #include <atomic>
+#include <optional>
 
 namespace themis {
 

@@ -120,32 +120,12 @@ if(NOT TARGET RocksDB::rocksdb)
     endif()
 endif()
 
-# Optional packages (may not be available in system package managers)
-find_package(simdjson CONFIG)
-if(NOT simdjson_FOUND)
-    message(WARNING "simdjson not found - JSON parsing may be slower")
-    # Create dummy target
-    add_library(simdjson::simdjson INTERFACE IMPORTED)
-endif()
-
+# Core packages via vcpkg (or system where available)
+find_package(simdjson CONFIG REQUIRED)
 find_package(TBB CONFIG REQUIRED)
-
-find_package(Arrow CONFIG)
-if(NOT Arrow_FOUND)
-    message(WARNING "Arrow not found - parquet/arrow features disabled")
-endif()
-
+find_package(Arrow CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
-
-find_package(spdlog CONFIG)
-if(NOT spdlog_FOUND)
-    message(WARNING "spdlog not found - using fallback logging")
-    # Create dummy target that uses header-only mode
-    add_library(spdlog::spdlog INTERFACE IMPORTED)
-    set_target_properties(spdlog::spdlog PROPERTIES
-        INTERFACE_COMPILE_DEFINITIONS "SPDLOG_HEADER_ONLY")
-endif()
-
+find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 

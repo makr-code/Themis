@@ -1,75 +1,92 @@
-# Multi-stage Docker build for VCCDB (Linux x86_64)
+# Multi-stage Docker build for ThemisDB
+# Uses vcpkg for complete dependency management
 
 FROM ubuntu:22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build tools and system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake ninja-build git curl zip unzip pkg-config ca-certificates \
-    python3 perl nasm libssl-dev libcurl4-openssl-dev librocksdb-dev \
+    build-essential cmake ninja-build git curl zip unzip tar pkg-config \
+    ca-certificates python3 perl nasm autoconf automake libtool \
     && rm -rf /var/lib/apt/lists/*
 
-# Ensure compilers are discoverable by CMake
+# Bootstrap vcpkg - use stable 2024.12.16 release
+ENV VCPKG_ROOT=/opt/vcpkg
+RUN git clone https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} \
+    && cd ${VCPKG_ROOT} \
+    && git checkout 2024.12.16 \
+    && ${VCPKG_ROOT}/bootstrap-vcpkg.sh -disableMetrics \
+    && VCPKG_BASELINE=$(git rev-parse HEAD) \
+    && echo "Using vcpkg baseline: $VCPKG_BASELINE"
+
+# Set up environment
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
-
-# Allow overriding target triplet (x64-linux default for QNAP x86_64)
 ARG VCPKG_TRIPLET=x64-linux
 ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET}
 
-# Build
 WORKDIR /src
 
-# Copy source
-COPY . .
+# Copy vcpkg manifest files first (for better layer caching)
+# Use simplified vcpkg.docker.json for faster builds
+COPY vcpkg.docker.json ./vcpkg.json
+COPY vcpkg-configuration.json ./
 
-# Install dependencies - use only system packages, disable vcpkg-only dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    librocksdb-dev libtbb-dev libfmt-dev \
-    nlohmann-json3-dev libboost-system-dev libyaml-cpp-dev libzstd-dev pkg-config \
-    libgtest-dev libgmock-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Update vcpkg-configuration.json with current baseline
+RUN cd ${VCPKG_ROOT} \
+    && VCPKG_BASELINE=$(git rev-parse HEAD) \
+    && echo "{\"default-registry\":{\"kind\":\"builtin\",\"baseline\":\"$VCPKG_BASELINE\"}}" > /src/vcpkg-configuration.json
 
-# Build without vcpkg (simdjson, arrow, spdlog optional)
+# Install dependencies via vcpkg manifest mode
+# Disable compiler tracking and metrics for faster, more stable builds
+ENV VCPKG_FORCE_SYSTEM_BINARIES=1
+ENV VCPKG_DISABLE_METRICS=1
+RUN ${VCPKG_ROOT}/vcpkg install --triplet=${VCPKG_TRIPLET}
+
+# Copy source code
+COPY CMakeLists.txt ./
+COPY include ./include
+COPY src ./src
+
+# Build ThemisDB
 RUN cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/cmake" \
-    -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
-    -DCMAKE_C_COMPILER=/usr/bin/gcc \
-    -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-    -DTHEMIS_ENABLE_TRACING=OFF \
-    -DTHEMIS_BUILD_BENCHMARKS=OFF \
+    -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
     -DTHEMIS_BUILD_TESTS=OFF \
-    -DUSE_SYSTEM_LIBS=ON \
-    && cmake --build build --target themis_server -j
+    -DTHEMIS_BUILD_BENCHMARKS=OFF \
+    -DTHEMIS_ENABLE_TRACING=OFF \
+    && cmake --build build --target themis_server -j$(nproc)
 
-# Runtime image
+# Runtime stage - minimal Ubuntu image
 FROM ubuntu:22.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl jq \
+    ca-certificates curl libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary to runtime image
+# Copy built binary
 COPY --from=build /src/build/themis_server /usr/local/bin/themis_server
 
-# Triplet must match the build stage ARG; default to x64-linux
-ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib
+# Copy vcpkg installed libraries that are needed at runtime
+COPY --from=build /opt/vcpkg/installed/x64-linux/lib/*.so* /usr/local/lib/ || true
 
-# Default config and data
-COPY config/config.json /etc/vccdb/config.json
-# Default Linux/QNAP config template inside image
-RUN mkdir -p /usr/local/share/themis
-COPY config/config.qnap.json /usr/local/share/themis/config.qnap.json
+# Copy configuration files
+RUN mkdir -p /etc/themis /usr/local/share/themis
+COPY --from=build /src/config/config.json /etc/themis/config.json || true
+COPY --from=build /src/config/config.qnap.json /usr/local/share/themis/config.qnap.json || true
+
+# Setup runtime environment
+RUN mkdir -p /data /var/log/themis && \
+    chmod +x /usr/local/bin/themis_server && \
+    ldconfig
+
+ENV THEMIS_CONFIG_PATH=/etc/themis/config.json
+ENV THEMIS_PORT=18765
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
 VOLUME ["/data"]
 EXPOSE 8080 18765
 
-# Default to root; can be overridden via docker-compose (user: "0:0" or non-root)
-
-# Configurable server port (overrides JSON via entrypoint)
-ENV THEMIS_PORT=18765
-ENV THEMIS_CONFIG_PATH=/etc/vccdb/config.json
-
-# Bootstrap entrypoint to adjust config and ensure directories
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/themis_server"]
+CMD ["--config", "/etc/themis/config.json"]
