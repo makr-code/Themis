@@ -75,128 +75,52 @@ if (-not (Test-Path $homePath)) {
 }
 
 # Erzeuge Grundseiten: _Header.md, _Sidebar.md, _Footer.md
-Write-Host "Erzeuge Basis-Wiki-Seiten (_Header, _Sidebar, _Footer)..." -ForegroundColor Green
+# Diese wurden bereits in docs/ erstellt und werden mitkopiert
+Write-Host "Wiki-Basisseiten (_Header, _Sidebar, _Footer, Home) werden aus docs/ übernommen..." -ForegroundColor Green
 
-# Helper: Fuege Link nur hinzu, wenn Datei vorhanden ist
-function Add-LinkIfExists {
-    param(
-        [ref]$Lines,
-        [string]$WikiRoot,
-        [string]$RelPath,
-        [string]$Title
-    )
-    $target = Join-Path $WikiRoot $RelPath
-    if (Test-Path $target) {
-        $Lines.Value += "* [$Title]($RelPath)"
+# Prüfe ob die neuen Wiki-Dateien existieren, sonst erstelle Fallback
+$requiredWikiFiles = @("_Header.md", "_Sidebar.md", "_Footer.md", "Home.md")
+foreach ($file in $requiredWikiFiles) {
+    $sourcePath = Join-Path $DocsPath $file
+    $targetPath = Join-Path $WikiPath $file
+    
+    if (Test-Path $sourcePath) {
+        # Datei existiert bereits in docs/, wurde schon kopiert
+        Write-Host "  $file bereits vorhanden" -ForegroundColor Gray
+    } else {
+        Write-Host "  Warnung: $file nicht in docs/ gefunden, erstelle Fallback" -ForegroundColor Yellow
+        
+        # Erstelle Fallback basierend auf Dateiname
+        switch ($file) {
+            "_Header.md" {
+                $content = "[ThemisDB v0.1.0_alpha](https://github.com/makr-code/ThemisDB) | [[Home]] | [Issues](https://github.com/makr-code/ThemisDB/issues)"
+                Set-Content -Path $targetPath -Value $content -Encoding UTF8
+            }
+            "_Sidebar.md" {
+                $content = @(
+                    "## Navigation",
+                    "* [[Home]]",
+                    "* [Architecture](architecture.md)",
+                    "* [AQL Syntax](aql_syntax.md)",
+                    "* [Deployment](deployment_consolidated.md)"
+                )
+                Set-Content -Path $targetPath -Value $content -Encoding UTF8
+            }
+            "_Footer.md" {
+                $content = "ThemisDB v0.1.0_alpha - Auto-synced from /docs on $(Get-Date -Format 'yyyy-MM-dd')"
+                Set-Content -Path $targetPath -Value $content -Encoding UTF8
+            }
+            "Home.md" {
+                # Fallback: Kopiere index.md als Home.md
+                $indexPath = Join-Path $DocsPath "index.md"
+                if (Test-Path $indexPath) {
+                    Copy-Item $indexPath -Destination $targetPath -Force
+                    Write-Host "  Home.md aus index.md erstellt" -ForegroundColor Gray
+                }
+            }
+        }
     }
 }
-
-# _Header.md
-$headerPath = Join-Path $WikiPath "_Header.md"
-$headerLines = @()
-$headerLines += "[ThemisDB](https://github.com/makr-code/ThemisDB) | [[Home]] | [Issues](https://github.com/makr-code/ThemisDB/issues)"
-$headerLines += ""
-Set-Content -Path $headerPath -Value $headerLines -Encoding UTF8
-
-# _Sidebar.md
-$sidebarPath = Join-Path $WikiPath "_Sidebar.md"
-$sb = @()
-$sb += "## Navigation"
-$sb += "* [[Home]]"
-$sb += ""
-
-$sb += "### Overview"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "architecture.md" -Title "Architecture"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "roadmap.md" -Title "Roadmap"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "changelog.md" -Title "Changelog"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "glossary.md" -Title "Glossary"
-$sb += ""
-
-$sb += "### Getting Started"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "clients/javascript_sdk_quickstart.md" -Title "JavaScript SDK"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "clients/python_sdk_quickstart.md" -Title "Python SDK"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "clients/rust_sdk_quickstart.md" -Title "Rust SDK"
-$sb += ""
-
-$sb += "### API"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "apis/openapi.md" -Title "OpenAPI Overview"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "pii_api.md" -Title "PII API"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "query_engine_aql.md" -Title "Query Engine Overview"
-$sb += ""
-
-$sb += "### Query Engine"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "aql_syntax.md" -Title "AQL Syntax"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "aql_explain_profile.md" -Title "EXPLAIN/PROFILE"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "aql-hybrid-queries.md" -Title "Hybrid Queries"
-$sb += ""
-
-$sb += "### Storage & Indexes"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "indexes.md" -Title "Indexes Overview"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "index_stats_maintenance.md" -Title "Index Stats"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "storage/rocksdb_layout.md" -Title "RocksDB Layout"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "storage/geo_relational_schema.md" -Title "Geo Schema"
-$sb += ""
-
-$sb += "### Security"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "security/overview.md" -Title "Overview"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "rbac_authorization.md" -Title "RBAC & Authorization"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "TLS_SETUP.md" -Title "TLS Setup"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "CERTIFICATE_PINNING.md" -Title "Certificate Pinning"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "security/policies.md" -Title "Policies"
-$sb += ""
-
-$sb += "### Search"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "search/hybrid_search_design.md" -Title "Hybrid Search Design"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "search/pagination_benchmarks.md" -Title "Pagination Benchmarks"
-$sb += ""
-
-$sb += "### Performance"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "performance_benchmarks.md" -Title "Performance Benchmarks"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "compression_benchmarks.md" -Title "Compression Benchmarks"
-$sb += ""
-
-$sb += "### Time Series"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "time_series.md" -Title "Time Series Overview"
-$sb += ""
-
-$sb += "### Admin Tools"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "admin_tools_admin_guide.md" -Title "Admin Guide"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "admin_tools_user_guide.md" -Title "User Guide"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "admin_tools_feature_matrix.md" -Title "Feature Matrix"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "admin_tools_search_sort_filter.md" -Title "Search/Sort/Filter"
-$sb += ""
-
-$sb += "### Observability"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "observability/metrics.md" -Title "Metrics"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "observability/prometheus_metrics.md" -Title "Prometheus"
-$sb += ""
-
-$sb += "### Ingestion"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "ingestion/json_ingestion_spec.md" -Title "JSON Ingestion"
-$sb += ""
-
-$sb += "### Operations"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "deployment.md" -Title "Deployment"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "operations_runbook.md" -Title "Runbook"
-$sb += ""
-
-$sb += "### Development"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "development/README.md" -Title "Developer Guide"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "development/implementation_status.md" -Title "Implementation Status"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "development/roadmap.md" -Title "Dev Roadmap"
-$sb += ""
-
-$sb += "### Source Docs"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "src/README.md" -Title "Code Overview"
-Add-LinkIfExists -Lines ([ref]$sb) -WikiRoot $WikiPath -RelPath "src/api/README.md" -Title "HTTP API"
-
-Set-Content -Path $sidebarPath -Value $sb -Encoding UTF8
-
-# _Footer.md
-$footerPath = Join-Path $WikiPath "_Footer.md"
-$footerLines = @()
-$footerLines += "ThemisDB Documentation - auto-synced from /docs on $(Get-Date -Format 'yyyy-MM-dd')"
-Set-Content -Path $footerPath -Value $footerLines -Encoding UTF8
 
 # Git Commit & Push
 Write-Host "Committe Aenderungen ins Wiki..." -ForegroundColor Green
