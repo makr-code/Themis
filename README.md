@@ -1,4 +1,6 @@
-﻿# Themis Multi-Model Database System
+﻿# ThemisDB Multi-Model Database System
+
+**Version:** v0.1.0_alpha
 
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0a7ea4)](https://makr-code.github.io/ThemisDB/)
 [![Print](https://img.shields.io/badge/print-Gesamtansicht-555)](https://makr-code.github.io/ThemisDB/print_page/)
@@ -14,20 +16,27 @@ The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Databa
 
 ## Dokumentation
 
-- Primärquelle: GitHub Wiki unter https://github.com/makr-code/ThemisDB/wiki
-- Änderungen bitte im Verzeichnis `docs/` vornehmen und per Sync ins Wiki übertragen:
+**Primärquelle:** [GitHub Wiki](https://github.com/makr-code/ThemisDB/wiki)
+
+Alle Dokumentation liegt im Verzeichnis `docs/` und wird automatisch ins Wiki synchronisiert:
 
 ```powershell
 ./sync-wiki.ps1
 ```
 
-- Lokale Vorschau (MkDocs) für Entwickelnde:
+**Weitere Ressourcen:**
+- **[Deployment Guide](docs/deployment_consolidated.md)** - Vollständige Anleitung für Windows, Linux/WSL, QNAP Docker
+- **[Implementation Status](docs/IMPLEMENTATION_STATUS.md)** - v0.1.0_alpha Feature-Übersicht
+- **[Changelog](CHANGELOG.md)** - Recent Changes
+- **[Architecture](docs/architecture.md)** - System-Design
+
+**Lokale Vorschau (MkDocs):**
 
 ```powershell
 ./build-docs.ps1
 ```
 
-Erzeugt die Ausgabe in `site/` (nicht committen). Das GitHub Pages Deployment ist deaktiviert; maßgeblich ist das Wiki.
+Erzeugt die Ausgabe in `site/` (nicht committen).
 
 ## Developer Quickstart
 
@@ -669,68 +678,84 @@ Weitere Ressourcen:
 
 ## Quick Start
 
-```powershell
-# 1. Clone and setup
-git clone <repository-url>
-cd THEMIS
-.\setup.ps1
+### Build from Source
 
-# 2. Build
-.\build.ps1
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/makr-code/ThemisDB.git
+cd ThemisDB
+.\setup.ps1
+.\build.ps1 -BuildType Release
+.\build-msvc\Release\themis_server.exe --config config.yaml
+```
+
+```bash
+# Linux/WSL (Bash)
+git clone https://github.com/makr-code/ThemisDB.git
+cd ThemisDB
+./setup.sh
+./build.sh BUILD_TYPE=Release
+./build-wsl/themis_server --config config.yaml
+```
 
 ### Container Images (GHCR + Docker Hub)
 
 Images werden bei jedem Push auf `main` automatisch gebaut und veröffentlicht.
 
-- GitHub Container Registry (empfohlen):
-  - Repo: `ghcr.io/makr-code/themis`
-  - Tags:
-    - Multi-Arch Manifeste: `latest`, `g<shortsha>`
-    - Arch-spezifisch: `latest-x64-linux`, `latest-arm64-linux`, sowie `g<shortsha>-<triplet>`
-- Docker Hub (optional, falls Secrets gesetzt):
-  - Repo: `themisdb/themis`
-  - Gleiche Tag-Strategie wie oben
-
-Pull-Beispiele:
-
+**GitHub Container Registry (empfohlen):**
 ```bash
+docker pull ghcr.io/makr-code/themis:latest
+docker pull ghcr.io/makr-code/themis:v0.1.0-alpha
 
-# 3. Start server
-.\build\Release\themis_server.exe
-
-# 4. Test health endpoint
-curl http://localhost:8765/health
+docker run -d -p 8765:8765 -v themis-data:/data ghcr.io/makr-code/themis:latest
 ```
 
-**5 Minute Tutorial:**
+**Docker Hub:**
+```bash
+docker pull themisdb/themis:latest
+docker pull themisdb/themis:v0.1.0-alpha
 
-Run-Beispiel (lokal):
+docker run -d -p 8765:8765 -v themis-data:/data themisdb/themis:latest
+```
+
+**QNAP Deployment:**
+```bash
+# Siehe docs/deployment_consolidated.md für docker-compose.qnap.yml
+docker-compose -f docker-compose.qnap.yml up -d
+```
+
+**Tags:**
+- Multi-Arch Manifeste: `latest`, `v0.1.0-alpha`, `g<shortsha>`
+- Arch-spezifisch: `latest-x64-linux`, `latest-arm64-linux`
+
+**Vollständige Anleitung:** [docs/deployment_consolidated.md](docs/deployment_consolidated.md)
+
+### 5 Minute Tutorial
 
 ```bash
+# Health Check
+curl http://localhost:8765/health
 
-```powershell
 # Create an entity
-curl -X PUT http://localhost:8765/entities/users:alice `
-  -H "Content-Type: application/json" `
-
-QNAP Compose:
-
-```bash
+curl -X PUT http://localhost:8765/entities/users:alice \
+  -H "Content-Type: application/json" \
   -d '{"blob":"{\"name\":\"Alice\",\"age\":30,\"city\":\"Berlin\"}"}'
 
 # Create index for queries
-curl -X POST http://localhost:8765/index/create `
-  -H "Content-Type: application/json" `
+curl -X POST http://localhost:8765/index/create \
+  -H "Content-Type: application/json" \
   -d '{"table":"users","column":"city"}'
 
 # Query by index
-curl -X POST http://localhost:8765/query `
-  -H "Content-Type: application/json" `
+curl -X POST http://localhost:8765/query \
+  -H "Content-Type: application/json" \
   -d '{"table":"users","predicates":[{"column":"city","value":"Berlin"}],"return":"entities"}'
 
 # View metrics
 curl http://localhost:8765/metrics
 ```
+
+**Siehe auch:** [API Examples](#api-examples)
 
 ## Architecture
 
