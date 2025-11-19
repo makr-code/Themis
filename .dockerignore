@@ -1,15 +1,16 @@
 # Exclude build artifacts and local environment files from Docker build context
 build/
-build-msvc/
-build-wsl/
+build-*/
 .git/
+.gitignore
 vcpkg_installed/
-vcpkg-configuration.json
-vcpkg.json
+external/
+Testing/
 .vscode/
 .idea/
 *.log
 *.pid
+*.err
 tmp*/
 test_output*
 dist/
@@ -17,6 +18,11 @@ site/
 docs/
 tests/
 data/
+benchmarks/
+adapters/
+clients/
+tools/
+wiki_out/
 __pycache__/
 \.pytest_cache/
 node_modules/
@@ -28,4 +34,11 @@ node_modules/
 *.dylib
 *.pdb
 *.lib
+*.tar.gz
+*.zip
 Dockerfile*~
+# Keep essential files
+!README.md
+!QNAP_DEPLOYMENT.md
+!vcpkg.json
+!vcpkg-configuration.json

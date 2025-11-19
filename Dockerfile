@@ -17,19 +17,29 @@ ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET}
 
 # Build
 WORKDIR /src
+
+# Copy source
 COPY . .
-# Install development packages from apt to satisfy dependencies without vcpkg.
+
+# Install dependencies - use only system packages, disable vcpkg-only dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    librocksdb-dev libsimdjson-dev libtbb-dev libarrow-dev libfmt-dev libspdlog-dev \
+    librocksdb-dev libtbb-dev libfmt-dev \
     nlohmann-json3-dev libboost-system-dev libyaml-cpp-dev libzstd-dev pkg-config \
+    libgtest-dev libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Build without vcpkg (simdjson, arrow, spdlog optional)
 RUN cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/cmake" \
     -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
     -DCMAKE_C_COMPILER=/usr/bin/gcc \
     -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && cmake --build build -j
+    -DTHEMIS_ENABLE_TRACING=OFF \
+    -DTHEMIS_BUILD_BENCHMARKS=OFF \
+    -DTHEMIS_BUILD_TESTS=OFF \
+    -DUSE_SYSTEM_LIBS=ON \
+    && cmake --build build --target themis_server -j
 
 # Runtime image
 FROM ubuntu:22.04 AS runtime

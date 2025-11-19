@@ -119,14 +119,62 @@ if(NOT TARGET RocksDB::rocksdb)
         message(FATAL_ERROR "RocksDB not found. Install via vcpkg or system package (librocksdb-dev).")
     endif()
 endif()
-find_package(simdjson CONFIG REQUIRED)
+
+# Optional packages (may not be available in system package managers)
+find_package(simdjson CONFIG)
+if(NOT simdjson_FOUND)
+    message(WARNING "simdjson not found - JSON parsing may be slower")
+    # Create dummy target
+    add_library(simdjson::simdjson INTERFACE IMPORTED)
+endif()
+
 find_package(TBB CONFIG REQUIRED)
-find_package(Arrow CONFIG REQUIRED)
+
+find_package(Arrow CONFIG)
+if(NOT Arrow_FOUND)
+    message(WARNING "Arrow not found - parquet/arrow features disabled")
+endif()
+
 find_package(fmt CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
+
+find_package(spdlog CONFIG)
+if(NOT spdlog_FOUND)
+    message(WARNING "spdlog not found - using fallback logging")
+    # Create dummy target that uses header-only mode
+    add_library(spdlog::spdlog INTERFACE IMPORTED)
+    set_target_properties(spdlog::spdlog PROPERTIES
+        INTERFACE_COMPILE_DEFINITIONS "SPDLOG_HEADER_ONLY")
+endif()
+
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
-find_package(yaml-cpp CONFIG REQUIRED)
+
+# yaml-cpp might be found via PkgConfig or CONFIG
+find_package(yaml-cpp CONFIG QUIET)
+if(yaml-cpp_FOUND)
+    message(STATUS "yaml-cpp found via CONFIG")
+    if(NOT TARGET yaml-cpp::yaml-cpp AND TARGET yaml-cpp)
+        # Some versions export as 'yaml-cpp' instead of 'yaml-cpp::yaml-cpp'
+        add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+    endif()
+else()
+    # Try pkg-config fallback
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(YAMLCPP QUIET yaml-cpp)
+        if(YAMLCPP_FOUND)
+            message(STATUS "yaml-cpp found via PkgConfig")
+            add_library(yaml-cpp::yaml-cpp INTERFACE IMPORTED)
+            set_target_properties(yaml-cpp::yaml-cpp PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${YAMLCPP_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${YAMLCPP_LIBRARIES}")
+        endif()
+    endif()
+endif()
+
+if(NOT TARGET yaml-cpp::yaml-cpp)
+    message(FATAL_ERROR "yaml-cpp not found via CONFIG or PkgConfig")
+endif()
 
 # Defensive check: Ensure Boost::system target exists after find_package
 if(NOT TARGET Boost::system)
