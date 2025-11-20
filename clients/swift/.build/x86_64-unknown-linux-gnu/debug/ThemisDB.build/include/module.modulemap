@@ -1,0 +1,3 @@
+module ThemisDB {
+    header "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/include/ThemisDB-Swift.h"
+}

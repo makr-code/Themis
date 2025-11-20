@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/master.swiftdeps"
+  },
+  "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.derived/ThemisDBTests.swift": {
+    "dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/ThemisDBTests.d",
+    "object": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/ThemisDBTests.swift.o",
+    "swiftmodule": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/ThemisDBTests~partial.swiftmodule",
+    "swift-dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/ThemisDBTests.swiftdeps",
+    "diagnostics": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/ThemisDBTests.dia"
+  },
+  "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.derived/all-discovered-tests.swift": {
+    "dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/all-discovered-tests.d",
+    "object": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/all-discovered-tests.swift.o",
+    "swiftmodule": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/all-discovered-tests~partial.swiftmodule",
+    "swift-dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/all-discovered-tests.swiftdeps",
+    "diagnostics": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDBPackageDiscoveredTests.build/all-discovered-tests.dia"
+  }
+}

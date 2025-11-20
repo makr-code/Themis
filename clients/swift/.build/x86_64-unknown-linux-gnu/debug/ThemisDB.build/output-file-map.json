@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/master.swiftdeps"
+  },
+  "/home/runner/work/ThemisDB/ThemisDB/clients/swift/Sources/ThemisDB/ThemisClient.swift": {
+    "dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/ThemisClient.d",
+    "object": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/ThemisClient.swift.o",
+    "swiftmodule": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/ThemisClient~partial.swiftmodule",
+    "swift-dependencies": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/ThemisClient.swiftdeps",
+    "diagnostics": "/home/runner/work/ThemisDB/ThemisDB/clients/swift/.build/x86_64-unknown-linux-gnu/debug/ThemisDB.build/ThemisClient.dia"
+  }
+}
