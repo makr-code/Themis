@@ -36,6 +36,7 @@ markdown_extensions:
 
 nav:
   - Übersicht: index.md
+  - '📊 Sachstandsbericht 2025': THEMIS_SACHSTANDSBERICHT_2025.md
   - Ecosystem Overview: ECOSYSTEM_OVERVIEW.md
   - Architektur: architecture.md
   - Basismodell:
