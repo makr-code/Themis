@@ -764,6 +764,36 @@ QueryEngine::executeAndEntitiesSequential(const std::string& table,
 
 } // namespace themis
 
+// Out-of-line EvaluationContext CTE helpers
+namespace themis {
+void QueryEngine::EvaluationContext::storeCTE(const std::string& name, std::vector<nlohmann::json> results) {
+	// Prefer cache if available; fall back to in-memory map
+	if (cte_cache) {
+		// Attempt to store; if cache rejects (e.g. spill failure), keep in-memory
+		if (!cte_cache->store(name, std::move(results))) {
+			cte_results[name] = std::vector<nlohmann::json>(); // ensure key exists even if failed
+		} else {
+			// Remove any previous in-memory copy to avoid duplication
+			cte_results.erase(name);
+		}
+	} else {
+		cte_results[name] = std::move(results);
+	}
+}
+
+std::optional<std::vector<nlohmann::json>> QueryEngine::EvaluationContext::getCTE(const std::string& name) const {
+	// First check cache
+	if (cte_cache && cte_cache->contains(name)) {
+		auto data = cte_cache->get(name);
+		if (data.has_value()) return data; // returns full vector
+	}
+	// Fallback to in-memory results
+	auto it = cte_results.find(name);
+	if (it != cte_results.end()) return it->second;
+	return std::nullopt;
+}
+} // namespace themis
+
 // ===================== QueryEngine Expression Evaluation =====================
 namespace themis {
 

@@ -258,6 +258,7 @@ set(THEMIS_CORE_SOURCES
     src/server/ranger_adapter.cpp
     src/server/policy_engine.cpp
     src/server/auth_middleware.cpp
+    src/server/rate_limiter.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp
@@ -304,6 +305,8 @@ set(THEMIS_CORE_SOURCES
     src/security/pki_key_provider.cpp
     src/security/cms_signing.cpp
     src/security/rbac.cpp
+    src/security/hsm_provider.cpp
+    src/security/timestamp_authority.cpp
     src/auth/jwt_validator.cpp
     src/governance/policy_engine.cpp
     # Geo scaffolding (headers + stubs; safe no-ops until used)

@@ -277,13 +277,14 @@ HttpServer::HttpServer(
 
     // Initialize Authorization middleware (MVP: tokens via env)
     auth_ = std::make_unique<themis::AuthMiddleware>();
-    auto get_env = [](const char* name) -> std::optional<std::string> {
+    // Global-style helper for env lookup (reused across subsequent blocks)
+    auto themis_get_env = [](const char* name) -> std::optional<std::string> {
         const char* v = std::getenv(name);
         if (v && *v) return std::string(v);
         return std::nullopt;
     };
     // Admin token
-    if (auto t = get_env("THEMIS_TOKEN_ADMIN")) {
+    if (auto t = themis_get_env("THEMIS_TOKEN_ADMIN")) {
         themis::AuthMiddleware::TokenConfig cfg;
         cfg.token = *t;
         cfg.user_id = "admin";
@@ -303,7 +304,7 @@ HttpServer::HttpServer(
         } catch(...) {}
     }
     // Read-only token
-    if (auto t = get_env("THEMIS_TOKEN_READONLY")) {
+    if (auto t = themis_get_env("THEMIS_TOKEN_READONLY")) {
         themis::AuthMiddleware::TokenConfig cfg;
         cfg.token = *t;
         cfg.user_id = "readonly";
@@ -312,7 +313,7 @@ HttpServer::HttpServer(
         THEMIS_INFO("Auth: READONLY token configured via env");
     }
     // Analyst token (read access incl. vectors/query)
-    if (auto t = get_env("THEMIS_TOKEN_ANALYST")) {
+    if (auto t = themis_get_env("THEMIS_TOKEN_ANALYST")) {
         themis::AuthMiddleware::TokenConfig cfg;
         cfg.token = *t;
         cfg.user_id = "analyst";
@@ -478,30 +479,30 @@ HttpServer::HttpServer(
 
     // Initialize Ranger client (optional), configured via environment for secrets
     // Reuse the earlier `get_env` lambda defined above (tokens); avoid duplicate definition.
-    if (auto base = get_env("THEMIS_RANGER_BASE_URL")) {
+    if (auto base = themis_get_env("THEMIS_RANGER_BASE_URL")) {
         themis::server::RangerClientConfig rcfg;
         rcfg.base_url = *base;
         rcfg.policies_path = std::getenv("THEMIS_RANGER_POLICIES_PATH") ? std::getenv("THEMIS_RANGER_POLICIES_PATH") : "/service/public/v2/api/policy";
         rcfg.service_name = std::getenv("THEMIS_RANGER_SERVICE") ? std::getenv("THEMIS_RANGER_SERVICE") : "themisdb";
         rcfg.bearer_token = std::getenv("THEMIS_RANGER_BEARER") ? std::getenv("THEMIS_RANGER_BEARER") : "";
         rcfg.tls_verify = true;
-        if (auto tlsv = get_env("THEMIS_RANGER_TLS_VERIFY")) {
+        if (auto tlsv = themis_get_env("THEMIS_RANGER_TLS_VERIFY")) {
             if (*tlsv == "0" || *tlsv == "false" || *tlsv == "False") rcfg.tls_verify = false;
         }
-        if (auto ca = get_env("THEMIS_RANGER_CA_CERT")) rcfg.ca_cert_path = *ca;
-        if (auto cc = get_env("THEMIS_RANGER_CLIENT_CERT")) rcfg.client_cert_path = *cc;
-        if (auto ck = get_env("THEMIS_RANGER_CLIENT_KEY")) rcfg.client_key_path = *ck;
+        if (auto ca = themis_get_env("THEMIS_RANGER_CA_CERT")) rcfg.ca_cert_path = *ca;
+        if (auto cc = themis_get_env("THEMIS_RANGER_CLIENT_CERT")) rcfg.client_cert_path = *cc;
+        if (auto ck = themis_get_env("THEMIS_RANGER_CLIENT_KEY")) rcfg.client_key_path = *ck;
         // Optional timeouts & retry configuration
-        if (auto ct = get_env("THEMIS_RANGER_CONNECT_TIMEOUT_MS")) {
+        if (auto ct = themis_get_env("THEMIS_RANGER_CONNECT_TIMEOUT_MS")) {
             try { rcfg.connect_timeout_ms = std::stol(*ct); } catch (...) {}
         }
-        if (auto rt = get_env("THEMIS_RANGER_REQUEST_TIMEOUT_MS")) {
+        if (auto rt = themis_get_env("THEMIS_RANGER_REQUEST_TIMEOUT_MS")) {
             try { rcfg.request_timeout_ms = std::stol(*rt); } catch (...) {}
         }
-        if (auto mr = get_env("THEMIS_RANGER_MAX_RETRIES")) {
+        if (auto mr = themis_get_env("THEMIS_RANGER_MAX_RETRIES")) {
             try { rcfg.max_retries = std::stoi(*mr); } catch (...) {}
         }
-        if (auto rb = get_env("THEMIS_RANGER_RETRY_BACKOFF_MS")) {
+        if (auto rb = themis_get_env("THEMIS_RANGER_RETRY_BACKOFF_MS")) {
             try { rcfg.retry_backoff_ms = std::stol(*rb); } catch (...) {}
         }
         try {
@@ -523,7 +524,7 @@ HttpServer::HttpServer(
     rate_config.whitelist_ips = {"127.0.0.1", "::1"};
     
     // Load custom limits from environment
-    if (auto limit_str = get_env("THEMIS_RATE_LIMIT_PER_MINUTE")) {
+    if (auto limit_str = themis_get_env("THEMIS_RATE_LIMIT_PER_MINUTE")) {
         try {
             uint32_t limit = std::stoul(*limit_str);
             rate_config.bucket_capacity = limit;
@@ -546,13 +547,13 @@ HttpServer::HttpServer(
     cors_allowed_methods_ = "GET,POST,PUT,DELETE,OPTIONS";
     cors_allowed_headers_ = "Authorization,Content-Type,X-Requested-With";
 
-    if (auto v = get_env("THEMIS_CORS_ALLOW_ALL")) {
+    if (auto v = themis_get_env("THEMIS_CORS_ALLOW_ALL")) {
         cors_allow_all_ = (*v == "1" || *v == "true" || *v == "TRUE");
     }
-    if (auto v = get_env("THEMIS_CORS_ALLOW_CREDENTIALS")) {
+    if (auto v = themis_get_env("THEMIS_CORS_ALLOW_CREDENTIALS")) {
         cors_allow_credentials_ = (*v == "1" || *v == "true" || *v == "TRUE");
     }
-    if (auto v = get_env("THEMIS_CORS_ALLOWED_ORIGINS")) {
+    if (auto v = themis_get_env("THEMIS_CORS_ALLOWED_ORIGINS")) {
         // Comma-separated exact origins, e.g. https://app.example.com,https://admin.example.com
         std::istringstream iss(*v);
         std::string origin;
@@ -560,10 +561,10 @@ HttpServer::HttpServer(
             if (!origin.empty()) cors_allowed_origins_.push_back(origin);
         }
     }
-    if (auto v = get_env("THEMIS_CORS_ALLOWED_METHODS")) {
+    if (auto v = themis_get_env("THEMIS_CORS_ALLOWED_METHODS")) {
         if (!v->empty()) cors_allowed_methods_ = *v;
     }
-    if (auto v = get_env("THEMIS_CORS_ALLOWED_HEADERS")) {
+    if (auto v = themis_get_env("THEMIS_CORS_ALLOWED_HEADERS")) {
         if (!v->empty()) cors_allowed_headers_ = *v;
     }
     if (cors_allow_all_) {
@@ -576,7 +577,7 @@ HttpServer::HttpServer(
 
     // Initialize Input Validator (schema dir from env or default config/schemas)
     std::string schema_dir = "config/schemas";
-    if (auto v = get_env("THEMIS_SCHEMAS_DIR")) {
+    if (auto v = themis_get_env("THEMIS_SCHEMAS_DIR")) {
         if (!v->empty()) schema_dir = *v;
     }
     validator_ = std::make_unique<themis::utils::InputValidator>(schema_dir);
@@ -585,7 +586,7 @@ HttpServer::HttpServer(
     // ----------------------------------------------------------------------------
     // Input validation limits
     // ----------------------------------------------------------------------------
-    if (auto v = get_env("THEMIS_MAX_BODY_BYTES")) {
+    if (auto v = themis_get_env("THEMIS_MAX_BODY_BYTES")) {
         try { max_body_bytes_ = static_cast<size_t>(std::stoull(*v)); }
         catch (...) { THEMIS_WARN("Invalid THEMIS_MAX_BODY_BYTES value, using default 10MB"); }
     } else {
