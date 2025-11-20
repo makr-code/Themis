@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils/geo/ewkb.h"
+#include "geo/spatial_backend.h"
 #include "storage/rocksdb_wrapper.h"
 #include <string>
 #include <string_view>
@@ -72,6 +73,9 @@ public:
 
     explicit SpatialIndexManager(RocksDBWrapper& db);
     ~SpatialIndexManager() = default;
+    
+    // Set exact geometry backend (optional, for exact checks)
+    void setExactBackend(geo::ISpatialComputeBackend* backend) { exact_backend_ = backend; }
     
     // ===== Index Management =====
     
@@ -183,6 +187,7 @@ public:
     
 private:
     RocksDBWrapper& db_;
+    geo::ISpatialComputeBackend* exact_backend_ = nullptr; // Optional exact geometry backend
     
     // RocksDB key prefixes
     std::string getSpatialKeyPrefix(std::string_view table) const;

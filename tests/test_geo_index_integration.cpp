@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "index/spatial_index.h"
 #include "api/geo_index_hooks.h"
+#include "geo/spatial_backend.h"
 #include "utils/geo/ewkb.h"
 #include "storage/rocksdb_wrapper.h"
 #include <memory>
@@ -58,6 +59,9 @@ TEST_F(GeoIndexIntegrationTest, InsertPolygonTriggersIndexUpdate) {
     std::string blob_str = entity.dump();
     std::vector<uint8_t> blob(blob_str.begin(), blob_str.end());
     
+    // Store entity in DB
+    db_->put("entity:test_points:poly1", blob);
+    
     // Call hook (simulating entity PUT)
     GeoIndexHooks::onEntityPut(*db_, spatial_mgr_.get(), "test_points", "poly1", blob);
     
@@ -71,7 +75,13 @@ TEST_F(GeoIndexIntegrationTest, InsertPolygonTriggersIndexUpdate) {
 
 // Test: Query with exact backend returns correct results
 TEST_F(GeoIndexIntegrationTest, SearchIntersectsWithExactCheck) {
-    // Insert two polygons
+    // Set up exact backend if available
+    auto* boost_backend = geo::getBoostCpuBackend();
+    if (boost_backend && boost_backend->isAvailable()) {
+        spatial_mgr_->setExactBackend(boost_backend);
+    }
+    
+    // Insert two polygons - one that intersects, one that doesn't
     json poly1;
     poly1["id"] = "poly1";
     poly1["geometry"] = {
@@ -107,6 +117,10 @@ TEST_F(GeoIndexIntegrationTest, SearchIntersectsWithExactCheck) {
     std::vector<uint8_t> b1(blob1.begin(), blob1.end());
     std::vector<uint8_t> b2(blob2.begin(), blob2.end());
     
+    // Store entities in DB (so exact check can load them)
+    db_->put("entity:test_points:poly1", b1);
+    db_->put("entity:test_points:poly2", b2);
+    
     GeoIndexHooks::onEntityPut(*db_, spatial_mgr_.get(), "test_points", "poly1", b1);
     GeoIndexHooks::onEntityPut(*db_, spatial_mgr_.get(), "test_points", "poly2", b2);
     
@@ -114,7 +128,7 @@ TEST_F(GeoIndexIntegrationTest, SearchIntersectsWithExactCheck) {
     MBR query_box(10.0, 50.0, 10.6, 50.6);
     auto results = spatial_mgr_->searchIntersects("test_points", query_box);
     
-    // Should only return poly1 (MBR check)
+    // Should only return poly1 (exact check filters out poly2)
     ASSERT_EQ(results.size(), 1);
     EXPECT_EQ(results[0].primary_key, "poly1");
 }

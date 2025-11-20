@@ -442,8 +442,59 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
             auto entries = parseSidecarList(value);
             
             for (const auto& entry : entries) {
-                // Check MBR intersection
-                if (entry.sidecar.mbr.intersects(query_bbox)) {
+                // Phase 1: MBR intersection check (fast filter)
+                if (!entry.sidecar.mbr.intersects(query_bbox)) {
+                    continue; // Skip if MBR doesn't intersect
+                }
+                
+                // Phase 2: Exact geometry check (if backend available)
+                bool exact_match = true; // Default: assume match if no exact backend
+                
+                if (exact_backend_) {
+                    try {
+                        // Load entity blob to get full geometry
+                        std::string entity_key = "entity:" + std::string(table) + ":" + entry.primary_key;
+                        auto blob = db_.get(entity_key);
+                        
+                        if (blob) {
+                            // Parse entity blob to extract geometry
+                            std::string blob_str(reinterpret_cast<const char*>(blob->data()), blob->size());
+                            
+                            try {
+                                auto j = json::parse(blob_str);
+                                std::vector<uint8_t> geom_blob;
+                                
+                                // Extract geometry from entity
+                                if (j.contains("geometry") && j["geometry"].is_object()) {
+                                    std::string geojson = j["geometry"].dump();
+                                    auto entity_geom = geo::EWKBParser::parseGeoJSON(geojson);
+                                    
+                                    // Create query geometry from bbox (as polygon)
+                                    geo::GeometryInfo query_geom(geo::GeometryType::Polygon);
+                                    query_geom.coords = {
+                                        geo::Coordinate(query_bbox.minx, query_bbox.miny),
+                                        geo::Coordinate(query_bbox.maxx, query_bbox.miny),
+                                        geo::Coordinate(query_bbox.maxx, query_bbox.maxy),
+                                        geo::Coordinate(query_bbox.minx, query_bbox.maxy),
+                                        geo::Coordinate(query_bbox.minx, query_bbox.miny) // close ring
+                                    };
+                                    
+                                    // Exact intersection check
+                                    exact_match = exact_backend_->exactIntersects(entity_geom, query_geom);
+                                }
+                            } catch (...) {
+                                // Parse error - keep candidate (conservative approach)
+                                exact_match = true;
+                            }
+                        }
+                    } catch (...) {
+                        // Error loading/parsing - keep candidate (conservative)
+                        exact_match = true;
+                    }
+                }
+                
+                // Only add to results if exact check passed (or no exact backend)
+                if (exact_match) {
                     SpatialResult result;
                     result.primary_key = entry.primary_key;
                     result.mbr = entry.sidecar.mbr;

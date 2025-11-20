@@ -56,6 +56,10 @@ class ContinuousAggregateManager;
 class AdaptiveIndexManager;
 class PromptManager;
 
+namespace index {
+class SpatialIndexManager;
+}
+
 namespace server {
 
 namespace beast = boost::beast;
@@ -414,6 +418,9 @@ private:
     std::shared_ptr<GraphIndexManager> graph_index_;
     std::shared_ptr<VectorIndexManager> vector_index_;
     std::shared_ptr<TransactionManager> tx_manager_;
+    
+    // Spatial Index Manager (geo MVP)
+    std::unique_ptr<index::SpatialIndexManager> spatial_index_;
 
     // Content Manager
     std::unique_ptr<themis::content::ContentManager> content_manager_;

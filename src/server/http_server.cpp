@@ -26,6 +26,8 @@
 #include "index/secondary_index.h"
 #include "index/graph_index.h"
 #include "index/vector_index.h"
+#include "index/spatial_index.h"
+#include "api/geo_index_hooks.h"
 #include "transaction/transaction_manager.h"
 #include "utils/logger.h"
 
@@ -144,6 +146,24 @@ HttpServer::HttpServer(
 {
     THEMIS_INFO("HTTP Server created with {} threads on {}:{}", 
         config_.num_threads, config_.host, config_.port);
+    
+    // Initialize Spatial Index Manager (geo MVP)
+    try {
+        spatial_index_ = std::make_unique<index::SpatialIndexManager>(*storage_);
+        
+        // Wire up exact geometry backend if available
+        auto* boost_backend = geo::getBoostCpuBackend();
+        if (boost_backend && boost_backend->isAvailable()) {
+            spatial_index_->setExactBackend(boost_backend);
+            THEMIS_INFO("Spatial Index Manager initialized with Boost.Geometry exact backend");
+        } else {
+            THEMIS_INFO("Spatial Index Manager initialized (MBR-only, no exact backend)");
+        }
+    } catch (const std::exception& e) {
+        THEMIS_WARN("Failed to initialize Spatial Index Manager: {}", e.what());
+        // Non-fatal: geo features will be disabled
+    }
+    
     // Diagnostic: log raw getenv value for admin token to verify visibility
     try {
         const char* _adm = std::getenv("THEMIS_TOKEN_ADMIN");
@@ -4728,6 +4748,17 @@ http::response<http::string_body> HttpServer::handlePutEntity(
             return makeErrorResponse(http::status::internal_server_error,
                 "Index/Storage update failed: " + st.message, req);
         }
+        
+        // Geo MVP: Update spatial index if enabled (best-effort, non-transactional)
+        if (spatial_index_) {
+            try {
+                std::vector<uint8_t> blob_bytes(blob_str.begin(), blob_str.end());
+                api::GeoIndexHooks::onEntityPut(*storage_, spatial_index_.get(), table, pk, blob_bytes);
+            } catch (const std::exception& e) {
+                // Log but don't fail the request - geo index is best-effort
+                THEMIS_WARN("Geo index hook failed for {}:{}: {}", table, pk, e.what());
+            }
+        }
 
         // Record CDC event if changefeed enabled
         if (changefeed_ && config_.feature_cdc) {
@@ -4800,6 +4831,21 @@ http::response<http::string_body> HttpServer::handleDeleteEntity(
 
         span.setAttribute("entity.table", table);
         span.setAttribute("entity.pk", pk);
+        
+        // Geo MVP: Remove from spatial index before delete (best-effort)
+        if (spatial_index_) {
+            try {
+                // Get old blob for computing sidecar
+                std::string entity_key = "entity:" + table + ":" + pk;
+                auto old_blob = storage_->get(entity_key);
+                if (old_blob) {
+                    api::GeoIndexHooks::onEntityDelete(*storage_, spatial_index_.get(), table, pk, *old_blob);
+                }
+            } catch (const std::exception& e) {
+                // Log but don't fail the request - geo index is best-effort
+                THEMIS_WARN("Geo index delete hook failed for {}:{}: {}", table, pk, e.what());
+            }
+        }
 
         auto st = secondary_index_->erase(table, pk);
         if (!st.ok) {

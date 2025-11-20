@@ -82,7 +82,7 @@ public:
     
     /// Exact intersects check between two geometries
     /// This is the core exact check function called by the query engine
-    bool exactIntersects(const GeometryInfo& geom1, const GeometryInfo& geom2) {
+    bool exactIntersects(const GeometryInfo& geom1, const GeometryInfo& geom2) override {
         try {
             // Handle different geometry types
             if (geom1.isPolygon() && geom2.isPolygon()) {

@@ -8,6 +8,9 @@
 namespace themis {
 namespace geo {
 
+// Forward declarations
+struct GeometryInfo;
+
 // Minimal abstraction for compute backends (CPU/GPU) used by Geo exact checks
 struct SpatialBatchInputs {
     // Placeholder for SoA/AoSoA layouts in the future
@@ -27,6 +30,10 @@ public:
 
     // Example operation: batch Intersects exact-checks on prefiltered candidates
     virtual SpatialBatchResults batchIntersects(const SpatialBatchInputs& in) = 0;
+    
+    // Exact intersects check between two geometries (used by search path)
+    // Returns true if geometries actually intersect, false otherwise
+    virtual bool exactIntersects(const GeometryInfo& geom1, const GeometryInfo& geom2) = 0;
 };
 
 // Registry for dynamically loaded plugins
@@ -39,6 +46,9 @@ public:
 // Plugin entry point signature a plugin must export if present
 // extern "C" void RegisterGeoPlugin(IGeoRegistry* registry);
 using RegisterGeoPluginFn = void(*)(IGeoRegistry*);
+
+// Get the Boost CPU backend (if available)
+ISpatialComputeBackend* getBoostCpuBackend();
 
 } // namespace geo
 } // namespace themis
