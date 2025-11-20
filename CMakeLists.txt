@@ -309,6 +309,12 @@ set(THEMIS_CORE_SOURCES
     # Geo scaffolding (headers + stubs; safe no-ops until used)
     src/geo/cpu_backend.cpp
     src/geo/gpu_backend_stub.cpp
+    
+    # Sharding (horizontal scaling)
+    src/sharding/urn.cpp
+    src/sharding/consistent_hash.cpp
+    src/sharding/shard_topology.cpp
+    src/sharding/urn_resolver.cpp
 )
 
 # Main library
@@ -541,6 +547,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_pki_client_rest.cpp
         tests/test_group_dek.cpp
         tests/test_input_validator.cpp
+        tests/test_sharding_core.cpp
     )
     
     target_link_libraries(themis_tests
