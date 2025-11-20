@@ -13,13 +13,15 @@ import httpx
 __all__ = [
     "ThemisClient",
     "TopologyError",
+    "TransactionError",
+    "Transaction",
     "QueryResult",
     "BatchGetResult",
     "BatchWriteResult",
     "__version__",
 ]
 
-__version__ = "0.1.0a0"
+__version__ = "0.1.0b1"
 
 _DEFAULT_METADATA_PATH = "/_admin/cluster/topology"
 _HEALTH_PATH = "/health"
@@ -27,6 +29,10 @@ _HEALTH_PATH = "/health"
 
 class TopologyError(RuntimeError):
     """Raised when shard topology cannot be resolved."""
+
+
+class TransactionError(RuntimeError):
+    """Raised when transaction operations fail or are invalid."""
 
 
 @dataclass
@@ -424,6 +430,47 @@ class ThemisClient:
             "partials": responses,
         }
 
+    def begin_transaction(
+        self,
+        *,
+        isolation_level: str = "READ_COMMITTED",
+        timeout: Optional[float] = None,
+    ) -> "Transaction":
+        """Begin a new transaction.
+        
+        Args:
+            isolation_level: Transaction isolation level ("READ_COMMITTED" or "SNAPSHOT")
+            timeout: Transaction timeout in seconds (optional)
+            
+        Returns:
+            Transaction object
+            
+        Raises:
+            TransactionError: If transaction cannot be started
+        """
+        endpoint = self.endpoints[0]
+        body: Dict[str, Any] = {}
+        if isolation_level == "SNAPSHOT":
+            body["isolation"] = "snapshot"
+        elif isolation_level == "READ_COMMITTED":
+            body["isolation"] = "read_committed"
+        else:
+            raise ValueError(f"Invalid isolation level: {isolation_level}")
+        
+        if timeout is not None:
+            body["timeout"] = timeout
+        
+        response = self._request("POST", f"{endpoint}/transaction/begin", json=body)
+        if response.status_code not in (200, 201):
+            raise TransactionError(f"Failed to begin transaction: {response.status_code}")
+        
+        payload = response.json()
+        tx_id = payload.get("transaction_id")
+        if not tx_id:
+            raise TransactionError("Server did not return transaction_id")
+        
+        return Transaction(self, tx_id)
+
     def _current_endpoints(self) -> List[str]:
         return self._shard_endpoints or self.endpoints
 
@@ -537,3 +584,244 @@ class ThemisClient:
             self._refresh_topology()
         except TopologyError:
             self._shard_endpoints = list(self.endpoints)
+
+    def _tx_request(self, method: str, url: str, tx_id: str, **kwargs: Any) -> httpx.Response:
+        """Internal method for making requests within a transaction."""
+        headers = kwargs.pop("headers", {})
+        if isinstance(headers, dict):
+            headers["X-Transaction-Id"] = tx_id
+        else:
+            headers = {"X-Transaction-Id": tx_id}
+        return self._request(method, url, headers=headers, **kwargs)
+
+
+class Transaction:
+    """Represents an ACID transaction in ThemisDB."""
+
+    def __init__(self, client: ThemisClient, tx_id: str) -> None:
+        """Initialize a transaction.
+        
+        Args:
+            client: The ThemisClient instance
+            tx_id: Transaction identifier
+        """
+        self._client = client
+        self._tx_id = tx_id
+        self._committed = False
+        self._rolled_back = False
+
+    @property
+    def transaction_id(self) -> str:
+        """Get the transaction ID."""
+        return self._tx_id
+
+    @property
+    def is_active(self) -> bool:
+        """Check if the transaction is still active."""
+        return not self._committed and not self._rolled_back
+
+    def _ensure_active(self) -> None:
+        """Ensure the transaction is still active."""
+        if self._committed:
+            raise TransactionError("Transaction already committed")
+        if self._rolled_back:
+            raise TransactionError("Transaction already rolled back")
+
+    def get(self, model: str, collection: str, uuid: str) -> Optional[Any]:
+        """Get an entity within the transaction.
+        
+        Args:
+            model: Model name
+            collection: Collection name
+            uuid: Entity UUID
+            
+        Returns:
+            Entity data or None if not found
+            
+        Raises:
+            TransactionError: If transaction is not active
+        """
+        self._ensure_active()
+        urn = self._client._build_urn(model, collection, uuid)
+        key = self._client._build_entity_key(model, collection, uuid)
+        endpoint = self._client._resolve_endpoint(urn)
+        
+        response = self._client._tx_request("GET", f"{endpoint}/entities/{key}", self._tx_id)
+        
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        payload = response.json()
+        if "entity" in payload:
+            return payload.get("entity")
+        blob = payload.get("blob")
+        return _decode_blob(blob)
+
+    def put(self, model: str, collection: str, uuid: str, data: Any) -> bool:
+        """Put (upsert) an entity within the transaction.
+        
+        Args:
+            model: Model name
+            collection: Collection name
+            uuid: Entity UUID
+            data: Entity data
+            
+        Returns:
+            True if successful
+            
+        Raises:
+            TransactionError: If transaction is not active
+        """
+        self._ensure_active()
+        urn = self._client._build_urn(model, collection, uuid)
+        key = self._client._build_entity_key(model, collection, uuid)
+        endpoint = self._client._resolve_endpoint(urn)
+        body = {"blob": _encode_blob(data)}
+        
+        response = self._client._tx_request("PUT", f"{endpoint}/entities/{key}", self._tx_id, json=body)
+        
+        if response.status_code in (200, 201):
+            return True
+        response.raise_for_status()
+        return False
+
+    def delete(self, model: str, collection: str, uuid: str) -> bool:
+        """Delete an entity within the transaction.
+        
+        Args:
+            model: Model name
+            collection: Collection name
+            uuid: Entity UUID
+            
+        Returns:
+            True if entity was deleted, False if not found
+            
+        Raises:
+            TransactionError: If transaction is not active
+        """
+        self._ensure_active()
+        urn = self._client._build_urn(model, collection, uuid)
+        key = self._client._build_entity_key(model, collection, uuid)
+        endpoint = self._client._resolve_endpoint(urn)
+        
+        response = self._client._tx_request("DELETE", f"{endpoint}/entities/{key}", self._tx_id)
+        
+        if response.status_code == 200:
+            return True
+        if response.status_code == 404:
+            return False
+        response.raise_for_status()
+        return False
+
+    def query(
+        self,
+        aql: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        use_cursor: bool = False,
+        cursor: Optional[str] = None,
+        batch_size: Optional[int] = None,
+    ) -> QueryResult:
+        """Execute an AQL query within the transaction.
+        
+        Args:
+            aql: AQL query string
+            params: Query parameters (optional)
+            use_cursor: Enable cursor-based pagination
+            cursor: Cursor for pagination
+            batch_size: Batch size for results
+            
+        Returns:
+            QueryResult with items and metadata
+            
+        Raises:
+            TransactionError: If transaction is not active
+        """
+        self._ensure_active()
+        payload: Dict[str, Any] = {"query": aql}
+        if params:
+            payload["params"] = params
+        if use_cursor:
+            payload["use_cursor"] = True
+        if cursor:
+            payload["cursor"] = cursor
+        if batch_size is not None:
+            payload["batch_size"] = batch_size
+
+        endpoints = (
+            [self._client._resolve_query_endpoint(aql)]
+            if self._client._is_single_shard_query(aql)
+            else list(self._client._current_endpoints())
+        )
+
+        partials: List[QueryResult] = []
+        for endpoint in endpoints:
+            response = self._client._tx_request("POST", f"{endpoint}/query/aql", self._tx_id, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            partials.append(self._client._parse_query_payload(data))
+
+        if not partials:
+            return QueryResult(items=[], has_more=False, next_cursor=None, raw={})
+        if len(partials) == 1:
+            return partials[0]
+
+        merged_items: List[Any] = []
+        any_has_more = False
+        for part in partials:
+            merged_items.extend(part.items)
+            any_has_more = any_has_more or part.has_more
+        raw = {"partials": [part.raw for part in partials]}
+        return QueryResult(items=merged_items, has_more=any_has_more, next_cursor=None, raw=raw)
+
+    def commit(self) -> None:
+        """Commit the transaction.
+        
+        Raises:
+            TransactionError: If transaction is not active or commit fails
+        """
+        self._ensure_active()
+        endpoint = self._client.endpoints[0]
+        body = {"transaction_id": self._tx_id}
+        
+        response = self._client._tx_request("POST", f"{endpoint}/transaction/commit", self._tx_id, json=body)
+        
+        if response.status_code not in (200, 201):
+            raise TransactionError(f"Failed to commit transaction: {response.status_code}")
+        
+        self._committed = True
+
+    def rollback(self) -> None:
+        """Rollback the transaction.
+        
+        Raises:
+            TransactionError: If transaction is not active or rollback fails
+        """
+        self._ensure_active()
+        endpoint = self._client.endpoints[0]
+        body = {"transaction_id": self._tx_id}
+        
+        response = self._client._tx_request("POST", f"{endpoint}/transaction/rollback", self._tx_id, json=body)
+        
+        if response.status_code not in (200, 201):
+            raise TransactionError(f"Failed to rollback transaction: {response.status_code}")
+        
+        self._rolled_back = True
+
+    def __enter__(self) -> "Transaction":
+        """Support for context manager (with statement)."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Automatically rollback on exception, commit on success."""
+        if exc_type is not None:
+            # Exception occurred, rollback
+            if self.is_active:
+                try:
+                    self.rollback()
+                except Exception:
+                    pass  # Ignore errors during rollback in exception handler
+        else:
+            # No exception, commit
+            if self.is_active:
+                self.commit()

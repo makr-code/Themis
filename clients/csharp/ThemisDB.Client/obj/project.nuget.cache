@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "cSCs6cXaacw=",
+  "success": true,
+  "projectFilePath": "/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/ThemisDB.Client.csproj",
+  "expectedPackageFiles": [
+    "/home/runner/.nuget/packages/system.text.json/8.0.5/system.text.json.8.0.5.nupkg.sha512"
+  ],
+  "logs": []
+}

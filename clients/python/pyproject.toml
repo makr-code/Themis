@@ -3,16 +3,30 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "themisdb-sdk"
-version = "0.1.0a0"
-description = "Python client SDK for ThemisDB"
+name = "themisdb-client"
+version = "0.1.0b1"
+description = "Python client SDK for ThemisDB with transaction support"
 readme = "README.md"
 authors = [{ name = "ThemisDB Team" }]
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.26",
 ]
+keywords = ["themisdb", "sdk", "database", "transaction", "multi-model", "graph", "vector"]
+license = { text = "Apache-2.0" }
 
 [project.urls]
 Homepage = "https://github.com/makr-code/ThemisDB"
-***
+Repository = "https://github.com/makr-code/ThemisDB"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

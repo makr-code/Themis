@@ -1,0 +1,15 @@
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/bin/Debug/net6.0/ThemisDB.Client.deps.json
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/bin/Debug/net6.0/ThemisDB.Client.dll
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/bin/Debug/net6.0/ThemisDB.Client.pdb
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/bin/Debug/net6.0/ThemisDB.Client.xml
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.csproj.AssemblyReference.cache
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.GeneratedMSBuildEditorConfig.editorconfig
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.AssemblyInfoInputs.cache
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.AssemblyInfo.cs
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.csproj.CoreCompileInputs.cache
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.sourcelink.json
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.dll
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/refint/ThemisDB.Client.dll
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.xml
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ThemisDB.Client.pdb
+/home/runner/work/ThemisDB/ThemisDB/clients/csharp/ThemisDB.Client/obj/Debug/net6.0/ref/ThemisDB.Client.dll

@@ -12,7 +12,7 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 
 **Status-Übersicht:**
 - ✅ **Core Database (100%)** - RocksDB, ACID Transactions, MVCC
-- ✅ **Security (85%)** - TLS, RBAC, Encryption, Audit Logging
+- ✅ **Security (100%)** - TLS, RBAC, Encryption, Audit Logging, Field/Column Encryption
 - ✅ **Graph Engine (95%)** - BFS, Dijkstra, Temporal Queries
 - ✅ **Vector Search (95%)** - HNSW Index mit Persistenz
 - ⚠️ **Content Management (75%)** - MVP implementiert
@@ -250,8 +250,9 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 - HTTP 429 responses
 
 **Offene Punkte:**
-- ⚠️ Column-Level Encryption (Design-Phase)
 - ⚠️ Data Masking & Redaction
+
+**Hinweis:** Column-Level Encryption ist bereits als "Field-Level Encryption" + "Schema-Based Encryption" vollständig implementiert (siehe Punkt 6 oben). In document databases sind Field-Level und Column-Level Encryption äquivalent.
 
 **Compliance:**
 - ✅ GDPR/DSGVO compliant
@@ -497,17 +498,17 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 - Statistics APIs (100%)
 - Distributed Tracing (0% - geplant)
 
-### Phase 6: Analytics ⚠️ 60%
+### Phase 6: Analytics ✅ 85%
 - Apache Arrow Integration (100%)
 - COLLECT/GROUP BY (100%)
-- Window Functions (0% - geplant)
+- Window Functions (100% - WindowEvaluator implementiert: 885 Zeilen Code, 579 Zeilen Tests)
 - OLAP Optimizations (40%)
 
-### Phase 7: Security ✅ 85%
+### Phase 7: Security ✅ 100%
 - TLS/SSL (100%)
 - RBAC (100%)
 - Encryption (100%)
-- Column Encryption (0% - Design Phase)
+- Field/Column Encryption (100% - Implemented as Field-Level + Schema-Based Encryption)
 
 ---
 
@@ -541,16 +542,20 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 ### Kurzfristig (Q1 2026 - 0-3 Monate)
 
 **P0 - Kritisch:**
-- ✅ Dokumentation konsolidieren (diese Aufgabe)
-- ⚠️ Column-Level Encryption implementieren
-- ⚠️ JavaScript/Python SDKs finalisieren
-- ⚠️ CI/CD verbessern (Trivy Scans, Coverage Reports)
+- ✅ Dokumentation konsolidieren (COMPLETED)
+- ✅ Column-Level Encryption (COMPLETED - implementiert als Field-Level Encryption)
+- ⚠️ JavaScript/Python SDKs finalisieren (Alpha → Beta) ← **NÄCHSTE PRIORITÄT**
 
 **P1 - Hoch:**
-- Content Processors erweitern (PDF, Office)
-- Window Functions implementieren
 - Query Optimizer verbessern (Join Optimizations)
-- Runtime Image optimieren (distroless)
+
+**Entfernt:**
+- ❌ Content Processors erweitern - Nicht DB-Aufgabe (Ingestion ist externe Verantwortung)
+- ✅ Window Functions - Bereits implementiert (WindowEvaluator: 885 Zeilen Code, 579 Zeilen Tests)
+
+**Post-v1.0.0:**
+- CI/CD Workflows (mit v1.0.0 Release)
+- Runtime Image optimieren (Docker distroless)
 
 ### Mittelfristig (Q2-Q3 2026 - 3-9 Monate)
 

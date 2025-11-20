@@ -1,0 +1,186 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ThemisDB.Client</name>
+    </assembly>
+    <members>
+        <member name="T:ThemisDB.Client.IsolationLevel">
+            <summary>
+            Isolation level for database transactions
+            </summary>
+        </member>
+        <member name="F:ThemisDB.Client.IsolationLevel.ReadCommitted">
+            <summary>
+            Read committed isolation level - default
+            </summary>
+        </member>
+        <member name="F:ThemisDB.Client.IsolationLevel.Snapshot">
+            <summary>
+            Snapshot isolation level - provides repeatable reads
+            </summary>
+        </member>
+        <member name="T:ThemisDB.Client.ThemisClient">
+            <summary>
+            Client for interacting with ThemisDB
+            </summary>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.#ctor(System.Collections.Generic.IEnumerable{System.String},System.Nullable{System.TimeSpan})">
+            <summary>
+            Initializes a new instance of the <see cref="T:ThemisDB.Client.ThemisClient"/> class
+            </summary>
+            <param name="endpoints">List of ThemisDB server endpoints</param>
+            <param name="timeout">Optional HTTP timeout</param>
+            <exception cref="T:System.ArgumentException">Thrown when endpoints list is null or empty</exception>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.GetCurrentEndpointAsync">
+            <summary>
+            Gets the current endpoint being used
+            </summary>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.RotateEndpointAsync">
+            <summary>
+            Rotates to the next available endpoint
+            </summary>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.GetAsync``1(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Gets a document from the database
+            </summary>
+            <typeparam name="T">Type of the document</typeparam>
+            <param name="model">Model name (e.g., "relational", "document", "graph")</param>
+            <param name="collection">Collection name</param>
+            <param name="uuid">Document UUID</param>
+            <param name="cancellationToken">Cancellation token</param>
+            <returns>The retrieved document</returns>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.PutAsync``1(System.String,System.String,System.String,``0,System.Threading.CancellationToken)">
+            <summary>
+            Puts (creates or updates) a document in the database
+            </summary>
+            <typeparam name="T">Type of the document</typeparam>
+            <param name="model">Model name</param>
+            <param name="collection">Collection name</param>
+            <param name="uuid">Document UUID</param>
+            <param name="data">Document data</param>
+            <param name="cancellationToken">Cancellation token</param>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.DeleteAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Deletes a document from the database
+            </summary>
+            <param name="model">Model name</param>
+            <param name="collection">Collection name</param>
+            <param name="uuid">Document UUID</param>
+            <param name="cancellationToken">Cancellation token</param>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.QueryAsync``1(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Executes an AQL query
+            </summary>
+            <typeparam name="T">Type of the query results</typeparam>
+            <param name="aql">AQL query string</param>
+            <param name="cancellationToken">Cancellation token</param>
+            <returns>Query results</returns>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.BeginTransactionAsync(ThemisDB.Client.TransactionOptions,System.Threading.CancellationToken)">
+            <summary>
+            Begins a new transaction
+            </summary>
+            <param name="options">Transaction options</param>
+            <param name="cancellationToken">Cancellation token</param>
+            <returns>A new transaction instance</returns>
+        </member>
+        <member name="M:ThemisDB.Client.ThemisClient.Dispose">
+            <summary>
+            Disposes the client and releases resources
+            </summary>
+        </member>
+        <member name="T:ThemisDB.Client.Transaction">
+            <summary>
+            Represents a database transaction
+            </summary>
+        </member>
+        <member name="P:ThemisDB.Client.Transaction.TransactionId">
+            <summary>
+            Gets the transaction ID
+            </summary>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.IsActiveAsync">
+            <summary>
+            Gets whether the transaction is still active
+            </summary>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.GetAsync``1(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Gets a document within the transaction
+            </summary>
+            <typeparam name="T">Type of the document</typeparam>
+            <param name="model">Model name</param>
+            <param name="collection">Collection name</param>
+            <param name="uuid">Document UUID</param>
+            <param name="cancellationToken">Cancellation token</param>
+            <returns>The retrieved document</returns>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.PutAsync``1(System.String,System.String,System.String,``0,System.Threading.CancellationToken)">
+            <summary>
+            Puts (creates or updates) a document within the transaction
+            </summary>
+            <typeparam name="T">Type of the document</typeparam>
+            <param name="model">Model name</param>
+            <param name="collection">Collection name</param>
+            <param name="uuid">Document UUID</param>
+            <param name="data">Document data</param>
+            <param name="cancellationToken">Cancellation token</param>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.DeleteAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Deletes a document within the transaction
+            </summary>
+            <param name="model">Model name</param>
+            <param name="collection">Collection name</param>
+            <param name="uuid">Document UUID</param>
+            <param name="cancellationToken">Cancellation token</param>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.QueryAsync``1(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Executes an AQL query within the transaction
+            </summary>
+            <typeparam name="T">Type of the query results</typeparam>
+            <param name="aql">AQL query string</param>
+            <param name="cancellationToken">Cancellation token</param>
+            <returns>Query results</returns>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.CommitAsync(System.Threading.CancellationToken)">
+            <summary>
+            Commits the transaction
+            </summary>
+            <param name="cancellationToken">Cancellation token</param>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.RollbackAsync(System.Threading.CancellationToken)">
+            <summary>
+            Rolls back the transaction
+            </summary>
+            <param name="cancellationToken">Cancellation token</param>
+        </member>
+        <member name="M:ThemisDB.Client.Transaction.DisposeAsync">
+            <summary>
+            Disposes the transaction, rolling back if still active
+            </summary>
+        </member>
+        <member name="T:ThemisDB.Client.TransactionOptions">
+            <summary>
+            Options for configuring a transaction
+            </summary>
+        </member>
+        <member name="P:ThemisDB.Client.TransactionOptions.IsolationLevel">
+            <summary>
+            Gets or sets the isolation level for the transaction
+            </summary>
+        </member>
+        <member name="P:ThemisDB.Client.TransactionOptions.Timeout">
+            <summary>
+            Gets or sets the timeout for the transaction
+            </summary>
+        </member>
+    </members>
+</doc>

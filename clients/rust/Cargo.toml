@@ -1,10 +1,12 @@
 [package]
-name = "themisdb_sdk"
-version = "0.0.1-alpha.0"
+name = "themisdb-client"
+version = "0.1.0-beta.1"
 edition = "2021"
-description = "Experimental Rust SDK for ThemisDB"
+description = "Rust SDK for ThemisDB - Multi-Model Database with Transaction Support"
 license = "Apache-2.0"
 repository = "https://github.com/makr-code/ThemisDB"
+keywords = ["database", "multi-model", "transaction", "graph", "vector"]
+categories = ["database"]
 
 [lib]
 name = "themisdb_sdk"

@@ -1091,8 +1091,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "themisdb_sdk"
-version = "0.0.1-alpha.0"
+name = "themisdb-client"
+version = "0.1.0-beta.1"
 dependencies = [
  "reqwest",
  "serde",

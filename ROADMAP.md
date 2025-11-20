@@ -4,6 +4,8 @@
 **Stand:** 20. November 2025  
 **Typ:** Konsolidierte Gesamt-Roadmap
 
+> **📌 Nächste Schritte:** Siehe [NEXT_IMPLEMENTATION_PRIORITIES.md](NEXT_IMPLEMENTATION_PRIORITIES.md) für die detaillierte Priorisierung der nächsten Implementierung (empfohlen: Column-Level Encryption).
+
 ---
 
 ## Vision & Strategie
@@ -42,39 +44,43 @@ ThemisDB entwickelt sich von einer **Single-Node Multi-Model Database** zu einer
 
 ### P0 - Kritische Priorität
 
-#### 1.1 Dokumentation & Konsolidierung ✅ IN PROGRESS
-**Status:** In Bearbeitung (diese Aufgabe)  
-**Aufwand:** 1-2 Tage  
+#### 1.1 Dokumentation & Konsolidierung ✅ COMPLETED
+**Status:** Abgeschlossen (20. November 2025)  
+**Aufwand:** 2 Tage  
 **Owner:** Copilot Agent
 
 **Deliverables:**
 - ✅ `DEVELOPMENT_AUDITLOG.md` - Vollständiger Entwicklungsstand
 - ✅ `ROADMAP.md` - Konsolidierte Roadmap
-- ⚠️ `README.md` - Vereinfacht und aktualisiert
-- ⚠️ `CHANGELOG.md` - Validiert und aktualisiert
+- ✅ `README.md` - Vereinfacht und aktualisiert
+- ✅ `CHANGELOG.md` - Validiert und aktualisiert
+- ✅ `NEXT_IMPLEMENTATION_PRIORITIES.md` - Nächste Entwicklungsschritte priorisiert
 
-#### 1.2 Column-Level Encryption
-**Status:** Design-Phase abgeschlossen  
-**Aufwand:** 1-2 Wochen  
-**Owner:** TBD
+#### 1.2 Column-Level Encryption ✅ COMPLETED
+**Status:** Vollständig implementiert als Field-Level + Schema-Based Encryption  
+**Aufwand:** Bereits erledigt  
+**Owner:** Themis Development Team
 
-**Implementierung:**
-- Transparent encryption/decryption
-- Key rotation support
-- Pluggable Key Management
-- Index compatibility
+**Hinweis:** In document databases sind Field-Level und Column-Level Encryption funktional äquivalent. Die Implementierung ist unter dem Namen "Field-Level Encryption" bereits vollständig.
+
+**Implementiert:**
+- ✅ Transparent encryption/decryption (AES-256-GCM)
+- ✅ Key rotation support (Lazy Re-Encryption)
+- ✅ Pluggable Key Management (MockKeyProvider, HSMKeyProvider, VaultKeyProvider)
+- ✅ Index compatibility
+- ✅ Schema-based configuration via `/config/encryption-schema` API
 
 **Dokumentation:**
-- `docs/column_encryption.md` (bereits vorhanden)
-- Implementation guide
-- Migration guide
+- ✅ `docs/column_encryption.md` (25K Zeilen Design-Doc)
+- ✅ `docs/encryption_metrics.md` (410 Zeilen)
+- ✅ Code: `include/security/encryption.h`, `src/security/field_encryption.cpp`
 
 **Tests:**
-- E2E encryption tests
-- Key rotation tests
-- Performance benchmarks
+- ✅ E2E encryption tests (`tests/test_schema_encryption.cpp`, 809 Zeilen)
+- ✅ Key rotation tests (`tests/test_lazy_reencryption.cpp`, 412 Zeilen)
+- ✅ Performance metrics (42 atomic counters)
 
-#### 1.3 JavaScript/Python SDK Finalisierung
+#### 1.3 JavaScript/Python SDK Finalisierung → NEXT PRIORITY
 **Status:** Alpha → Beta  
 **Aufwand:** 2-3 Wochen  
 **Owner:** TBD

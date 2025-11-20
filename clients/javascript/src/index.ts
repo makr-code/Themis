@@ -305,6 +305,218 @@ export class ThemisClient {
       clearTimeout(timeout);
     }
   }
+
+  async beginTransaction(options?: TransactionOptions): Promise<Transaction> {
+    const endpoint = this.endpoints[0];
+    const body: Record<string, unknown> = {};
+    if (options?.isolationLevel) {
+      body.isolation = options.isolationLevel === "SNAPSHOT" ? "snapshot" : "read_committed";
+    }
+    
+    const response = await this.request("POST", `${endpoint}/transaction/begin`, {
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+    
+    if (!response.ok) {
+      throw await toHttpError(response, "failed to begin transaction");
+    }
+    
+    const payload = (await response.json()) as { transaction_id: string; isolation: string; status: string };
+    return new Transaction(this, payload.transaction_id);
+  }
+
+  // Internal method for Transaction class to access private methods
+  async _txRequest(method: string, url: string, txId: string, init: RequestInit = {}): Promise<Response> {
+    const headers = { ...(init.headers as Record<string, string> || {}), "X-Transaction-Id": txId };
+    return this.request(method, url, { ...init, headers });
+  }
+
+  _getEndpoints(): string[] {
+    return this.endpoints;
+  }
+
+  async _resolveEndpoint(urn: string): Promise<string> {
+    return this.resolveEndpoint(urn);
+  }
+
+  async _queryEndpoints(aql: string): Promise<string[]> {
+    return this.queryEndpoints(aql);
+  }
+
+  _buildUrn(model: string, collection: string, uuid: string): string {
+    return this.buildUrn(model, collection, uuid);
+  }
+
+  _buildEntityKey(model: string, collection: string, uuid: string): string {
+    return this.buildEntityKey(model, collection, uuid);
+  }
+}
+
+export interface TransactionOptions {
+  isolationLevel?: "READ_COMMITTED" | "SNAPSHOT";
+  timeout?: number;
+}
+
+export class TransactionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TransactionError";
+  }
+}
+
+export class Transaction {
+  private readonly client: ThemisClient;
+  private readonly txId: string;
+  private committed = false;
+  private rolledBack = false;
+
+  constructor(client: ThemisClient, txId: string) {
+    this.client = client;
+    this.txId = txId;
+  }
+
+  get transactionId(): string {
+    return this.txId;
+  }
+
+  get isActive(): boolean {
+    return !this.committed && !this.rolledBack;
+  }
+
+  private ensureActive(): void {
+    if (this.committed) {
+      throw new TransactionError("Transaction already committed");
+    }
+    if (this.rolledBack) {
+      throw new TransactionError("Transaction already rolled back");
+    }
+  }
+
+  async get<T = unknown>(model: string, collection: string, uuid: string): Promise<T | null> {
+    this.ensureActive();
+    const urn = this.client._buildUrn(model, collection, uuid);
+    const key = this.client._buildEntityKey(model, collection, uuid);
+    const endpoint = await this.client._resolveEndpoint(urn);
+    
+    const response = await this.client._txRequest("GET", `${endpoint}/entities/${key}`, this.txId);
+    
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw await toHttpError(response, "failed to load entity in transaction");
+    }
+    const payload = (await response.json()) as Record<string, unknown>;
+    return decodeEntity<T>(payload);
+  }
+
+  async put(model: string, collection: string, uuid: string, data: unknown): Promise<boolean> {
+    this.ensureActive();
+    const urn = this.client._buildUrn(model, collection, uuid);
+    const key = this.client._buildEntityKey(model, collection, uuid);
+    const endpoint = await this.client._resolveEndpoint(urn);
+    
+    const response = await this.client._txRequest("PUT", `${endpoint}/entities/${key}`, this.txId, {
+      body: JSON.stringify({ blob: encodeEntity(data) }),
+      headers: { "Content-Type": "application/json" },
+    });
+    
+    if (!response.ok) {
+      throw await toHttpError(response, "failed to upsert entity in transaction");
+    }
+    return true;
+  }
+
+  async delete(model: string, collection: string, uuid: string): Promise<boolean> {
+    this.ensureActive();
+    const urn = this.client._buildUrn(model, collection, uuid);
+    const key = this.client._buildEntityKey(model, collection, uuid);
+    const endpoint = await this.client._resolveEndpoint(urn);
+    
+    const response = await this.client._txRequest("DELETE", `${endpoint}/entities/${key}`, this.txId);
+    
+    if (response.status === 404) {
+      return false;
+    }
+    if (!response.ok) {
+      throw await toHttpError(response, "failed to delete entity in transaction");
+    }
+    return true;
+  }
+
+  async query<T = unknown>(aql: string, options: QueryOptions = {}): Promise<QueryResult<T>> {
+    this.ensureActive();
+    const payload: Record<string, unknown> = { query: aql };
+    if (options.params) payload.params = options.params;
+    if (options.useCursor) payload.use_cursor = true;
+    if (options.cursor) payload.cursor = options.cursor;
+    if (options.batchSize !== undefined) payload.batch_size = options.batchSize;
+
+    const endpoints = await this.client._queryEndpoints(aql);
+    const responses: QueryResult<T>[] = [];
+    
+    for (const endpoint of endpoints) {
+      const resp = await this.client._txRequest("POST", `${endpoint}/query/aql`, this.txId, {
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (!resp.ok) {
+        throw await toHttpError(resp, "query execution failed in transaction");
+      }
+      
+      const data = (await resp.json()) as Record<string, unknown>;
+      responses.push(parseQueryResult<T>(data));
+    }
+
+    if (responses.length === 0) {
+      return { items: [], hasMore: false, nextCursor: null, raw: {} };
+    }
+    if (responses.length === 1) {
+      return responses[0];
+    }
+    
+    const items: T[] = [];
+    let hasMore = false;
+    for (const part of responses) {
+      items.push(...part.items);
+      hasMore = hasMore || part.hasMore;
+    }
+    return { items, hasMore, nextCursor: null, raw: { partials: responses.map((r) => r.raw) } };
+  }
+
+  async commit(): Promise<void> {
+    this.ensureActive();
+    const endpoint = this.client._getEndpoints()[0];
+    
+    const response = await this.client._txRequest("POST", `${endpoint}/transaction/commit`, this.txId, {
+      body: JSON.stringify({ transaction_id: this.txId }),
+      headers: { "Content-Type": "application/json" },
+    });
+    
+    if (!response.ok) {
+      throw await toHttpError(response, "failed to commit transaction");
+    }
+    
+    this.committed = true;
+  }
+
+  async rollback(): Promise<void> {
+    this.ensureActive();
+    const endpoint = this.client._getEndpoints()[0];
+    
+    const response = await this.client._txRequest("POST", `${endpoint}/transaction/rollback`, this.txId, {
+      body: JSON.stringify({ transaction_id: this.txId }),
+      headers: { "Content-Type": "application/json" },
+    });
+    
+    if (!response.ok) {
+      throw await toHttpError(response, "failed to rollback transaction");
+    }
+    
+    this.rolledBack = true;
+  }
 }
 
 export const version = "0.0.0-alpha.0";

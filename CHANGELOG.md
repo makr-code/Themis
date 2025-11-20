@@ -7,6 +7,483 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - C# SDK (2025-11-20 Phase 2)
+
+#### C# SDK Full Implementation
+- **Transaction Support** - Complete ACID transaction implementation
+  - `ThemisClient.BeginTransactionAsync(options)` method
+  - `Transaction` class with full CRUD operations
+  - IAsyncDisposable support (`await using` statement)
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (IsActiveAsync(), TransactionId)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with HttpRequestException and InvalidOperationException
+
+- **Async/Await Pattern**
+  - Modern C# async/await throughout
+  - CancellationToken support for all methods
+  - Async resource management with IAsyncDisposable
+
+- **Thread-Safe Operations**
+  - SemaphoreSlim for async-safe locking
+  - Thread-safe client operations
+  - Safe for concurrent async operations
+
+- **Modern .NET Features**
+  - .NET 8.0+ support
+  - Nullable reference types enabled
+  - Generic type-safe methods
+  - System.Text.Json for serialization
+  - HttpClient-based networking
+
+- **Test Coverage** - Comprehensive xUnit tests
+  - Unit tests for Client creation and configuration
+  - Unit tests for Transaction state management
+  - Unit tests for IsolationLevel enum
+  - Unit tests for TransactionOptions
+  - Integration test placeholders (requires running server)
+  - 9 passing unit tests + 3 integration test placeholders
+
+- **Documentation** - Comprehensive C# SDK docs
+  - README.md with transaction examples (10.5KB)
+  - Money transfer example (ACID guarantees)
+  - Await using examples
+  - AQL query examples
+  - API reference documentation
+  - Quick start guide
+  - Error handling best practices
+  - NuGet package configuration
+
+- **Package Information**
+  - Package: ThemisDB.Client
+  - Version: 0.1.0-beta.1
+  - Target: .NET 8.0+
+  - License: Apache 2.0
+  - Ready for NuGet publishing
+
+### Added - Java SDK (2025-11-20 Phase 2)
+
+#### Java SDK Full Implementation
+- **Transaction Support** - Complete ACID transaction implementation
+  - `ThemisClient.beginTransaction(options)` method
+  - `Transaction` class with full CRUD operations
+  - Try-with-resources support (AutoCloseable)
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (isActive(), getTransactionId())
+  - Automatic X-Transaction-Id header injection
+  - Error handling with IOException and IllegalStateException
+
+- **Thread-Safe Operations**
+  - ReentrantReadWriteLock for concurrent transaction access
+  - Thread-safe client operations
+  - Safe for multi-threaded environments
+
+- **Modern Java Features**
+  - Java 11+ with java.net.http.HttpClient
+  - Generic type-safe methods
+  - Duration-based timeout configuration
+  - Gson for JSON serialization
+  - Builder pattern for TransactionOptions
+
+- **Test Coverage** - Comprehensive JUnit 5 tests
+  - Unit tests for Client creation and configuration
+  - Unit tests for Transaction state management
+  - Unit tests for IsolationLevel enum
+  - Unit tests for TransactionOptions (defaults and chaining)
+  - Integration test placeholders (requires running server)
+  - 9 passing unit tests + 3 integration test placeholders
+
+- **Documentation** - Comprehensive Java SDK docs
+  - README.md with transaction examples (11KB)
+  - Money transfer example (ACID guarantees)
+  - Try-with-resources examples
+  - AQL query examples
+  - API reference documentation
+  - Quick start guide
+  - Error handling best practices
+  - Maven dependency configuration
+
+- **Packaging**
+  - Maven configuration (pom.xml)
+  - Package: com.themisdb:themisdb-client:0.1.0-beta.1
+  - Dependencies: Gson 2.10.1, JUnit 5.10.1
+  - Java 11+ requirement
+  - Maven Central ready
+
+### Added - Go SDK (2025-11-20 Phase 2 Early Start)
+
+#### Go SDK Full Implementation
+- **Transaction Support** - Complete ACID transaction implementation
+  - `ThemisClient.BeginTransaction(ctx, options)` method
+  - `Transaction` struct with full CRUD operations
+  - Context.Context integration throughout
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (IsActive(), TransactionID())
+  - Automatic X-Transaction-Id header injection
+  - Error handling with standard Go errors (ErrTransactionNotActive)
+
+- **Concurrent-Safe Operations**
+  - sync.RWMutex for thread-safe client operations
+  - Mutex protection in Transaction struct
+  - Safe for use with goroutines
+
+- **Idiomatic Go Patterns**
+  - Context support for cancellation and timeouts
+  - Defer-based transaction cleanup patterns
+  - Standard error wrapping with fmt.Errorf
+  - JSON marshaling/unmarshaling with encoding/json
+  - Interface{} for flexible data types
+
+- **Test Coverage** - Comprehensive Go tests
+  - Unit tests for Client creation and configuration
+  - Unit tests for Transaction state management
+  - Unit tests for inactive transaction error handling
+  - Unit tests for isolation levels
+  - Integration test placeholders (requires running server)
+  - 6 passing unit tests + 3 integration test placeholders
+
+- **Documentation** - Comprehensive Go SDK docs
+  - README.md with transaction examples (11KB)
+  - Money transfer example (ACID guarantees)
+  - Context and timeout examples
+  - Query support examples
+  - API reference documentation
+  - Quick start guide
+  - Error handling best practices
+  - Integration testing guide
+
+- **Package Configuration**
+  - Go module: `github.com/makr-code/ThemisDB/clients/go`
+  - Version: v0.1.0-beta.1 (implied)
+  - Go version: 1.21+
+  - Dependencies: google/uuid, stretchr/testify
+  - Standard library: net/http, encoding/json, context
+
+#### Implementation Details
+- **Files Created:**
+  - `clients/go/client.go` - Main client implementation (8.7KB, ~300 lines)
+  - `clients/go/client_test.go` - Test suite (5.2KB, 9 tests)
+  - `clients/go/README.md` - Comprehensive documentation (11.6KB)
+  - `clients/go/go.mod` - Go module definition
+
+#### Why Go SDK Was Implemented Early
+- Originally planned for Q2 2026 (Phase 2)
+- Implemented in Phase 1 continuation due to high priority
+- Cloud-native ecosystem demand (Kubernetes, DevOps tools)
+- Strong community request for Go support
+- Natural fit after JavaScript/Python/Rust SDKs complete
+
+### Added - Rust SDK Transaction Support (2025-11-20 Phase 1 Complete)
+
+#### Rust SDK Transaction Implementation
+- **Transaction Support** - Full BEGIN/COMMIT/ROLLBACK implementation
+  - `ThemisClient.begin_transaction(options)` method
+  - `Transaction` struct with CRUD operations
+  - Async/await pattern using Tokio
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (is_active, transaction_id)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with TransactionError variant
+
+- **Test Coverage** - Comprehensive transaction tests
+  - Unit tests for Transaction struct
+  - Isolation level tests
+  - State management tests (commit/rollback tracking)
+  - API structure validation
+  - Integration test placeholders (requires running server)
+  - 5 passing unit tests + 3 integration test placeholders
+  - 12 existing library tests still passing
+
+- **Documentation** - New Rust SDK comprehensive docs
+  - README.md with transaction examples
+  - Money transfer example (ACID transactions)
+  - Batch operations examples
+  - API reference for Transaction struct
+  - Quick start guide
+  - Error handling patterns
+  - Vector search examples
+
+- **Package Updates**
+  - Version bumped to 0.1.0-beta.1
+  - Package name updated to themisdb-client
+  - Enhanced keywords (database, multi-model, transaction, graph, vector)
+  - Categories added (database)
+
+#### Implementation Details
+- **Files Modified:**
+  - `clients/rust/src/lib.rs` - Added Transaction struct and support methods (+280 lines)
+  - `clients/rust/tests/test_transaction.rs` - New test file (5 tests passing, 3 integration tests)
+  - `clients/rust/README.md` - New comprehensive documentation (9KB)
+  - `clients/rust/Cargo.toml` - Version, metadata, keywords, and categories
+
+#### Phase 1 SDK Finalization Status
+- ✅ **JavaScript SDK** - Transaction Support COMPLETE (Commit: 189353b)
+- ✅ **Python SDK** - Transaction Support COMPLETE (Commit: ca694fc)
+- ✅ **Rust SDK** - Transaction Support COMPLETE (This commit)
+
+**All three SDKs now have:**
+- Full ACID transaction support
+- Isolation level configuration
+- State management
+- Comprehensive tests
+- Production-ready documentation
+- Beta version numbers
+
+### Added - Python SDK Transaction Support (2025-11-20 Phase 1 Continued)
+
+#### Python SDK Transaction Implementation
+- **Transaction Support** - Full BEGIN/COMMIT/ROLLBACK implementation
+  - `ThemisClient.begin_transaction(isolation_level, timeout)` method
+  - `Transaction` class with CRUD operations
+  - Context manager support (Pythonic `with` statement)
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (is_active, transaction_id)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with TransactionError class
+
+- **Test Coverage** - Comprehensive transaction tests
+  - Unit tests for Transaction class
+  - Context manager tests (with statement)
+  - State management tests (commit/rollback tracking)
+  - API structure validation
+  - Integration test placeholders (requires running server)
+  - 9 passing tests + 5 integration test placeholders
+
+- **Documentation** - Updated Python SDK docs
+  - README.md with transaction examples
+  - Context manager examples (`with` statement)
+  - Money transfer example
+  - API reference for Transaction class
+  - Quick start guide
+  - Error handling patterns
+
+- **Package Updates**
+  - Version bumped to 0.1.0b1
+  - Package name updated to themisdb-client
+  - Added dev dependencies (pytest, pytest-cov)
+  - Additional keywords (transaction, multi-model, graph, vector)
+
+#### Implementation Details
+- **Files Modified:**
+  - `clients/python/themis/__init__.py` - Added Transaction class and support methods (+260 lines)
+  - `clients/python/tests/test_transaction.py` - New test file (9 tests passing)
+  - `clients/python/README.md` - Comprehensive documentation update
+  - `clients/python/pyproject.toml` - Version, metadata, and dev dependencies
+
+- **Server Integration:**
+  - Uses existing `/transaction/begin` endpoint
+  - Uses existing `/transaction/commit` endpoint
+  - Uses existing `/transaction/rollback` endpoint
+  - Injects `X-Transaction-Id` header for all operations
+
+### Added - JavaScript SDK Transaction Support (2025-11-20 Phase 1 Start)
+
+#### JavaScript/TypeScript SDK Transaction Implementation
+- **Transaction Support** - Full BEGIN/COMMIT/ROLLBACK implementation
+  - `ThemisClient.beginTransaction(options?)` method
+  - `Transaction` class with CRUD operations
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (isActive, transactionId)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with TransactionError class
+
+- **Test Coverage** - Comprehensive transaction tests
+  - Unit tests for Transaction class
+  - State management tests (commit/rollback tracking)
+  - API structure validation
+  - Integration test placeholders (requires running server)
+
+- **Documentation** - Updated JavaScript SDK docs
+  - README.md with transaction examples
+  - API reference for Transaction class
+  - Quick start guide
+  - Error handling examples
+
+- **Package Updates**
+  - Version bumped to 0.1.0-beta.1
+  - Package name updated to @themisdb/client
+  - Additional keywords (transaction, multi-model, graph, vector)
+
+#### Implementation Details
+- **Files Modified:**
+  - `clients/javascript/src/index.ts` - Added Transaction class and support methods
+  - `clients/javascript/tests/transaction.spec.ts` - New test file (7 tests passing)
+  - `clients/javascript/tests/client.spec.ts` - Added basic client tests
+  - `clients/javascript/README.md` - Comprehensive documentation update
+  - `clients/javascript/package.json` - Version and metadata update
+
+- **Server Integration:**
+  - Uses existing `/transaction/begin` endpoint
+  - Uses existing `/transaction/commit` endpoint
+  - Uses existing `/transaction/rollback` endpoint
+  - Injects `X-Transaction-Id` header for all operations
+
+### Added - SDK Implementation Plan (2025-11-20 v5)
+
+#### SDK Development Roadmap
+- **SDK_IMPLEMENTATION_PLAN.md** - Detailed implementation plan for SDK finalization
+  - Phase 1: JS/Python/Rust finalization (2-3 weeks)
+    - Transaction Support (all SDKs) - Week 1
+    - Missing features & Async (Python) - Week 2  
+    - Package publishing & Documentation - Week 3
+  - Phase 2: New SDKs roadmap (Q2-Q4 2026)
+    - Go SDK (Q2 2026) - Cloud-Native, Kubernetes
+    - Java SDK (Q2 2026) - Enterprise, Android
+    - C# SDK (Q3 2026) - Microsoft, Azure, Unity
+    - Swift SDK (Q4 2026) - iOS/macOS
+  - Detailed feature specifications for Transaction Support
+  - Package configuration templates
+  - Success criteria and timeline
+
+### Added - SDK Audit & Language Analysis (2025-11-20 v4)
+
+#### SDK Status Documentation
+- **SDK_AUDIT_STATUS.md** - Comprehensive audit of all existing SDKs
+  - JavaScript/TypeScript SDK: 436 lines, Alpha status
+  - Python SDK: 540 lines, Alpha status
+  - Rust SDK: 705 lines, Alpha status
+  - C++ SDK: Does not exist, NOT PLANNED (server already in C++)
+  - Identified missing features: Transaction support (all SDKs)
+  - Identified missing features: Package publishing (NPM, PyPI, Crates.io)
+  - Identified missing features: Batch/Graph operations
+  - Implementation plan for Beta release (3 phases, 2-3 weeks)
+
+- **SDK_LANGUAGE_ANALYSIS.md** - Analysis of relevant programming languages for future SDKs
+  - Priority 1: Go (cloud-native, Kubernetes), Java (enterprise, Android)
+  - Priority 2: C# (.NET, Azure, Unity), PHP (web development), Swift (iOS/macOS)
+  - Not planned: C++ (server already in C++), Scala/Clojure (Java SDK sufficient)
+  - Market analysis: Stack Overflow, GitHub Octoverse, TIOBE Index
+  - Competitor analysis: MongoDB (9 SDKs), Neo4j (5 SDKs), Weaviate (4 SDKs)
+  - Recommended SDK roadmap: Post-Beta (Go, Java), Post-v1.0.0 (C#, PHP, Swift)
+
+#### Documentation Updates
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates v4**
+  - Updated SDK section to include Rust SDK (was missing)
+  - Added note that C++ SDK is NOT PLANNED
+  - Updated deliverables to include all three SDKs (JS, Python, Rust)
+  - Updated success criteria for all three SDKs
+  - Added reference to SDK_AUDIT_STATUS.md and SDK_LANGUAGE_ANALYSIS.md
+  - Updated Quick Start guide to include Rust SDK
+
+### Changed - CI/CD Timeline Update (2025-11-20 v3)
+
+#### Priority Adjustment
+- **CI/CD Workflows** - Moved from "next priority" to Post-v1.0.0
+  - Decision: CI/CD workflows will be implemented with v1.0.0 release, not before
+  - README badges remain (placeholder for future workflows)
+  - Focus shifts to SDK Beta Release as next priority
+
+#### Documentation Updates
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates v3**
+  - Changed next branch back from CI/CD to SDK Finalization
+  - Moved CI/CD Workflows to "Post-v1.0.0 Features" section
+  - Updated implementation timeline: SDK Beta (Woche 1-3), then v1.0.0 prep (Woche 4-13)
+  - Updated Quick Start guide back to SDK development
+  - Updated recommendation section
+
+- **DEVELOPMENT_AUDITLOG.md Updates v2**
+  - Removed CI/CD from P1 priorities
+  - Moved CI/CD to "Post-v1.0.0" section
+  - SDK Finalization marked as "NÄCHSTE PRIORITÄT"
+
+### Changed - Window Functions & CI/CD Status Update (2025-11-20 v2)
+
+#### Code Audit Findings
+- **Window Functions Clarification** - Identified that Window Functions are already fully implemented
+  - Despite status "0% - geplant" in DEVELOPMENT_AUDITLOG.md, complete implementation exists
+  - Implementation: `WindowEvaluator` class in `include/query/window_evaluator.h` (342 lines)
+  - Core logic: `src/query/window_evaluator.cpp` (543 lines)
+  - Features: ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, FIRST_VALUE, LAST_VALUE
+  - PARTITION BY and ORDER BY support
+  - Window Frames (ROWS, RANGE)
+  - Comprehensive tests: `tests/test_window_functions.cpp` (579 lines)
+  
+- **CI/CD Status** - Identified critical gap in CI/CD infrastructure
+  - README badges reference non-existent workflows (ci.yml, code-quality.yml)
+  - No GitHub Actions workflows exist in `.github/workflows/` directory
+  - CI/CD Improvements moved from P1 to **highest priority**
+
+#### Documentation Updates
+- **DEVELOPMENT_AUDITLOG.md Updates**
+  - Phase 6 Analytics updated from 60% to 85%
+  - Window Functions marked as 100% complete
+  - Updated "Offene Punkte" section:
+    - ✅ Column-Level Encryption marked as COMPLETED
+    - ✅ Window Functions marked as COMPLETED (removed from open items)
+    - ⚠️ CI/CD Workflows marked as KRITISCH (critical priority)
+    - ❌ Content Processors removed (not DB responsibility)
+
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates v2**
+  - **New recommendation:** CI/CD Improvements as next branch (was SDK Finalization)
+  - Added Window Functions to "Archiviert" section (already complete)
+  - Removed Content Processors from roadmap (ingestion is not DB duty)
+  - Moved Docker Runtime Optimization to "Post-v1.0.0 Enterprise Features"
+  - Added GPU CUDA Support and REST API Extensions as future options
+  - Updated implementation timeline: 1 week CI/CD, then 2-3 weeks SDK Beta
+  - Removed 8-week block for Content Processors and Window Functions
+  - Updated Quick Start guide for CI/CD workflow creation
+
+#### Rationale for Priority Changes
+1. **CI/CD CRITICAL:** README references workflows that don't exist (broken badges)
+2. **Window Functions DONE:** 885 lines of code + 579 lines of tests already exist
+3. **Content Processors OUT:** Ingestion/processing is not database responsibility
+4. **Docker POST-v1.0.0:** Enterprise feature deferred until after v1.0.0 release
+
+### Changed - Column-Level Encryption Status Update (2025-11-20)
+
+#### Documentation Updates
+- **Column-Level Encryption Clarification** - Identified that Column-Level Encryption is already fully implemented
+  - Feature exists as "Field-Level Encryption" + "Schema-Based Encryption"
+  - In document databases, field-level and column-level encryption are functionally equivalent
+  - Implementation: `FieldEncryption` class (AES-256-GCM) in `include/security/encryption.h`
+  - Schema API: `GET/PUT /config/encryption-schema` endpoints
+  - Key rotation: `decryptAndReEncrypt()`, `needsReEncryption()` methods
+  - Tests: `tests/test_schema_encryption.cpp` (809 lines, 19 test cases)
+  - Tests: `tests/test_lazy_reencryption.cpp` (412 lines, key rotation)
+  - Documentation: `docs/column_encryption.md` (25K design document)
+
+- **DEVELOPMENT_AUDITLOG.md Updates** - Corrected security status
+  - Phase 7 Security updated from 85% to 100%
+  - Removed "Column-Level Encryption (Design-Phase)" from offene Punkte
+  - Added clarification note that Column-Level Encryption is implemented as Field-Level Encryption
+  - Updated executive summary: Security from 85% to 100%
+
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates** - Updated priority recommendation
+  - Changed recommended next branch from Column-Level Encryption to SDK Finalization
+  - Added "Status Update" section at top explaining Column-Level Encryption is complete
+  - Moved Column-Level Encryption to "Archiviert" (Archived) section
+  - Updated implementation timeline: removed Column-Level Encryption, adjusted weeks
+  - Updated success criteria for SDK Finalization (JavaScript + Python)
+  - Updated Quick Start guide for SDK development branch
+
+- **ROADMAP.md Updates** - Marked Column-Level Encryption as complete
+  - Section 1.2 (Column-Level Encryption) marked as ✅ COMPLETED
+  - Added note explaining it's implemented as Field-Level + Schema-Based Encryption
+  - Listed all implemented features, documentation, and tests
+  - Marked section 1.3 (JavaScript/Python SDK) as "→ NEXT PRIORITY"
+
+### Added - Next Implementation Priorities (2025-11-20)
+
+#### Implementation Planning Documentation
+- **Next Implementation Priorities** - Detailed prioritization of next development steps
+  - New file: `NEXT_IMPLEMENTATION_PRIORITIES.md` (250+ lines)
+  - Recommended next branch: Column-Level Encryption (P0, 1-2 weeks)
+  - Alternative P0 priority: JavaScript/Python SDK Finalization (2-3 weeks)
+  - P1 priorities roadmap: Content Processors, CI/CD, Window Functions, Docker Optimization
+  - Implementation order for Q1 2026 (13-week plan)
+  - Success criteria and acceptance criteria for each feature
+  - Quick start guide for next development branch
+  - References to existing documentation (ROADMAP.md, DEVELOPMENT_AUDITLOG.md)
+
+- **ROADMAP.md Updates** - Marked documentation task as complete
+  - Section 1.1 (Documentation & Consolidation) marked as ✅ COMPLETED
+  - Added reference to NEXT_IMPLEMENTATION_PRIORITIES.md at the beginning
+  - Updated deliverables list to include priorities document
+
+- **README.md Updates** - Added navigation to priorities document
+  - Added link to NEXT_IMPLEMENTATION_PRIORITIES.md in documentation section
+  - Enhanced developer navigation with implementation planning reference
+
 ### Added - Documentation Consolidation (2025-11-20)
 
 #### Consolidated Documentation

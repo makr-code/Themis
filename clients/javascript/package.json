@@ -1,7 +1,7 @@
 {
-  "name": "@themisdb/sdk",
-  "version": "0.0.0-alpha.0",
-  "description": "Experimental JavaScript/TypeScript SDK for ThemisDB",
+  "name": "@themisdb/client",
+  "version": "0.1.0-beta.1",
+  "description": "Official JavaScript/TypeScript client for ThemisDB with transaction support",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -15,7 +15,11 @@
   "keywords": [
     "themisdb",
     "sdk",
-    "database"
+    "database",
+    "transaction",
+    "multi-model",
+    "graph",
+    "vector"
   ],
   "author": "ThemisDB Team",
   "license": "Apache-2.0",
