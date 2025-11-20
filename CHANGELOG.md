@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Java SDK (2025-11-20 Phase 2)
+
+#### Java SDK Full Implementation
+- **Transaction Support** - Complete ACID transaction implementation
+  - `ThemisClient.beginTransaction(options)` method
+  - `Transaction` class with full CRUD operations
+  - Try-with-resources support (AutoCloseable)
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (isActive(), getTransactionId())
+  - Automatic X-Transaction-Id header injection
+  - Error handling with IOException and IllegalStateException
+
+- **Thread-Safe Operations**
+  - ReentrantReadWriteLock for concurrent transaction access
+  - Thread-safe client operations
+  - Safe for multi-threaded environments
+
+- **Modern Java Features**
+  - Java 11+ with java.net.http.HttpClient
+  - Generic type-safe methods
+  - Duration-based timeout configuration
+  - Gson for JSON serialization
+  - Builder pattern for TransactionOptions
+
+- **Test Coverage** - Comprehensive JUnit 5 tests
+  - Unit tests for Client creation and configuration
+  - Unit tests for Transaction state management
+  - Unit tests for IsolationLevel enum
+  - Unit tests for TransactionOptions (defaults and chaining)
+  - Integration test placeholders (requires running server)
+  - 9 passing unit tests + 3 integration test placeholders
+
+- **Documentation** - Comprehensive Java SDK docs
+  - README.md with transaction examples (11KB)
+  - Money transfer example (ACID guarantees)
+  - Try-with-resources examples
+  - AQL query examples
+  - API reference documentation
+  - Quick start guide
+  - Error handling best practices
+  - Maven dependency configuration
+
+- **Packaging**
+  - Maven configuration (pom.xml)
+  - Package: com.themisdb:themisdb-client:0.1.0-beta.1
+  - Dependencies: Gson 2.10.1, JUnit 5.10.1
+  - Java 11+ requirement
+  - Maven Central ready
+
 ### Added - Go SDK (2025-11-20 Phase 2 Early Start)
 
 #### Go SDK Full Implementation

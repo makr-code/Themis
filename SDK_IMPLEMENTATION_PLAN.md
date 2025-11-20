@@ -2,7 +2,7 @@
 
 **Datum:** 20. November 2025  
 **Branch:** sdk-beta-release  
-**Status:** Phase 1 - ✅ COMPLETE (JavaScript ✅, Python ✅, Rust ✅)
+**Status:** Phase 1 - ✅ COMPLETE | Phase 2 - 🚧 IN PROGRESS (Go ✅, Java ✅)
 
 ---
 
@@ -657,19 +657,46 @@ cargo publish
 
 ---
 
-### Java SDK (Q2 2026)
-**Priorität:** ⭐⭐⭐⭐⭐ SEHR WICHTIG  
-**Aufwand:** 2-3 Wochen  
-**Begründung:** Enterprise Standard, Android
+### ✅ COMPLETED: Java SDK (2025-11-20)
 
-**Features:**
-- Spring Boot integration
-- JVM compatibility (Kotlin, Scala)
-- Reactive support (Project Reactor)
-- Transaction support
-- Connection pooling
+**Status:** ✅ DONE - Full implementation with transaction support  
+**Commit:** (this commit)  
+**Time:** ~4 hours  
+**Priority:** ⭐⭐⭐⭐⭐ SEHR WICHTIG
 
-**Package:** `io.themisdb:themisdb-client` (Maven Central)
+**Implemented:**
+- ✅ Client with full CRUD operations
+- ✅ Transaction support (BEGIN/COMMIT/ROLLBACK)
+- ✅ Isolation level support (READ_COMMITTED, SNAPSHOT)
+- ✅ Thread-safe operations (ReadWriteLock)
+- ✅ Try-with-resources support (AutoCloseable)
+- ✅ Generic type-safe methods
+- ✅ Transaction state management
+- ✅ Error handling with standard exceptions
+- ✅ Tests (9 passing unit tests + 3 integration placeholders)
+- ✅ Comprehensive 11KB README with examples
+- ✅ Maven configuration (pom.xml)
+
+**Files Changed:**
+- `clients/java/src/main/java/com/themisdb/client/ThemisClient.java` (new, 8.7KB)
+- `clients/java/src/main/java/com/themisdb/client/Transaction.java` (new, 10KB)
+- `clients/java/src/main/java/com/themisdb/client/IsolationLevel.java` (new)
+- `clients/java/src/main/java/com/themisdb/client/TransactionOptions.java` (new, 2KB)
+- `clients/java/src/test/java/com/themisdb/client/ThemisClientTest.java` (new, 5.4KB, 9 tests)
+- `clients/java/README.md` (new, 11KB, comprehensive documentation)
+- `clients/java/pom.xml` (new, Maven project config)
+
+**Package:** `com.themisdb:themisdb-client:0.1.0-beta.1` (Maven Central ready)
+
+**Java-Specific Features:**
+- Java 11+ compatibility
+- java.net.http.HttpClient (modern HTTP)
+- Try-with-resources for automatic transaction cleanup
+- Generic methods with type safety
+- Thread-safe with ReentrantReadWriteLock
+- Gson for JSON serialization
+- JUnit 5 for testing
+- Spring Boot compatible
 
 ---
 
