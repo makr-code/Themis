@@ -171,6 +171,7 @@ nav:
           - CDC: cdc.md
       - Operations Runbook: operations_runbook.md
       - Infrastructure Roadmap: infrastructure_roadmap.md
+      - Horizontal Scaling Implementation Strategy: horizontal_scaling_implementation_strategy.md
   - Entwicklung:
       - Übersicht: development/README.md
       - Code Quality Pipeline: code_quality.md
