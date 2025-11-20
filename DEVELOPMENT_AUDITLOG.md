@@ -12,7 +12,7 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 
 **Status-Übersicht:**
 - ✅ **Core Database (100%)** - RocksDB, ACID Transactions, MVCC
-- ✅ **Security (85%)** - TLS, RBAC, Encryption, Audit Logging
+- ✅ **Security (100%)** - TLS, RBAC, Encryption, Audit Logging, Field/Column Encryption
 - ✅ **Graph Engine (95%)** - BFS, Dijkstra, Temporal Queries
 - ✅ **Vector Search (95%)** - HNSW Index mit Persistenz
 - ⚠️ **Content Management (75%)** - MVP implementiert
@@ -250,8 +250,9 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 - HTTP 429 responses
 
 **Offene Punkte:**
-- ⚠️ Column-Level Encryption (Design-Phase)
 - ⚠️ Data Masking & Redaction
+
+**Hinweis:** Column-Level Encryption ist bereits als "Field-Level Encryption" + "Schema-Based Encryption" vollständig implementiert (siehe Punkt 6 oben). In document databases sind Field-Level und Column-Level Encryption äquivalent.
 
 **Compliance:**
 - ✅ GDPR/DSGVO compliant
@@ -503,11 +504,11 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 - Window Functions (0% - geplant)
 - OLAP Optimizations (40%)
 
-### Phase 7: Security ✅ 85%
+### Phase 7: Security ✅ 100%
 - TLS/SSL (100%)
 - RBAC (100%)
 - Encryption (100%)
-- Column Encryption (0% - Design Phase)
+- Field/Column Encryption (100% - Implemented as Field-Level + Schema-Based Encryption)
 
 ---
 

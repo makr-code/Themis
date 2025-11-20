@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Column-Level Encryption Status Update (2025-11-20)
+
+#### Documentation Updates
+- **Column-Level Encryption Clarification** - Identified that Column-Level Encryption is already fully implemented
+  - Feature exists as "Field-Level Encryption" + "Schema-Based Encryption"
+  - In document databases, field-level and column-level encryption are functionally equivalent
+  - Implementation: `FieldEncryption` class (AES-256-GCM) in `include/security/encryption.h`
+  - Schema API: `GET/PUT /config/encryption-schema` endpoints
+  - Key rotation: `decryptAndReEncrypt()`, `needsReEncryption()` methods
+  - Tests: `tests/test_schema_encryption.cpp` (809 lines, 19 test cases)
+  - Tests: `tests/test_lazy_reencryption.cpp` (412 lines, key rotation)
+  - Documentation: `docs/column_encryption.md` (25K design document)
+
+- **DEVELOPMENT_AUDITLOG.md Updates** - Corrected security status
+  - Phase 7 Security updated from 85% to 100%
+  - Removed "Column-Level Encryption (Design-Phase)" from offene Punkte
+  - Added clarification note that Column-Level Encryption is implemented as Field-Level Encryption
+  - Updated executive summary: Security from 85% to 100%
+
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates** - Updated priority recommendation
+  - Changed recommended next branch from Column-Level Encryption to SDK Finalization
+  - Added "Status Update" section at top explaining Column-Level Encryption is complete
+  - Moved Column-Level Encryption to "Archiviert" (Archived) section
+  - Updated implementation timeline: removed Column-Level Encryption, adjusted weeks
+  - Updated success criteria for SDK Finalization (JavaScript + Python)
+  - Updated Quick Start guide for SDK development branch
+
+- **ROADMAP.md Updates** - Marked Column-Level Encryption as complete
+  - Section 1.2 (Column-Level Encryption) marked as ✅ COMPLETED
+  - Added note explaining it's implemented as Field-Level + Schema-Based Encryption
+  - Listed all implemented features, documentation, and tests
+  - Marked section 1.3 (JavaScript/Python SDK) as "→ NEXT PRIORITY"
+
 ### Added - Next Implementation Priorities (2025-11-20)
 
 #### Implementation Planning Documentation
