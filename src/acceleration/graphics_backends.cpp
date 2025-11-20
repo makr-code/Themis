@@ -3,26 +3,17 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <memory>
 
 #ifdef THEMIS_ENABLE_VULKAN
-#define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 
-// Vulkan function pointers (would be loaded dynamically)
-static PFN_vkCreateInstance vkCreateInstance = nullptr;
-static PFN_vkDestroyInstance vkDestroyInstance = nullptr;
-static PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices = nullptr;
-// ... more function pointers
-
-#define VK_CHECK(call) \
-    do { \
-        VkResult result = call; \
-        if (result != VK_SUCCESS) { \
-            std::cerr << "Vulkan error in " << __FILE__ << ":" << __LINE__ \
-                      << " - Error code: " << result << std::endl; \
-            return false; \
-        } \
-    } while(0)
+// Forward declare the full implementation
+namespace themis {
+namespace acceleration {
+    class VulkanVectorBackendImpl;
+}
+}
 
 #endif
 
@@ -140,21 +131,35 @@ bool VulkanVectorBackend::initialize() {
 #ifdef THEMIS_ENABLE_VULKAN
     std::cout << "Vulkan Backend: Initialization..." << std::endl;
     
-    // Full implementation would:
-    // 1. Create Vulkan instance
-    // 2. Enumerate physical devices
-    // 3. Select compute-capable device
-    // 4. Create logical device with compute queue
-    // 5. Load compute shaders (SPIR-V)
-    // 6. Create compute pipelines
+    if (!loadVulkanLibrary()) {
+        std::cerr << "Failed to load Vulkan library" << std::endl;
+        return false;
+    }
     
-    // For now, this is a placeholder
-    initialized_ = false;
+    if (!createInstance()) {
+        std::cerr << "Failed to create Vulkan instance" << std::endl;
+        return false;
+    }
     
-    std::cout << "Vulkan Backend: Requires Vulkan SDK and runtime" << std::endl;
-    std::cout << "Vulkan Backend: Compute shaders available in src/acceleration/vulkan/shaders/" << std::endl;
+    if (!selectPhysicalDevice()) {
+        std::cerr << "Failed to select suitable physical device" << std::endl;
+        return false;
+    }
     
-    return initialized_;
+    if (!createLogicalDevice()) {
+        std::cerr << "Failed to create logical device" << std::endl;
+        return false;
+    }
+    
+    if (!createComputePipelines()) {
+        std::cerr << "Failed to create compute pipelines" << std::endl;
+        return false;
+    }
+    
+    initialized_ = true;
+    std::cout << "Vulkan Backend: Successfully initialized" << std::endl;
+    
+    return true;
 #else
     return false;
 #endif

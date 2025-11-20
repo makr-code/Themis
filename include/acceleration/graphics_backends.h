@@ -47,7 +47,7 @@ private:
 // Vulkan Compute backend (cross-platform)
 class VulkanVectorBackend : public IVectorBackend {
 public:
-    VulkanVectorBackend() = default;
+    VulkanVectorBackend();
     ~VulkanVectorBackend() override;
     
     const char* name() const noexcept override { return "Vulkan"; }
@@ -79,9 +79,8 @@ public:
 
 private:
     bool initialized_ = false;
-    void* instance_ = nullptr;  // VkInstance
-    void* device_ = nullptr;    // VkDevice
-    void* queue_ = nullptr;     // VkQueue
+    class VulkanVectorBackendImpl;
+    std::unique_ptr<VulkanVectorBackendImpl> impl_;
 };
 
 // OpenGL Compute Shaders backend (legacy support)
