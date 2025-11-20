@@ -286,6 +286,9 @@ SpatialIndexManager::Status SpatialIndexManager::insert(
     std::string_view primary_key,
     const geo::GeoSidecar& sidecar
 ) {
+    // G5: Track insert metrics
+    metrics_.insert_count++;
+    
     auto config = getConfig(table);
     if (!config) {
         return Status::Error("Spatial index not found for table: " + std::string(table));
@@ -350,6 +353,9 @@ SpatialIndexManager::Status SpatialIndexManager::remove(
     std::string_view primary_key,
     const geo::GeoSidecar& sidecar
 ) {
+    // G5: Track remove metrics
+    metrics_.remove_count++;
+    
     auto config = getConfig(table);
     if (!config) return Status::OK();
     
@@ -394,6 +400,9 @@ SpatialIndexManager::Status SpatialIndexManager::update(
     const geo::GeoSidecar& old_sidecar,
     const geo::GeoSidecar& new_sidecar
 ) {
+    // G5: Track update metrics
+    metrics_.update_count++;
+    
     auto status = remove(table, primary_key, old_sidecar);
     if (!status) return status;
     
@@ -419,6 +428,9 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
     std::string_view table,
     const geo::MBR& query_bbox
 ) const {
+    // G5: Track query metrics
+    metrics_.query_count++;
+    
     auto config = getConfig(table);
     if (!config) return {};
     
@@ -426,6 +438,9 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
     auto ranges = MortonEncoder::getRanges(query_bbox, config->total_bounds);
     
     std::vector<SpatialResult> results;
+    size_t mbr_candidates_this_query = 0;
+    size_t exact_checks_this_query = 0;
+    size_t exact_passed_this_query = 0;
     
     for (const auto& [min_code, max_code] : ranges) {
         // Scan RocksDB range
@@ -447,10 +462,15 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
                     continue; // Skip if MBR doesn't intersect
                 }
                 
+                // G5: Count MBR candidates
+                mbr_candidates_this_query++;
+                
                 // Phase 2: Exact geometry check (if backend available)
                 bool exact_match = true; // Default: assume match if no exact backend
                 
                 if (exact_backend_) {
+                    exact_checks_this_query++;
+                    
                     try {
                         // Load entity blob to get full geometry
                         std::string entity_key = "entity:" + std::string(table) + ":" + entry.primary_key;
@@ -481,6 +501,11 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
                                     
                                     // Exact intersection check
                                     exact_match = exact_backend_->exactIntersects(entity_geom, query_geom);
+                                    
+                                    // G5: Track exact check results
+                                    if (exact_match) {
+                                        exact_passed_this_query++;
+                                    }
                                 }
                             } catch (...) {
                                 // Parse error - keep candidate (conservative approach)
@@ -507,6 +532,12 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
             }
         }
     }
+    
+    // G5: Update global metrics
+    metrics_.mbr_candidate_count += mbr_candidates_this_query;
+    metrics_.exact_check_count += exact_checks_this_query;
+    metrics_.exact_check_passed += exact_passed_this_query;
+    metrics_.exact_check_failed += (exact_checks_this_query - exact_passed_this_query);
     
     return results;
 }
