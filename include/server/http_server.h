@@ -233,6 +233,12 @@ private:
     http::response<http::string_body> handleIndexStats(const http::request<http::string_body>& req);
     http::response<http::string_body> handleIndexRebuild(const http::request<http::string_body>& req);
     http::response<http::string_body> handleIndexReindex(const http::request<http::string_body>& req);
+    
+    // G5: Spatial Index Management
+    http::response<http::string_body> handleSpatialIndexCreate(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSpatialIndexRebuild(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSpatialIndexStats(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSpatialMetrics(const http::request<http::string_body>& req);
 
     // Admin: Backup & Restore
     http::response<http::string_body> handleAdminBackup(const http::request<http::string_body>& req);

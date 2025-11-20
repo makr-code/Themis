@@ -923,6 +923,13 @@ namespace {
        // Audit API
        AuditQueryGet,
        AuditExportCsvGet,
+       
+    // G5: Spatial Index Management
+    SpatialIndexCreatePost,
+    SpatialIndexRebuildPost,
+    SpatialIndexStatsGet,
+    SpatialIndexMetricsGet,
+       
         NotFound
     };
 
@@ -960,6 +967,13 @@ namespace {
         if (target == "/index/stats" && method == http::verb::get) return Route::IndexStatsGet;
         if (target == "/index/rebuild" && method == http::verb::post) return Route::IndexRebuildPost;
         if (target == "/index/reindex" && method == http::verb::post) return Route::IndexReindexPost;
+        
+        // G5: Spatial Index Management endpoints
+        if (target == "/spatial/index/create" && method == http::verb::post) return Route::SpatialIndexCreatePost;
+        if (target == "/spatial/index/rebuild" && method == http::verb::post) return Route::SpatialIndexRebuildPost;
+        if (target == "/spatial/index/stats" && method == http::verb::get) return Route::SpatialIndexStatsGet;
+        if (target == "/spatial/metrics" && method == http::verb::get) return Route::SpatialIndexMetricsGet;
+        
         if (target == "/graph/traverse" && method == http::verb::post) return Route::GraphTraversePost;
     if (target == "/graph/edge" && method == http::verb::post) return Route::GraphEdgePost;
     if (target.rfind("/graph/edge/", 0) == 0 && method == http::verb::delete_) return Route::GraphEdgeDelete;
@@ -1223,6 +1237,21 @@ http::response<http::string_body> HttpServer::routeRequest(
         case Route::IndexReindexPost:
             response = handleIndexReindex(req);
             break;
+            
+        // G5: Spatial Index Management handlers
+        case Route::SpatialIndexCreatePost:
+            response = handleSpatialIndexCreate(req);
+            break;
+        case Route::SpatialIndexRebuildPost:
+            response = handleSpatialIndexRebuild(req);
+            break;
+        case Route::SpatialIndexStatsGet:
+            response = handleSpatialIndexStats(req);
+            break;
+        case Route::SpatialIndexMetricsGet:
+            response = handleSpatialMetrics(req);
+            break;
+            
         case Route::GraphTraversePost:
             response = handleGraphTraverse(req);
             break;
@@ -10588,6 +10617,215 @@ std::optional<http::response<http::string_body>> HttpServer::checkRateLimit(
     }
     
     return std::nullopt; // Rate limit OK
+}
+
+// ============================================================================
+// G5: Spatial Index Management Handlers
+// ============================================================================
+
+http::response<http::string_body> HttpServer::handleSpatialIndexCreate(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("http.spatial_index_create");
+    http::response<http::string_body> res{http::status::ok, req.version()};
+    res.set(http::field::content_type, "application/json");
+    
+    try {
+        auto j = json::parse(req.body());
+        
+        if (!j.contains("table") || !j["table"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing or invalid 'table' field", req);
+        }
+        
+        std::string table = j["table"];
+        std::string geometry_column = j.value("geometry_column", "geometry");
+        
+        if (!spatial_index_) {
+            return makeErrorResponse(http::status::internal_server_error, "Spatial index manager not available", req);
+        }
+        
+        // Parse optional config
+        SpatialIndexManager::RTreeConfig config;
+        if (j.contains("config") && j["config"].is_object()) {
+            auto cfg = j["config"];
+            if (cfg.contains("total_bounds") && cfg["total_bounds"].is_object()) {
+                auto bounds = cfg["total_bounds"];
+                config.total_bounds = MBR(
+                    bounds.value("minx", -180.0),
+                    bounds.value("miny", -90.0),
+                    bounds.value("maxx", 180.0),
+                    bounds.value("maxy", 90.0)
+                );
+            }
+        }
+        
+        auto status = spatial_index_->createSpatialIndex(table, geometry_column, config);
+        
+        if (!status) {
+            span.setStatus(false, status.message);
+            return makeErrorResponse(http::status::bad_request, status.message, req);
+        }
+        
+        json response;
+        response["success"] = true;
+        response["table"] = table;
+        response["geometry_column"] = geometry_column;
+        response["message"] = "Spatial index created successfully";
+        
+        res.body() = response.dump();
+        span.setStatus(true);
+        
+    } catch (const json::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::bad_request, std::string("JSON error: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::internal_server_error, std::string("Error: ") + e.what(), req);
+    }
+    
+    applyGovernanceHeaders(req, res);
+    res.prepare_payload();
+    return res;
+}
+
+http::response<http::string_body> HttpServer::handleSpatialIndexRebuild(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("http.spatial_index_rebuild");
+    http::response<http::string_body> res{http::status::ok, req.version()};
+    res.set(http::field::content_type, "application/json");
+    
+    try {
+        auto j = json::parse(req.body());
+        
+        if (!j.contains("table") || !j["table"].is_string()) {
+            return makeErrorResponse(http::status::bad_request, "Missing or invalid 'table' field", req);
+        }
+        
+        std::string table = j["table"];
+        
+        if (!spatial_index_) {
+            return makeErrorResponse(http::status::internal_server_error, "Spatial index manager not available", req);
+        }
+        
+        // TODO: Implement rebuild by scanning all entities in table and re-indexing
+        // For now, return a not-implemented response
+        json response;
+        response["success"] = false;
+        response["table"] = table;
+        response["message"] = "Spatial index rebuild not yet implemented. Use drop + create for now.";
+        response["status_code"] = 501;
+        
+        res.status(http::status::not_implemented);
+        res.body() = response.dump();
+        span.setStatus(false, "not_implemented");
+        
+    } catch (const json::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::bad_request, std::string("JSON error: ") + e.what(), req);
+    } catch (const std::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::internal_server_error, std::string("Error: ") + e.what(), req);
+    }
+    
+    applyGovernanceHeaders(req, res);
+    res.prepare_payload();
+    return res;
+}
+
+http::response<http::string_body> HttpServer::handleSpatialIndexStats(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("http.spatial_index_stats");
+    http::response<http::string_body> res{http::status::ok, req.version()};
+    res.set(http::field::content_type, "application/json");
+    
+    try {
+        auto params = parseQuery(std::string(req.target()));
+        std::string table = params["table"];
+        
+        if (table.empty()) {
+            return makeErrorResponse(http::status::bad_request, "Missing 'table' query parameter", req);
+        }
+        
+        if (!spatial_index_) {
+            return makeErrorResponse(http::status::internal_server_error, "Spatial index manager not available", req);
+        }
+        
+        auto stats = spatial_index_->getIndexStats(table);
+        
+        if (!stats) {
+            span.setStatus(false, stats.message);
+            return makeErrorResponse(http::status::not_found, stats.message, req);
+        }
+        
+        json response = *stats;
+        res.body() = response.dump();
+        span.setStatus(true);
+        
+    } catch (const std::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::internal_server_error, std::string("Error: ") + e.what(), req);
+    }
+    
+    applyGovernanceHeaders(req, res);
+    res.prepare_payload();
+    return res;
+}
+
+http::response<http::string_body> HttpServer::handleSpatialMetrics(
+    const http::request<http::string_body>& req
+) {
+    auto span = Tracer::startSpan("http.spatial_metrics");
+    http::response<http::string_body> res{http::status::ok, req.version()};
+    res.set(http::field::content_type, "application/json");
+    
+    try {
+        if (!spatial_index_) {
+            return makeErrorResponse(http::status::internal_server_error, "Spatial index manager not available", req);
+        }
+        
+        const auto& metrics = spatial_index_->getMetrics();
+        
+        json response;
+        response["query_count"] = metrics.query_count.load();
+        response["mbr_candidate_count"] = metrics.mbr_candidate_count.load();
+        response["exact_check_count"] = metrics.exact_check_count.load();
+        response["exact_check_passed"] = metrics.exact_check_passed.load();
+        response["exact_check_failed"] = metrics.exact_check_failed.load();
+        response["insert_count"] = metrics.insert_count.load();
+        response["remove_count"] = metrics.remove_count.load();
+        response["update_count"] = metrics.update_count.load();
+        
+        // Compute derived metrics
+        uint64_t total_exact = metrics.exact_check_count.load();
+        if (total_exact > 0) {
+            double precision = static_cast<double>(metrics.exact_check_passed.load()) / total_exact;
+            response["exact_check_precision"] = precision;
+            response["false_positive_rate"] = 1.0 - precision;
+        } else {
+            response["exact_check_precision"] = nullptr;
+            response["false_positive_rate"] = nullptr;
+        }
+        
+        uint64_t total_queries = metrics.query_count.load();
+        if (total_queries > 0) {
+            response["avg_candidates_per_query"] = static_cast<double>(metrics.mbr_candidate_count.load()) / total_queries;
+        } else {
+            response["avg_candidates_per_query"] = nullptr;
+        }
+        
+        res.body() = response.dump();
+        span.setStatus(true);
+        
+    } catch (const std::exception& e) {
+        span.setStatus(false, e.what());
+        return makeErrorResponse(http::status::internal_server_error, std::string("Error: ") + e.what(), req);
+    }
+    
+    applyGovernanceHeaders(req, res);
+    res.prepare_payload();
+    return res;
 }
 
 } // namespace server
