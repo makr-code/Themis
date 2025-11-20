@@ -2939,7 +2939,6 @@ http::response<http::string_body> HttpServer::handleMetricsJson(
     out += "vccdb_range_scan_steps_total " + std::to_string(range_scan_steps) + "\n";
 
     // Page fetch time histogram (ms) for cursor pagination
-    auto export_page_bucket = [&](const char* name, uint64_t val){ out += std::string(name) + " " + std::to_string(val) + "\n"; };
     out += "# HELP vccdb_page_fetch_time_ms_bucket Cursor page fetch time histogram buckets (ms)\n";
     out += "# TYPE vccdb_page_fetch_time_ms_bucket histogram\n";
     {
@@ -4158,7 +4157,12 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
                     ms_end == std::string::npos ? std::string::npos : ms_end - ms_pos - 12);
                 try {
                     int v = std::stoi(ms_str);
-                    if (v < 1) v = 1; if (v > 60) v = 60;
+                    if (v < 1) {
+                        v = 1;
+                    }
+                    if (v > 60) {
+                        v = 60;
+                    }
                     max_seconds = v;
                 } catch (...) {
                     // ignore parse error, keep default
@@ -4189,7 +4193,12 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
                     r_end == std::string::npos ? std::string::npos : r_end - r_pos - 9);
                 try {
                     int v = std::stoi(r_str);
-                    if (v < 100) v = 100; if (v > 120000) v = 120000;
+                    if (v < 100) {
+                        v = 100;
+                    }
+                    if (v > 120000) {
+                        v = 120000;
+                    }
                     retry_ms = v;
                 } catch (...) {}
             }
@@ -4202,7 +4211,12 @@ http::response<http::string_body> HttpServer::handleChangefeedStreamSse(
                     me_end == std::string::npos ? std::string::npos : me_end - me_pos - 11);
                 try {
                     int v = std::stoi(me_str);
-                    if (v < 1) v = 1; if (v > 1000) v = 1000;
+                    if (v < 1) {
+                        v = 1;
+                    }
+                    if (v > 1000) {
+                        v = 1000;
+                    }
                     max_events_per_poll = static_cast<size_t>(v);
                 } catch (...) {}
             }
@@ -4989,6 +5003,8 @@ http::response<http::string_body> HttpServer::handleQuery(
     themis::ConjunctiveQuery q{table, preds};
     q.rangePredicates = std::move(rpreds);
     q.orderBy = orderBy;
+    q.fulltextPredicate = {};
+    q.spatialPredicate = {};
         themis::QueryEngine engine(*storage_, *secondary_index_);
 
         // Optional plan/explain info
@@ -5282,8 +5298,14 @@ http::response<http::string_body> HttpServer::handleQueryAql(
             std::optional<std::pair<std::string,std::string>> joinCols; std::vector<PredicateEq> eq1, eq2; std::vector<PredicateRange> r1, r2;
             std::function<void(const std::shared_ptr<Expression>&)> collectPreds;
             collectPreds = [&](const std::shared_ptr<Expression>& e){
-                if (!e) return; if (e->getType() != ASTNodeType::BinaryOp) return; auto bin = std::static_pointer_cast<BinaryOpExpr>(e);
-                if (bin->op == BinaryOperator::And) { collectPreds(bin->left); collectPreds(bin->right); return; }
+                if (!e) return;
+                if (e->getType() != ASTNodeType::BinaryOp) return;
+                auto bin = std::static_pointer_cast<BinaryOpExpr>(e);
+                if (bin->op == BinaryOperator::And) {
+                    collectPreds(bin->left);
+                    collectPreds(bin->right);
+                    return;
+                }
                 if (bin->op == BinaryOperator::Eq) {
                     std::string rvL, rvR; std::string colL = fieldFromFA(bin->left, rvL); std::string colR = fieldFromFA(bin->right, rvR);
                     if (!colL.empty() && !colR.empty() && ((rvL == var1 && rvR == var2) || (rvL == var2 && rvR == var1))) {
@@ -6241,6 +6263,7 @@ http::response<http::string_body> HttpServer::handleQueryAql(
 
             }
 
+            [[maybe_unused]]
             auto evalV = [&](const std::string& pk)->bool{
                 for (const auto& p : preds) {
                     if (p.var != 'v') continue;
@@ -6278,7 +6301,7 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                 }
             };
 
-            auto evalE = [&](const std::string& edgeId)->bool{
+            [[maybe_unused]] auto evalE = [&](const std::string& edgeId)->bool{
                 bool needLoad = false;
                 for (const auto& p : preds) {
                     if (p.var != 'e') continue;
@@ -7402,12 +7425,25 @@ http::response<http::string_body> HttpServer::handleQueryAql(
                         return out;
                     }
                     if (name == "substring" || name == "substr") {
-                        auto s = evalArg(0); auto off = evalArg(1); auto len = evalArg(2);
-                        if (!s.is_string()) return nullptr; std::string str = s.get<std::string>();
+                        auto s = evalArg(0);
+                        auto off = evalArg(1);
+                        auto len = evalArg(2);
+                        if (!s.is_string()) return nullptr;
+                        std::string str = s.get<std::string>();
                         int start = off.is_number_integer() ? static_cast<int>(off.get<int64_t>()) : 0;
                         int count = len.is_number_integer() ? static_cast<int>(len.get<int64_t>()) : static_cast<int>(str.size() - std::min<int>(start,(int)str.size()));
-                        if (start < 0) start = 0; if (start > (int)str.size()) start = (int)str.size();
-                        if (count < 0) count = 0; if (start + count > (int)str.size()) count = (int)str.size() - start;
+                        if (start < 0) {
+                            start = 0;
+                        }
+                        if (start > (int)str.size()) {
+                            start = (int)str.size();
+                        }
+                        if (count < 0) {
+                            count = 0;
+                        }
+                        if (start + count > (int)str.size()) {
+                            count = (int)str.size() - start;
+                        }
                         return str.substr(static_cast<size_t>(start), static_cast<size_t>(count));
                     }
                     if (name == "length") {
@@ -10646,12 +10682,12 @@ http::response<http::string_body> HttpServer::handleSpatialIndexCreate(
         }
         
         // Parse optional config
-        SpatialIndexManager::RTreeConfig config;
+        index::RTreeConfig config;
         if (j.contains("config") && j["config"].is_object()) {
             auto cfg = j["config"];
             if (cfg.contains("total_bounds") && cfg["total_bounds"].is_object()) {
                 auto bounds = cfg["total_bounds"];
-                config.total_bounds = MBR(
+                config.total_bounds = themis::geo::MBR(
                     bounds.value("minx", -180.0),
                     bounds.value("miny", -90.0),
                     bounds.value("maxx", 180.0),
@@ -10717,7 +10753,7 @@ http::response<http::string_body> HttpServer::handleSpatialIndexRebuild(
         response["message"] = "Spatial index rebuild not yet implemented. Use drop + create for now.";
         response["status_code"] = 501;
         
-        res.status(http::status::not_implemented);
+        res.result(http::status::not_implemented);
         res.body() = response.dump();
         span.setStatus(false, "not_implemented");
         
@@ -10753,14 +10789,19 @@ http::response<http::string_body> HttpServer::handleSpatialIndexStats(
             return makeErrorResponse(http::status::internal_server_error, "Spatial index manager not available", req);
         }
         
-        auto stats = spatial_index_->getIndexStats(table);
-        
-        if (!stats) {
-            span.setStatus(false, stats.message);
-            return makeErrorResponse(http::status::not_found, stats.message, req);
-        }
-        
-        json response = *stats;
+        auto stats = spatial_index_->getStats(table);
+        json response;
+        response["success"] = true;
+        response["table"] = table;
+        response["entry_count"] = stats.entry_count;
+        response["total_bounds"] = {
+            {"minx", stats.total_bounds.minx},
+            {"miny", stats.total_bounds.miny},
+            {"maxx", stats.total_bounds.maxx},
+            {"maxy", stats.total_bounds.maxy}
+        };
+        response["avg_area"] = stats.avg_area;
+        response["morton_buckets"] = stats.morton_buckets;
         res.body() = response.dump();
         span.setStatus(true);
         

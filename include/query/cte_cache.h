@@ -46,7 +46,8 @@ public:
     /**
      * @brief Construct cache with configuration
      */
-    explicit CTECache(Config config = Config());
+    CTECache();
+    explicit CTECache(Config config);
     
     /**
      * @brief Destructor - cleanup spill files if auto_cleanup enabled

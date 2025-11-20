@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
-# Cross-platform Linux/macOS/WSL build script
-# Prereq: setup.sh executed or VCPKG_ROOT set
+# Cross-platform Linux/macOS/WSL build script (LF endings enforced)
+# Prerequisite: run ./setup.sh or export VCPKG_ROOT before invoking.
 
 BUILD_TYPE=${BUILD_TYPE:-Release}
 GENERATOR=${GENERATOR:-}
@@ -22,13 +23,15 @@ STRICT=${STRICT:-OFF}
 RUN_TESTS=${RUN_TESTS:-0}
 
 if [[ -z "${VCPKG_ROOT:-}" ]]; then
-  echo "VCPKG_ROOT not set. Run ./setup.sh first or export VCPKG_ROOT." >&2
+  echo "[ERROR] VCPKG_ROOT not set. Run ./setup.sh first or export VCPKG_ROOT." >&2
   exit 1
 fi
 
-# Prefer Ninja if installed
+# Prefer Ninja if installed else fall back to Unix Makefiles
 if command -v ninja >/dev/null 2>&1; then
   GENERATOR=${GENERATOR:-"Ninja"}
+else
+  GENERATOR=${GENERATOR:-"Unix Makefiles"}
 fi
 
 CMAKE_ARGS=(
@@ -36,6 +39,7 @@ CMAKE_ARGS=(
   -B "${BUILD_DIR}"
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
   -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   -DTHEMIS_BUILD_TESTS="${ENABLE_TESTS}"
   -DTHEMIS_BUILD_BENCHMARKS="${ENABLE_BENCHMARKS}"
   -DTHEMIS_ENABLE_GPU="${ENABLE_GPU}"
@@ -48,17 +52,19 @@ if [[ -n "${GENERATOR}" ]]; then
   CMAKE_ARGS+=( -G "${GENERATOR}" )
 fi
 
+echo "[INFO] Configure: ${GENERATOR} in ${BUILD_DIR}"
 cmake "${CMAKE_ARGS[@]}"
+echo "[INFO] Build"
 cmake --build "${BUILD_DIR}" --config "${BUILD_TYPE}" -j
 
-# Run tests if present
+# Run tests if requested
 if [[ "${RUN_TESTS}" == "1" ]]; then
   if command -v ctest >/dev/null 2>&1; then
-    ctest -C "${BUILD_TYPE}" --test-dir "${BUILD_DIR}" --output-on-failure || true
+    echo "[INFO] Running tests"
+    ctest --test-dir "${BUILD_DIR}" -C "${BUILD_TYPE}" --output-on-failure || true
   fi
 fi
 
-echo "Build completed: ${BUILD_DIR}"
-echo "Server binary (if built): ${BUILD_DIR}/themis_server${EXE_SUFFIX}"  # EXE_SUFFIX leer auf Linux/macOS
-echo "Options: TESTS=${ENABLE_TESTS} BENCHMARKS=${ENABLE_BENCHMARKS} GPU=${ENABLE_GPU} TRACING=${ENABLE_TRACING} ASAN=${ENABLE_ASAN} STRICT=${STRICT}"
-if [[ "${RUN_TESTS}" == "1" ]]; then echo "Tests: executed"; else echo "Tests: skipped (set RUN_TESTS=1)"; fi
+echo "[INFO] Build completed: ${BUILD_DIR}"
+echo "[INFO] Options: TESTS=${ENABLE_TESTS} BENCHMARKS=${ENABLE_BENCHMARKS} GPU=${ENABLE_GPU} TRACING=${ENABLE_TRACING} ASAN=${ENABLE_ASAN} STRICT=${STRICT}" 
+if [[ "${RUN_TESTS}" == "1" ]]; then echo "[INFO] Tests: executed"; else echo "[INFO] Tests: skipped (set RUN_TESTS=1)"; fi

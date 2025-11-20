@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <map>
 #include <algorithm>
+#include <unordered_set>
 
 namespace themis {
 

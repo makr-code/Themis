@@ -1,10 +1,20 @@
 #include "geo/spatial_backend.h"
 
 #ifdef THEMIS_GEO_BOOST_BACKEND
-#include <boost/geometry.hpp>
+// Check if Boost Geometry headers are available
+#if __has_include(<boost/geometry/geometries/point_xy.hpp>)
 #include <boost/geometry/geometries/point_xy.hpp>
 #include <boost/geometry/geometries/polygon.hpp>
 #include <boost/geometry/geometries/linestring.hpp>
+#include <boost/geometry/algorithms/intersects.hpp>
+#include <boost/geometry/algorithms/within.hpp>
+#include <boost/geometry/algorithms/touches.hpp>
+#include <boost/geometry/algorithms/equals.hpp>
+#define BOOST_GEO_AVAILABLE 1
+#else
+// Boost Geometry headers not found - using fallback implementation
+#define BOOST_GEO_AVAILABLE 0
+#endif
 #endif
 
 #include "utils/geo/ewkb.h"
@@ -12,10 +22,12 @@
 #include "utils/logger.h"
 #include <vector>
 #include <string>
+#include <memory>
 
 namespace themis { namespace geo {
 
 #ifdef THEMIS_GEO_BOOST_BACKEND
+#if BOOST_GEO_AVAILABLE
 
 namespace bg = boost::geometry;
 using Point = bg::model::d2::point_xy<double>;
@@ -136,9 +148,19 @@ ISpatialComputeBackend* getBoostCpuBackend() {
     return g_boost_backend.get();
 }
 
+#else // !BOOST_GEO_AVAILABLE
+
+// Fallback when Boost.Geometry headers are not available
+ISpatialComputeBackend* getBoostCpuBackend() {
+    THEMIS_WARN("Boost Geometry backend requested but headers not found - returning nullptr");
+    return nullptr;
+}
+
+#endif // BOOST_GEO_AVAILABLE
+
 #else // !THEMIS_GEO_BOOST_BACKEND
 
-// Fallback when Boost.Geometry is not available
+// Fallback when Boost.Geometry is not enabled
 ISpatialComputeBackend* getBoostCpuBackend() {
     return nullptr;
 }

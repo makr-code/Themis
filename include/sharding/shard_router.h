@@ -3,6 +3,7 @@
 #include "sharding/urn_resolver.h"
 #include "sharding/remote_executor.h"
 #include <string>
+#include <atomic>
 #include <vector>
 #include <optional>
 #include <memory>

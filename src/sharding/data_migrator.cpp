@@ -42,7 +42,7 @@ MigrationResult DataMigrator::migrate(
             auto batch = fetchBatch(source_shard_id, token_range_start, 
                                   token_range_end, offset, config_.batch_size);
             
-            records_in_batch = batch.is_array() ? batch.size() : 0;
+            records_in_batch = batch.is_array() ? static_cast<uint32_t>(batch.size()) : 0;
             
             if (records_in_batch == 0) {
                 break;
@@ -132,6 +132,7 @@ nlohmann::json DataMigrator::fetchBatch(
     uint32_t offset,
     uint32_t limit
 ) {
+    (void)source_shard_id; (void)token_range_end; // Future: implement shard connection
     // In a real implementation, this would:
     // 1. Connect to source shard using mTLS Client
     // 2. Query for records in token range with offset/limit
@@ -155,6 +156,7 @@ bool DataMigrator::writeBatch(
     const std::string& target_shard_id,
     const nlohmann::json& batch
 ) {
+    (void)target_shard_id; // Future: implement shard connection
     // In a real implementation, this would:
     // 1. Connect to target shard using mTLS Client
     // 2. POST batch data to target shard

@@ -265,10 +265,7 @@ bool SignedRequestVerifier::verify(const SignedRequest& request,
 void SignedRequestVerifier::cleanupExpiredNonces() {
     std::lock_guard<std::mutex> lock(nonce_mutex_);
     
-    uint64_t current_time = getCurrentTimestampMs();
-    uint64_t expiry_threshold = current_time - config_.nonce_expiry_ms;
-    
-    // In production, would track (nonce, timestamp) pairs
+    // In production, would track (nonce, timestamp) pairs and expire old ones
     // For Phase 2, we keep it simple
     if (seen_nonces_.size() > config_.max_nonce_cache) {
         seen_nonces_.clear();
@@ -284,6 +281,7 @@ bool SignedRequestVerifier::verifyTimestamp(uint64_t timestamp_ms) const {
 }
 
 bool SignedRequestVerifier::verifyNonce(uint64_t nonce, uint64_t timestamp_ms) {
+    (void)timestamp_ms; // Future: implement timestamp-based nonce expiry
     std::lock_guard<std::mutex> lock(nonce_mutex_);
     
     // Check if nonce was seen before

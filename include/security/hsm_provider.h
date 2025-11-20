@@ -63,6 +63,9 @@ struct HSMConfig {
     
     // Enable verbose logging
     bool verbose = false;
+
+    // Anzahl paralleler PKCS#11 Sessions (nur bei realem Provider genutzt)
+    uint32_t session_pool_size = 1; // 1 = bisheriges Verhalten
 };
 
 struct HSMSignatureResult {
@@ -73,6 +76,17 @@ struct HSMSignatureResult {
     std::string cert_serial;         // Certificate serial number (if available)
     std::string error_message;       // Error details on failure
     uint64_t timestamp_ms = 0;       // Unix timestamp in milliseconds
+};
+
+struct HSMPerformanceStats {
+    uint64_t sign_count = 0;         // Total sign operations
+    uint64_t verify_count = 0;       // Total verify operations
+    uint64_t sign_errors = 0;        // Failed sign operations
+    uint64_t verify_errors = 0;      // Failed verify operations
+    uint64_t total_sign_time_us = 0; // Cumulative sign time (microseconds)
+    uint64_t total_verify_time_us = 0; // Cumulative verify time (microseconds)
+    uint32_t pool_size = 0;          // Configured pool size
+    uint64_t pool_round_robin_hits = 0; // Successful round-robin selections
 };
 
 struct HSMKeyInfo {
@@ -193,12 +207,31 @@ public:
      */
     std::string getLastError() const;
 
+    /**
+     * Get performance statistics
+     * @return Performance metrics (sign/verify counts, timings, pool stats)
+     */
+    HSMPerformanceStats getStats() const;
+
+    /**
+     * Reset performance statistics
+     */
+    void resetStats();
+
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;
     HSMConfig config_;
     bool initialized_ = false;
     std::string last_error_;
+
+    // PKCS#11 helper discovery functions (only active when THEMIS_ENABLE_HSM_REAL)
+    void discoverKeys();
+    void discoverCertificate();
+    // Pool-Hilfen (nur real)
+    struct SessionEntry; // forward
+    SessionEntry* acquireSession();
+    void releaseSession(SessionEntry* s);
 };
 
 /**

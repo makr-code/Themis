@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <cfloat>
+#include <atomic>
 
 namespace themis {
 namespace index {

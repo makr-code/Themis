@@ -6,6 +6,7 @@
 #include <mutex>
 #include <map>
 #include <optional>
+#include <algorithm>
 
 namespace themis::sharding {
 

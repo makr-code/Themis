@@ -88,13 +88,13 @@ MTLSClient::Response MTLSClient::get(const std::string& endpoint, const std::str
 MTLSClient::Response MTLSClient::post(const std::string& endpoint,
                                       const std::string& path,
                                       const nlohmann::json& body) {
-    return request("POST", endpoint, path, body);
+    return request("POST", endpoint, path, std::optional<nlohmann::json>(body));
 }
 
 MTLSClient::Response MTLSClient::put(const std::string& endpoint,
                                      const std::string& path,
                                      const nlohmann::json& body) {
-    return request("PUT", endpoint, path, body);
+    return request("PUT", endpoint, path, std::optional<nlohmann::json>(body));
 }
 
 MTLSClient::Response MTLSClient::del(const std::string& endpoint, const std::string& path) {
@@ -249,6 +249,7 @@ void MTLSClient::reset() {
 }
 
 bool MTLSClient::verifyPeerCertificate(bool preverified, void* ctx) {
+    (void)ctx; // Future: extract certificate for detailed validation
     // In production, this would:
     // 1. Extract peer certificate from context
     // 2. Parse shard certificate info using PKIShardCertificate

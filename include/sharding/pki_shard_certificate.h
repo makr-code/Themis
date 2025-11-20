@@ -5,6 +5,7 @@
 #include <optional>
 #include <cstdint>
 #include <memory>
+#include <algorithm>
 
 namespace themis::sharding {
 

@@ -29,7 +29,7 @@ std::optional<nlohmann::json> ShardRouter::get(const URN& urn) {
 bool ShardRouter::put(const URN& urn, const nlohmann::json& data) {
     total_requests_++;
     
-    auto result = routeRequest(urn, "PUT", "/api/v1/data/" + urn.toString(), data);
+    auto result = routeRequest(urn, "PUT", "/api/v1/data/" + urn.toString(), std::optional<nlohmann::json>(data));
     
     if (!result.success) {
         errors_++;
@@ -61,8 +61,7 @@ nlohmann::json ShardRouter::executeQuery(const std::string& query) {
             // Extract URN and route to single shard
             auto urn = extractURN(query);
             if (urn) {
-                auto result = routeRequest(*urn, "POST", "/api/v1/query", 
-                                         nlohmann::json{{"query", query}});
+                auto result = routeRequest(*urn, "POST", "/api/v1/query", std::optional<nlohmann::json>(nlohmann::json{{"query", query}}));
                 return result.data;
             }
             
@@ -133,8 +132,7 @@ std::vector<ShardResult> ShardRouter::scatterGather(const std::string& query) {
         // Check if this is the local shard
         if (shard.shard_id == config_.local_shard_id) {
             local_requests_++;
-            result = executeLocal("POST", "/api/v1/query", 
-                                nlohmann::json{{"query", query}});
+            result = executeLocal("POST", "/api/v1/query", std::optional<nlohmann::json>(nlohmann::json{{"query", query}}));
         } else {
             remote_requests_++;
             auto exec_result = executor_->executeQuery(shard, query);
@@ -154,6 +152,7 @@ std::vector<ShardResult> ShardRouter::scatterGather(const std::string& query) {
 nlohmann::json ShardRouter::executeCrossShardJoin(
     const std::string& query,
     const std::string& join_field) {
+    (void)join_field; // Future: implement join logic based on field
     
     // Simplified cross-shard join
     // Phase 1: Execute query on all shards
@@ -328,7 +327,7 @@ std::optional<std::string> ShardRouter::extractNamespace(const std::string& quer
     std::regex ns_pattern(R"(NAMESPACE\s+([a-zA-Z0-9_]+))");
     std::smatch match;
     
-    if (std::regex_search(query, match, urn_pattern)) {
+    if (std::regex_search(query, match, ns_pattern)) {
         return match[1].str();
     }
     

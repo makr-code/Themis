@@ -16,6 +16,7 @@ void GeoIndexHooks::onEntityPut(
     const std::string& pk,
     const std::vector<uint8_t>& blob
 ) {
+    (void)db; // May be used for direct RocksDB access in future
     // Skip if spatial index not available or table doesn't have spatial index
     if (!spatial_mgr || !spatial_mgr->hasSpatialIndex(table)) {
         return;
@@ -91,6 +92,7 @@ bool GeoIndexHooks::onEntityPutAtomic(
     const std::string& pk,
     const std::vector<uint8_t>& blob
 ) {
+    (void)batch; // Future: add spatial index updates to WriteBatch
     // Skip if spatial index not available or table doesn't have spatial index
     if (!spatial_mgr || !spatial_mgr->hasSpatialIndex(table)) {
         return false;
@@ -134,6 +136,7 @@ bool GeoIndexHooks::onEntityPutAtomic(
         // Parse EWKB and compute sidecar
         auto geom_info = geo::EWKBParser::parse(geom_blob);
         auto sidecar = geo::EWKBParser::computeSidecar(geom_info);
+        (void)sidecar; // Future: use sidecar for WriteBatch spatial index updates
 
         // TODO: Add sidecar writes to WriteBatch
         // This requires exposing WriteBatch::put() and computing the spatial index keys
@@ -169,6 +172,7 @@ void GeoIndexHooks::onEntityDelete(
     const std::string& pk,
     const std::vector<uint8_t>& old_blob
 ) {
+    (void)db; // May be used for direct RocksDB access in future
     // Skip if spatial index not available
     if (!spatial_mgr || !spatial_mgr->hasSpatialIndex(table)) {
         return;

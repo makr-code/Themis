@@ -62,7 +62,7 @@ ShardHealthInfo HealthCheckSystem::checkShardHealth(const std::string& shard_id,
 
 ClusterHealthInfo HealthCheckSystem::checkClusterHealth(const std::map<std::string, std::string>& shard_endpoints) {
     ClusterHealthInfo cluster_info;
-    cluster_info.total_shards = shard_endpoints.size();
+    cluster_info.total_shards = static_cast<int>(shard_endpoints.size());
     cluster_info.healthy_shards = 0;
     cluster_info.degraded_shards = 0;
     cluster_info.unhealthy_shards = 0;
@@ -145,8 +145,9 @@ bool HealthCheckSystem::checkCertificateValidity(const std::string& cert_path, i
     }
 
     // Check expiration
-    ASN1_TIME* not_after = X509_get_notAfter(cert);
-    time_t now = time(nullptr);
+    // Future: Calculate actual expiry time from certificate
+    // ASN1_TIME* not_after = X509_get_notAfter(cert);
+    // time_t now = time(nullptr);
     
     // Calculate seconds until expiry (simplified)
     seconds_until_expiry = 30 * 86400;  // Placeholder: 30 days
@@ -156,12 +157,14 @@ bool HealthCheckSystem::checkCertificateValidity(const std::string& cert_path, i
 }
 
 bool HealthCheckSystem::checkStorageCapacity(const std::string& endpoint, double& usage_percent) {
+    (void)endpoint; // Future: make HTTP call to shard
     // Placeholder implementation - would make HTTP call to shard
     usage_percent = 75.0;  // Mock value
     return true;
 }
 
 bool HealthCheckSystem::checkNetworkConnectivity(const std::string& endpoint, double& response_time_ms) {
+    (void)endpoint; // Future: ping the endpoint
     // Placeholder implementation - would ping the endpoint
     auto start = std::chrono::steady_clock::now();
     

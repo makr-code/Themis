@@ -140,7 +140,7 @@ QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
 		auto child = Tracer::startSpan("index.scanSpatial");
 		child.setAttribute("index.table", q.table);
 		child.setAttribute("index.column", sp.column);
-		child.setAttribute("spatial.operation", static_cast<int>(sp.operation));
+		child.setAttribute("spatial.operation", static_cast<int64_t>(sp.operation));
 		
 		// Check if table has spatial index
 		if (!spatialIdx_->hasSpatialIndex(q.table)) {

@@ -7,6 +7,8 @@
 namespace themis {
 namespace query {
 
+CTECache::CTECache() : CTECache(Config{}) {}
+
 CTECache::CTECache(Config config)
     : config_(std::move(config)) {
     if (config_.auto_cleanup) {

@@ -42,6 +42,7 @@ namespace {
     }
     
     // Helper: Get extension value by NID
+    [[maybe_unused]]
     std::optional<std::string> getExtensionValue(X509* cert, int nid) {
         int idx = X509_get_ext_by_NID(cert, nid, -1);
         if (idx < 0) {
@@ -280,6 +281,7 @@ bool PKIShardCertificate::validateShardCertificate(const ShardCertificateInfo& i
 
 bool PKIShardCertificate::parseCustomExtensions(void* x509_cert_ptr, ShardCertificateInfo& info) {
     X509* cert = static_cast<X509*>(x509_cert_ptr);
+    (void)cert; // Future: parse custom X.509 extensions
     
     // Note: In Phase 2, we're providing the structure for custom extension parsing
     // In production, this would parse actual custom OIDs (e.g., 1.3.6.1.4.1.XXXXX)

@@ -44,13 +44,13 @@ RemoteExecutor::Result RemoteExecutor::get(const ShardInfo& shard_info,
 RemoteExecutor::Result RemoteExecutor::post(const ShardInfo& shard_info,
                                            const std::string& path,
                                            const nlohmann::json& body) {
-    return executeRequest("POST", shard_info, path, body);
+    return executeRequest("POST", shard_info, path, std::optional<nlohmann::json>(body));
 }
 
 RemoteExecutor::Result RemoteExecutor::put(const ShardInfo& shard_info,
                                           const std::string& path,
                                           const nlohmann::json& body) {
-    return executeRequest("PUT", shard_info, path, body);
+    return executeRequest("PUT", shard_info, path, std::optional<nlohmann::json>(body));
 }
 
 RemoteExecutor::Result RemoteExecutor::del(const ShardInfo& shard_info,
