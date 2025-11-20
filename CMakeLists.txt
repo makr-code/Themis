@@ -320,6 +320,8 @@ set(THEMIS_CORE_SOURCES
     src/sharding/signed_request.cpp
     src/sharding/remote_executor.cpp
     src/sharding/shard_router.cpp
+    src/sharding/rebalance_operation.cpp
+    src/sharding/data_migrator.cpp
 )
 
 # Main library
@@ -557,6 +559,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_mtls_client.cpp
         tests/test_signed_request.cpp
         tests/test_shard_communication.cpp
+        tests/test_rebalance_migration.cpp
     )
     
     target_link_libraries(themis_tests
