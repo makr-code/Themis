@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Git Pre-Push Hook für ThemisDB
+# Führt erweiterte Code-Qualität aus (optional alle Dateien via ENV THEMIS_QUALITY_ALL=1)
+# Aktivierung: git config core.hooksPath scripts/githooks
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT="${ROOT_DIR}/run_clang_quality_wsl.sh"
+if [[ ! -f "$SCRIPT" ]]; then
+  echo "[WARN] Qualitätsskript nicht gefunden: $SCRIPT" >&2
+  exit 0
+fi
+if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+  if [[ "${THEMIS_QUALITY_ALL:-}" == "1" ]]; then
+    echo "[INFO] Vollständige Analyse (--all) vor Push" >&2
+    bash "$SCRIPT" --all --fail-on-format || { echo "[ERROR] Vollanalyse fehlgeschlagen." >&2; exit 1; }
+  else
+    echo "[INFO] Diff-basierte Analyse vor Push" >&2
+    bash "$SCRIPT" --fail-on-format || { echo "[ERROR] Analyse fehlgeschlagen." >&2; exit 1; }
+  fi
+else
+  echo "[INFO] Nicht WSL/Linux Umgebung. Überspringe Pre-Push Analyse." >&2
+fi

@@ -1,5 +1,6 @@
 # Clang-Tidy configuration for ThemisDB
-# Modern C++17 best practices with pragmatic exceptions
+# Ziel: Fehlerprävention, moderne C++17 Nutzung, Performance & Lesbarkeit.
+# Lokal nutzbar ohne CI-Kosten; CI kann WarningsAsErrors setzen.
 
 Checks: >
   -*,
@@ -9,6 +10,8 @@ Checks: >
   modernize-*,
   performance-*,
   readability-*,
+  portability-*,
+  hicpp-*,
   concurrency-*,
   -modernize-use-trailing-return-type,
   -cppcoreguidelines-avoid-magic-numbers,
@@ -23,13 +26,18 @@ Checks: >
   -cppcoreguidelines-pro-type-union-access,
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
   -readability-function-cognitive-complexity,
-  -bugprone-easily-swappable-parameters
+  -bugprone-easily-swappable-parameters,
+  -hicpp-use-auto,
+  -hicpp-uppercase-literal-suffix,
+  -hicpp-no-array-decay,
+  -hicpp-avoid-goto,
+  -hicpp-use-emplace
 
 # Treat warnings as errors in CI (disabled for local dev)
 WarningsAsErrors: ''
 
-# Apply checks to project headers only
-HeaderFilterRegex: '(include|src)/.*\.(h|hpp)$'
+# Apply checks to project sources (headers + implementation)
+HeaderFilterRegex: '(include|src|tests|benchmarks)/.*\.(h|hpp|cpp)$'
 
 # Use project's clang-format style
 FormatStyle: 'file'
@@ -81,6 +89,8 @@ CheckOptions:
     value: '10'
   - key: modernize-use-override.AllowOverrideAndFinal
     value: 'false'
+  - key: modernize-loop-convert.MinConfidence
+    value: reasonable
   
   # Cppcoreguidelines
   - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor

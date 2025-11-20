@@ -13,7 +13,9 @@ param(
     [switch]$Strict = $false,              # Warnings as errors
     [switch]$Clean = $false,               # Vorheriges Build-Verzeichnis löschen
     [switch]$WithSecurityScan = $false,
-    [switch]$FailOnScanWarnings = $false
+    [switch]$FailOnScanWarnings = $false,
+    [switch]$Quality = $false,             # Vor Build: clang-format Diff + clang-tidy auf gestagten Dateien
+    [switch]$QualityApply = $false         # Format direkt anwenden (setzt implizit Quality)
 )
 
 Write-Host "=== THEMIS Build Script ===" -ForegroundColor Cyan
@@ -69,6 +71,7 @@ Write-Host "BuildType: $BuildType" -ForegroundColor Green
 Write-Host "Benchmarks: " + $(if ($EnableBenchmarks) {"ON"} else {"OFF"}) -ForegroundColor Green
 Write-Host "GPU: " + $(if ($EnableGPU) {"ON"} else {"OFF"}) -ForegroundColor Green
 Write-Host "Tracing: " + $(if ($EnableTracing) {"ON"} else {"OFF"}) -ForegroundColor Green
+Write-Host "Quality (tidy): " + $(if ($Quality -or $QualityApply) {"ON"} else {"OFF"}) -ForegroundColor Green
 
 if ($Generator -like "Visual Studio*") {
     $archFlag = "-A x64"
@@ -91,6 +94,26 @@ $strictFlag = if ($Strict) {"ON"} else {"OFF"}
 Write-Host "Invoking CMake configure..." -ForegroundColor Cyan
 
 Push-Location $BuildDir
+
+# Optional Code-Qualität vor dem eigentlichen Build: nutzt run_clang_quality.ps1
+if ($Quality -or $QualityApply) {
+    Write-Host "=== Running local code quality checks ===" -ForegroundColor Cyan
+    $qualityScript = Join-Path (Resolve-Path ..).Path "scripts/run_clang_quality.ps1"
+    if (Test-Path $qualityScript) {
+        $invoke = "& '$qualityScript'" + $(if ($QualityApply) {" -ApplyFormat -FailOnFormat"} else {" -FailOnFormat"})
+        Write-Host "Invoke: $invoke" -ForegroundColor Gray
+        try {
+            if ($QualityApply) { ./../scripts/run_clang_quality.ps1 -ApplyFormat -FailOnFormat }
+            else { ./../scripts/run_clang_quality.ps1 -FailOnFormat }
+        } catch {
+            Write-Host "Quality checks failed." -ForegroundColor Red
+            Pop-Location
+            exit 5
+        }
+    } else {
+        Write-Warning "Quality script not found (scripts/run_clang_quality.ps1). Skipping quality step."
+    }
+}
 
 if ($Generator -eq "Ninja") {
     cmake .. -G Ninja `

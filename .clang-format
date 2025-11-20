@@ -1,0 +1,66 @@
+# Clang-Format Style für ThemisDB
+# Fokus: Konsistente Lesbarkeit, moderne C++ Praktiken, klare Diff-Stabilität.
+---
+Language:        Cpp
+BasedOnStyle:    LLVM
+AccessModifierOffset: -2
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ColumnLimit:     120
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: None
+AlignConsecutiveMacros: None
+AlignTrailingComments: true
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+BreakBeforeBinaryOperators: All
+BreakBeforeBraces: Attach
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+DerivePointerAlignment: false
+PointerAlignment: Right
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<.*>'
+    Priority: 1
+  - Regex: '^".*"'
+    Priority: 2
+SortIncludes: true
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpacesInAngles:  false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Cpp11BracedListStyle: true
+IndentCaseLabels: true
+NamespaceIndentation: None
+EmptyLineAfterAccessModifier: Never
+EmptyLineBeforeAccessModifier: Always
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+InsertTrailingCommas: None
+ReflowComments: true
+SortUsingDeclarations: true
+FixNamespaceComments: true
+# Bewusst gelassen: Keine aggressive Reformatierung von Imports außerhalb Sortierung.
+...

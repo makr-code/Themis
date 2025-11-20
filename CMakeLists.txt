@@ -36,6 +36,11 @@ option(THEMIS_ENABLE_TRACING "Enable OpenTelemetry distributed tracing" ON)
 option(THEMIS_ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
 option(THEMIS_STRICT_BUILD "Treat warnings as errors" OFF)
 option(THEMIS_ENABLE_AVX2 "Enable AVX2/FMA for SIMD kernels in Release builds (MSVC)" ON)
+option(THEMIS_ENABLE_HSM_REAL "Enable real PKCS#11 HSM provider (fallback to stub if OFF)" OFF)
+
+# Lokal aktivierbare Code-Qualität (clang-tidy) ohne CI-Kosten.
+option(ENABLE_LOCAL_CLANG_TIDY "Enable local clang-tidy analysis (off by default)" OFF)
+
 
 # Geo feature tiering options (Core vs. Enterprise add-ins)
 option(THEMIS_GEO "Enable Geo core feature scaffolding" ON)
@@ -77,6 +82,18 @@ endif()
 if(THEMIS_ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address)
+endif()
+
+# Optionale lokale clang-tidy Aktivierung (nicht in CI standardmäßig).
+if(ENABLE_LOCAL_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        message(STATUS "clang-tidy aktiviert: ${CLANG_TIDY_EXE}")
+        # Keine automatischen Fixes hier; Entwickler nutzen Skript für -fix.
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    else()
+        message(WARNING "ENABLE_LOCAL_CLANG_TIDY=ON aber clang-tidy nicht gefunden.")
+    endif()
 endif()
 
 # CMake helper function to safely link required targets
@@ -334,6 +351,11 @@ set(THEMIS_CORE_SOURCES
 
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})
+
+if(THEMIS_ENABLE_HSM_REAL)
+    target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_HSM_REAL)
+    target_sources(themis_core PRIVATE src/security/hsm_provider_pkcs11.cpp)
+endif()
 
 # Geo feature flags and Boost.Geometry support
 if(THEMIS_GEO)
@@ -687,6 +709,18 @@ if(THEMIS_BUILD_BENCHMARKS)
         PRIVATE
             themis_core
             benchmark::benchmark
+    )
+
+    # HSM Provider performance benchmark (standalone)
+    add_executable(bench_hsm_provider
+        benchmarks/bench_hsm_provider.cpp
+    )
+    
+    target_link_libraries(bench_hsm_provider
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
     )
 endif()
 

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#!/usr/bin/env bash
+# Git Pre-Commit Hook für ThemisDB
+# Nutzung: git config core.hooksPath scripts/githooks
+# Führt WSL Qualitätsskript mit Format-Prüfung aus (nur format Diff, kein Auto-Apply).
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT="${ROOT_DIR}/run_clang_quality_wsl.sh"
+if [[ ! -f "$SCRIPT" ]]; then
+  echo "[WARN] Qualitätsskript nicht gefunden: $SCRIPT" >&2
+  exit 0
+fi
+# Nur auf Linux/WSL sinnvoll; unter reinem Windows separat PowerShell nutzen.
+if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+  # Nur geänderte Dateien prüfen ohne Formatierung anzuwenden
+  bash "$SCRIPT" --fail-on-format || {
+    echo "[ERROR] Code-Qualität fehlgeschlagen. Bitte Formatierung/Warnings beheben." >&2
+    exit 1
+  }
+else
+  echo "[INFO] Nicht WSL/Linux Umgebung. Überspringe Hook-Ausführung." >&2
+fi
