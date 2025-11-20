@@ -1,0 +1,108 @@
+# Hardware Acceleration Configuration Example
+# ThemisDB v1.0
+
+# Backend selection mode
+acceleration:
+  # AUTO: Automatically select best available backend
+  # MANUAL: Use explicitly specified backend
+  # DISABLED: Use CPU only (no acceleration)
+  mode: AUTO
+  
+  # Explicitly specify backend (used when mode=MANUAL)
+  # Options: CPU, CUDA, HIP, ZLUDA, VULKAN, DIRECTX, METAL, ROCM, ONEAPI, OPENCL, OPENGL, WEBGPU
+  backend: CUDA
+  
+  # Backend-specific settings
+  cuda:
+    enabled: true
+    device_id: 0  # GPU device to use (0 = first GPU)
+    memory_limit_gb: 8  # Maximum VRAM to use
+    batch_size: 1000
+    async_compute: true
+    
+  vulkan:
+    enabled: true
+    device_id: 0
+    queue_family: 0  # Compute queue family
+    memory_limit_gb: 8
+    
+  directx:
+    enabled: false  # Windows only
+    adapter_index: 0
+    memory_limit_gb: 8
+    use_directml: true  # Enable DirectML for ML workloads
+    
+  hip:
+    enabled: false  # AMD GPUs only
+    device_id: 0
+    memory_limit_gb: 8
+    
+  zluda:
+    enabled: false  # AMD GPUs with CUDA compatibility
+    device_id: 0
+    zluda_path: "/opt/zluda"  # Path to ZLUDA installation
+    
+  # CPU fallback settings
+  cpu:
+    always_available: true
+    use_simd: true  # Use AVX2/NEON instructions
+    num_threads: 0  # 0 = auto-detect (use all cores)
+    
+  # Performance settings
+  performance:
+    # Minimum batch size to use GPU (smaller batches use CPU)
+    gpu_threshold: 100
+    
+    # Memory transfer strategy
+    # EAGER: Transfer all data to GPU upfront
+    # LAZY: Transfer data on-demand
+    # PINNED: Use pinned memory for faster transfers
+    memory_strategy: PINNED
+    
+    # Enable profiling (adds overhead)
+    enable_profiling: false
+    
+# Vector operations acceleration
+vector_ops:
+  # Enable GPU acceleration for vector search
+  gpu_enabled: true
+  
+  # Use Faiss GPU when available
+  use_faiss_gpu: true
+  
+  # Distance metric
+  # L2, COSINE, DOT
+  default_metric: COSINE
+  
+  # KNN search settings
+  knn:
+    batch_size: 1000
+    ef_search: 64
+    
+# Graph operations acceleration  
+graph_ops:
+  # Enable GPU acceleration for graph operations
+  gpu_enabled: true
+  
+  # Batch BFS/DFS traversals
+  batch_size: 500
+  
+  # Shortest path algorithm
+  # DIJKSTRA, BELLMAN_FORD, A_STAR
+  shortest_path_algo: DIJKSTRA
+  
+# Geo operations acceleration
+geo_ops:
+  # Enable GPU acceleration for spatial operations
+  gpu_enabled: true
+  
+  # Distance calculation method
+  # HAVERSINE, VINCENTY
+  distance_method: HAVERSINE
+  
+  # Batch processing
+  batch_size: 10000
+  
+  # Point-in-polygon test method
+  # RAY_CASTING, WINDING_NUMBER
+  pip_method: RAY_CASTING

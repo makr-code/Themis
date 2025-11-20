@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable CUDA if requested
+if(THEMIS_ENABLE_CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
+
 # Export compile commands for IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -37,6 +44,19 @@ option(THEMIS_ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
 option(THEMIS_STRICT_BUILD "Treat warnings as errors" OFF)
 option(THEMIS_ENABLE_AVX2 "Enable AVX2/FMA for SIMD kernels in Release builds (MSVC)" ON)
 option(THEMIS_ENABLE_HSM_REAL "Enable real PKCS#11 HSM provider (fallback to stub if OFF)" OFF)
+
+# Hardware acceleration backend options
+option(THEMIS_ENABLE_CUDA "Enable NVIDIA CUDA acceleration" OFF)
+option(THEMIS_ENABLE_HIP "Enable AMD HIP acceleration" OFF)
+option(THEMIS_ENABLE_ZLUDA "Enable AMD ZLUDA (CUDA compatibility on AMD)" OFF)
+option(THEMIS_ENABLE_ROCM "Enable AMD ROCm acceleration" OFF)
+option(THEMIS_ENABLE_DIRECTX "Enable DirectX 12 Compute Shaders (Windows)" OFF)
+option(THEMIS_ENABLE_VULKAN "Enable Vulkan Compute acceleration" OFF)
+option(THEMIS_ENABLE_OPENGL "Enable OpenGL Compute Shaders" OFF)
+option(THEMIS_ENABLE_METAL "Enable Apple Metal acceleration" OFF)
+option(THEMIS_ENABLE_ONEAPI "Enable Intel OneAPI/SYCL acceleration" OFF)
+option(THEMIS_ENABLE_OPENCL "Enable OpenCL acceleration" OFF)
+option(THEMIS_ENABLE_WEBGPU "Enable WebGPU acceleration (experimental)" OFF)
 
 # Lokal aktivierbare Code-Qualität (clang-tidy) ohne CI-Kosten.
 option(ENABLE_LOCAL_CLANG_TIDY "Enable local clang-tidy analysis (off by default)" OFF)
@@ -347,7 +367,68 @@ set(THEMIS_CORE_SOURCES
     src/sharding/prometheus_metrics.cpp
     src/sharding/health_check.cpp
     src/sharding/admin_api.cpp
+    
+    # Hardware acceleration (core abstraction layer - always included)
+    src/acceleration/backend_registry.cpp
+    src/acceleration/cpu_backend.cpp
+    src/acceleration/plugin_loader.cpp
+    src/acceleration/plugin_security.cpp
 )
+
+# Add hardware acceleration backends based on build options
+set(THEMIS_ACCELERATION_SOURCES "")
+
+# CUDA backend
+if(THEMIS_ENABLE_CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    
+    # Add CUDA source files
+    list(APPEND THEMIS_ACCELERATION_SOURCES 
+        src/acceleration/cuda_backend.cpp
+        src/acceleration/cuda/vector_kernels.cu
+    )
+    
+    target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_CUDA)
+    target_include_directories(themis_core PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    target_link_libraries(themis_core PRIVATE CUDA::cudart CUDA::cuda_driver)
+    
+    message(STATUS "CUDA acceleration enabled")
+    message(STATUS "  CUDA Version: ${CUDAToolkit_VERSION}")
+    message(STATUS "  CUDA Include: ${CUDAToolkit_INCLUDE_DIRS}")
+endif()
+
+# Graphics API backends
+if(THEMIS_ENABLE_DIRECTX OR THEMIS_ENABLE_VULKAN OR THEMIS_ENABLE_OPENGL)
+    list(APPEND THEMIS_ACCELERATION_SOURCES src/acceleration/graphics_backends.cpp)
+    
+    if(THEMIS_ENABLE_DIRECTX)
+        target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_DIRECTX)
+        message(STATUS "DirectX acceleration enabled (stub)")
+    endif()
+    
+    if(THEMIS_ENABLE_VULKAN)
+        # Try to find Vulkan SDK
+        find_package(Vulkan QUIET)
+        if(Vulkan_FOUND)
+            target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_VULKAN)
+            target_include_directories(themis_core PRIVATE ${Vulkan_INCLUDE_DIRS})
+            message(STATUS "Vulkan acceleration enabled")
+            message(STATUS "  Vulkan Version: ${Vulkan_VERSION}")
+        else()
+            message(WARNING "Vulkan SDK not found, Vulkan support disabled")
+        endif()
+    endif()
+    
+    if(THEMIS_ENABLE_OPENGL)
+        target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_OPENGL)
+        message(STATUS "OpenGL acceleration enabled (stub)")
+    endif()
+endif()
+
+# Add acceleration sources to core if any were selected
+if(THEMIS_ACCELERATION_SOURCES)
+    target_sources(themis_core PRIVATE ${THEMIS_ACCELERATION_SOURCES})
+endif()
 
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})

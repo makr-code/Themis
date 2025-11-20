@@ -1,0 +1,23 @@
+{
+  "plugin": {
+    "name": "CUDA Acceleration Plugin",
+    "version": "1.0.0",
+    "backend_type": "CUDA",
+    "description": "NVIDIA CUDA GPU acceleration for Vector, Graph, and Geo operations",
+    "author": "ThemisDB Team",
+    "license": "MIT",
+    "requirements": {
+      "cuda_version": "11.0+",
+      "min_compute_capability": "7.0",
+      "min_driver_version": "450.80.02"
+    },
+    "supported_operations": [
+      "vector_distance",
+      "vector_knn",
+      "graph_bfs",
+      "graph_shortest_path",
+      "geo_distance",
+      "geo_point_in_polygon"
+    ]
+  }
+}
