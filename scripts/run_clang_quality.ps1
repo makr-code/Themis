@@ -83,7 +83,7 @@ if ($FailOnFormat -and -not $ApplyFormat -and $formatChanged) {
 
 Write-Host '[INFO] Starte clang-tidy'
 # compile_commands.json erwarten wir z.B. in build-msvc oder build-wsl; heuristik
-$compileDBCandidates = @('build-msvc/compile_commands.json','build-wsl/compile_commands.json','build/compile_commands.json')
+$compileDBCandidates = @('build-msvc/compile_commands.json','build-wsl/compile_commands.json','build/compile_commands.json','build-tidy/compile_commands.json')
 $compileDB = $compileDBCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $compileDB) {
   Write-Warning 'Keine compile_commands.json gefunden. Bitte CMake mit Export ausführen.'

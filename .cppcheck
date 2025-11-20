@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="1">
+    <root name="."/>
+    <builddir>build-msvc</builddir>
+    
+    <!-- Source paths to analyze -->
+    <paths>
+        <dir name="src/"/>
+        <dir name="include/"/>
+        <dir name="tools/"/>
+        <dir name="tests/"/>
+        <dir name="benchmarks/"/>
+    </paths>
+    
+    <!-- Paths to exclude -->
+    <exclude>
+        <path name="external/"/>
+        <path name="vcpkg_installed/"/>
+        <path name="build-msvc/"/>
+        <path name="build-wsl/"/>
+        <path name="tests/"/>
+        <path name="benchmarks/"/>
+    </exclude>
+    
+    <!-- Suppressions for known false positives -->
+    <suppressions>
+        <suppression>
+            <id>missingIncludeSystem</id>
+        </suppression>
+        <suppression>
+            <id>unmatchedSuppression</id>
+        </suppression>
+        <suppression>
+            <id>unusedFunction</id>
+            <fileName>*/tests/*</fileName>
+        </suppression>
+    </suppressions>
+    
+    <!-- Enable checks -->
+    <check-library>posix</check-library>
+    <check-library>std</check-library>
+    <check-library>boost</check-library>
+    
+    <!-- Platform configuration -->
+    <platform>native</platform>
+    
+    <!-- Standards -->
+    <standards>
+        <c>c11</c>
+        <cpp>c++20</cpp>
+    </standards>
+    
+    <!-- Analysis configuration -->
+    <max-ctu-depth>4</max-ctu-depth>
+    <check-level>exhaustive</check-level>
+</project>

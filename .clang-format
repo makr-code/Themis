@@ -63,4 +63,3 @@ ReflowComments: true
 SortUsingDeclarations: true
 FixNamespaceComments: true
 # Bewusst gelassen: Keine aggressive Reformatierung von Imports außerhalb Sortierung.
-...
