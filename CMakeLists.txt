@@ -322,6 +322,9 @@ set(THEMIS_CORE_SOURCES
     src/sharding/shard_router.cpp
     src/sharding/rebalance_operation.cpp
     src/sharding/data_migrator.cpp
+    src/sharding/prometheus_metrics.cpp
+    src/sharding/health_check.cpp
+    src/sharding/admin_api.cpp
 )
 
 # Main library
@@ -560,6 +563,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_signed_request.cpp
         tests/test_shard_communication.cpp
         tests/test_rebalance_migration.cpp
+        tests/test_monitoring_ops.cpp
     )
     
     target_link_libraries(themis_tests
