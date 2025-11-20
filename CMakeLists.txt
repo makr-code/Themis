@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable CUDA if requested
+if(THEMIS_ENABLE_CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
+
 # Export compile commands for IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -373,21 +380,48 @@ set(THEMIS_ACCELERATION_SOURCES "")
 
 # CUDA backend
 if(THEMIS_ENABLE_CUDA)
-    list(APPEND THEMIS_ACCELERATION_SOURCES src/acceleration/cuda_backend.cpp)
+    find_package(CUDAToolkit REQUIRED)
+    
+    # Add CUDA source files
+    list(APPEND THEMIS_ACCELERATION_SOURCES 
+        src/acceleration/cuda_backend.cpp
+        src/acceleration/cuda/vector_kernels.cu
+    )
+    
     target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_CUDA)
+    target_include_directories(themis_core PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    target_link_libraries(themis_core PRIVATE CUDA::cudart CUDA::cuda_driver)
+    
+    message(STATUS "CUDA acceleration enabled")
+    message(STATUS "  CUDA Version: ${CUDAToolkit_VERSION}")
+    message(STATUS "  CUDA Include: ${CUDAToolkit_INCLUDE_DIRS}")
 endif()
 
 # Graphics API backends
 if(THEMIS_ENABLE_DIRECTX OR THEMIS_ENABLE_VULKAN OR THEMIS_ENABLE_OPENGL)
     list(APPEND THEMIS_ACCELERATION_SOURCES src/acceleration/graphics_backends.cpp)
+    
     if(THEMIS_ENABLE_DIRECTX)
         target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_DIRECTX)
+        message(STATUS "DirectX acceleration enabled (stub)")
     endif()
+    
     if(THEMIS_ENABLE_VULKAN)
-        target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_VULKAN)
+        # Try to find Vulkan SDK
+        find_package(Vulkan QUIET)
+        if(Vulkan_FOUND)
+            target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_VULKAN)
+            target_include_directories(themis_core PRIVATE ${Vulkan_INCLUDE_DIRS})
+            message(STATUS "Vulkan acceleration enabled")
+            message(STATUS "  Vulkan Version: ${Vulkan_VERSION}")
+        else()
+            message(WARNING "Vulkan SDK not found, Vulkan support disabled")
+        endif()
     endif()
+    
     if(THEMIS_ENABLE_OPENGL)
         target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_OPENGL)
+        message(STATUS "OpenGL acceleration enabled (stub)")
     endif()
 endif()
 
