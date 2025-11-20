@@ -1,6 +1,6 @@
-MIT License
+MIT License with Government Clause
 
-Copyright (c) 2025 ThemisDB Contributors
+Copyright (c) 2025 The ThemisDB Authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -12,6 +12,20 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
+Government Clause (Sovereignty Protection):
+Notwithstanding the permissions granted above, the Software is provided with the
+express intent of ensuring digital sovereignty for public administration.
+Therefore, any entity using this Software to provide a commercial managed service
+or cloud offering ("Service Provider") agrees that:
+a) The source code of any modifications, extensions, or derivative works created
+   by the Service Provider to operate the Software as a service must be made
+   publicly available under this same license (MIT with Government Clause)
+   within 30 days of deployment.
+b) Public sector entities (federal, state, and municipal governments) are granted
+   a perpetual, irrevocable, royalty-free right to use, modify, and distribute
+   the Software and any such derivative works for public purposes, regardless of
+   any conflicting proprietary claims.
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,85 +33,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-GOVERNMENT USE CLAUSE / REGIERUNGSNUTZUNGSKLAUSEL
-
-English:
-This software may be used by governmental entities and public institutions
-subject to the following additional terms:
-
-1. Government Use: Governmental entities, including but not limited to federal,
-   state, and local government agencies, may use this software for public
-   administration, public services, and regulatory compliance purposes.
-
-2. Data Sovereignty: When used by government entities, all data must remain
-   within the jurisdiction of the respective governmental authority and comply
-   with applicable data protection and sovereignty regulations.
-
-3. Security Requirements: Government users must implement appropriate security
-   measures consistent with applicable government security standards and
-   regulations (e.g., BSI IT-Grundschutz, NIST standards).
-
-4. Compliance: Government use must comply with all applicable laws, regulations,
-   and directives, including but not limited to data protection laws (GDPR,
-   BDSG), information security requirements, and procurement regulations.
-
-5. No Warranty for Government Use: Notwithstanding the general warranty
-   disclaimer above, governmental entities acknowledge that this software is
-   provided on an "as-is" basis without any additional warranties or
-   guarantees specific to governmental requirements.
-
-6. Audit and Transparency: Government entities using this software for public
-   services must ensure appropriate transparency and auditability in accordance
-   with applicable public sector transparency requirements.
-
----
-
-Deutsch:
-Diese Software darf von staatlichen Stellen und öffentlichen Institutionen
-unter folgenden zusätzlichen Bedingungen genutzt werden:
-
-1. Behördliche Nutzung: Staatliche Stellen, einschließlich aber nicht
-   beschränkt auf Bundes-, Landes- und Kommunalbehörden, dürfen diese
-   Software für öffentliche Verwaltung, öffentliche Dienstleistungen und
-   zur Erfüllung regulatorischer Anforderungen nutzen.
-
-2. Datensouveränität: Bei Nutzung durch staatliche Stellen müssen alle Daten
-   innerhalb der Jurisdiktion der jeweiligen staatlichen Stelle verbleiben
-   und den geltenden Datenschutz- und Souveränitätsbestimmungen entsprechen.
-
-3. Sicherheitsanforderungen: Staatliche Nutzer müssen angemessene
-   Sicherheitsmaßnahmen implementieren, die mit den geltenden staatlichen
-   Sicherheitsstandards und -vorschriften übereinstimmen (z.B. BSI
-   IT-Grundschutz, NIST-Standards).
-
-4. Compliance: Die behördliche Nutzung muss allen geltenden Gesetzen,
-   Verordnungen und Richtlinien entsprechen, einschließlich aber nicht
-   beschränkt auf Datenschutzgesetze (DSGVO, BDSG), Informationssicherheits-
-   anforderungen und Vergabevorschriften.
-
-5. Keine Gewährleistung für behördliche Nutzung: Ungeachtet des oben
-   genannten allgemeinen Gewährleistungsausschlusses erkennen staatliche
-   Stellen an, dass diese Software auf "wie besehen"-Basis ohne zusätzliche
-   Garantien oder Gewährleistungen bereitgestellt wird, die spezifisch auf
-   behördliche Anforderungen zugeschnitten sind.
-
-6. Prüfung und Transparenz: Staatliche Stellen, die diese Software für
-   öffentliche Dienstleistungen nutzen, müssen angemessene Transparenz und
-   Prüfbarkeit gemäß den geltenden Transparenzanforderungen des öffentlichen
-   Sektors gewährleisten.
-
----
-
-Note: The government use clause is supplementary to the MIT License and does
-not restrict or modify the permissions granted under the MIT License. It
-provides additional guidance and requirements specific to governmental use
-while maintaining the permissive nature of the MIT License.
-
-Hinweis: Die Regierungsnutzungsklausel ergänzt die MIT-Lizenz und schränkt
-die unter der MIT-Lizenz gewährten Rechte weder ein noch ändert sie diese.
-Sie bietet zusätzliche Leitlinien und Anforderungen speziell für die
-behördliche Nutzung, während der freizügige Charakter der MIT-Lizenz
-erhalten bleibt.
