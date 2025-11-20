@@ -193,6 +193,14 @@ private:
     std::string makeSpatialKey(std::string_view table, uint64_t morton_code) const;
     std::string makeZRangeKey(std::string_view table, int z_bucket) const;
     
+    // Per-PK sidecar key (storage improvement)
+    // Allows updating individual PKs without rewriting entire bucket JSON
+    std::string makeSpatialPerPKKey(
+        std::string_view table,
+        uint64_t morton_code,
+        std::string_view pk
+    ) const;
+    
     // Get/Set config
     std::optional<RTreeConfig> getConfig(std::string_view table) const;
     Status saveConfig(std::string_view table, const RTreeConfig& config);

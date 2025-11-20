@@ -131,6 +131,19 @@ std::string SpatialIndexManager::makeZRangeKey(std::string_view table, int z_buc
     return getZRangeKeyPrefix(table) + buf;
 }
 
+// Helper: Make per-PK sidecar key
+// Format: spatial:<table>::pk:<morton_code>:<pk>
+// This allows individual PK updates without rewriting entire bucket JSON
+std::string SpatialIndexManager::makeSpatialPerPKKey(
+    std::string_view table,
+    uint64_t morton_code,
+    std::string_view pk
+) const {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(morton_code));
+    return getSpatialKeyPrefix(table) + "pk:" + buf + ":" + std::string(pk);
+}
+
 // Config persistence
 std::optional<RTreeConfig> SpatialIndexManager::getConfig(std::string_view table) const {
     auto value = db_.get(getConfigKey(table));
@@ -302,10 +315,33 @@ SpatialIndexManager::Status SpatialIndexManager::insert(
     new_entry.sidecar = sidecar;
     entries.push_back(new_entry);
     
-    // Save back
+    // Save back to bucket (for backward compatibility)
     const auto dump = serializeSidecarList(entries);
     std::vector<uint8_t> bytes(dump.begin(), dump.end());
-    return db_.put(key, bytes) ? Status::OK() : Status::Error("failed to insert");
+    if (!db_.put(key, bytes)) {
+        return Status::Error("failed to insert");
+    }
+    
+    // Storage improvement: Also write per-PK key
+    // This allows updating/deleting individual PKs without rewriting entire bucket
+    // Format: spatial:<table>::pk:<morton>:<pk> -> sidecar JSON
+    std::string pk_key = makeSpatialPerPKKey(table, morton, primary_key);
+    json pk_sidecar;
+    pk_sidecar["mbr"] = {
+        {"minx", sidecar.mbr.minx},
+        {"miny", sidecar.mbr.miny},
+        {"maxx", sidecar.mbr.maxx},
+        {"maxy", sidecar.mbr.maxy}
+    };
+    if (sidecar.z_min != 0.0 || sidecar.z_max != 0.0) {
+        pk_sidecar["z_min"] = sidecar.z_min;
+        pk_sidecar["z_max"] = sidecar.z_max;
+    }
+    const auto pk_dump = pk_sidecar.dump();
+    std::vector<uint8_t> pk_bytes(pk_dump.begin(), pk_dump.end());
+    db_.put(pk_key, pk_bytes); // Best effort, don't fail on error
+    
+    return Status::OK();
 }
 
 // Remove
@@ -337,6 +373,10 @@ SpatialIndexManager::Status SpatialIndexManager::remove(
             [&](const SidecarEntry& e) { return e.primary_key == primary_key; }),
         entries.end()
     );
+    
+    // Storage improvement: Also delete per-PK key
+    std::string pk_key = makeSpatialPerPKKey(table, morton, primary_key);
+    db_.del(pk_key); // Best effort
     
     if (entries.empty()) {
         return db_.del(key) ? Status::OK() : Status::Error("failed to remove");
