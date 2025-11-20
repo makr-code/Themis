@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Window Functions & CI/CD Status Update (2025-11-20 v2)
+
+#### Code Audit Findings
+- **Window Functions Clarification** - Identified that Window Functions are already fully implemented
+  - Despite status "0% - geplant" in DEVELOPMENT_AUDITLOG.md, complete implementation exists
+  - Implementation: `WindowEvaluator` class in `include/query/window_evaluator.h` (342 lines)
+  - Core logic: `src/query/window_evaluator.cpp` (543 lines)
+  - Features: ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, FIRST_VALUE, LAST_VALUE
+  - PARTITION BY and ORDER BY support
+  - Window Frames (ROWS, RANGE)
+  - Comprehensive tests: `tests/test_window_functions.cpp` (579 lines)
+  
+- **CI/CD Status** - Identified critical gap in CI/CD infrastructure
+  - README badges reference non-existent workflows (ci.yml, code-quality.yml)
+  - No GitHub Actions workflows exist in `.github/workflows/` directory
+  - CI/CD Improvements moved from P1 to **highest priority**
+
+#### Documentation Updates
+- **DEVELOPMENT_AUDITLOG.md Updates**
+  - Phase 6 Analytics updated from 60% to 85%
+  - Window Functions marked as 100% complete
+  - Updated "Offene Punkte" section:
+    - ✅ Column-Level Encryption marked as COMPLETED
+    - ✅ Window Functions marked as COMPLETED (removed from open items)
+    - ⚠️ CI/CD Workflows marked as KRITISCH (critical priority)
+    - ❌ Content Processors removed (not DB responsibility)
+
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates v2**
+  - **New recommendation:** CI/CD Improvements as next branch (was SDK Finalization)
+  - Added Window Functions to "Archiviert" section (already complete)
+  - Removed Content Processors from roadmap (ingestion is not DB duty)
+  - Moved Docker Runtime Optimization to "Post-v1.0.0 Enterprise Features"
+  - Added GPU CUDA Support and REST API Extensions as future options
+  - Updated implementation timeline: 1 week CI/CD, then 2-3 weeks SDK Beta
+  - Removed 8-week block for Content Processors and Window Functions
+  - Updated Quick Start guide for CI/CD workflow creation
+
+#### Rationale for Priority Changes
+1. **CI/CD CRITICAL:** README references workflows that don't exist (broken badges)
+2. **Window Functions DONE:** 885 lines of code + 579 lines of tests already exist
+3. **Content Processors OUT:** Ingestion/processing is not database responsibility
+4. **Docker POST-v1.0.0:** Enterprise feature deferred until after v1.0.0 release
+
 ### Changed - Column-Level Encryption Status Update (2025-11-20)
 
 #### Documentation Updates

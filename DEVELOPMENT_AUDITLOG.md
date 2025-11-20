@@ -498,10 +498,10 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 - Statistics APIs (100%)
 - Distributed Tracing (0% - geplant)
 
-### Phase 6: Analytics ⚠️ 60%
+### Phase 6: Analytics ✅ 85%
 - Apache Arrow Integration (100%)
 - COLLECT/GROUP BY (100%)
-- Window Functions (0% - geplant)
+- Window Functions (100% - WindowEvaluator implementiert: 885 Zeilen Code, 579 Zeilen Tests)
 - OLAP Optimizations (40%)
 
 ### Phase 7: Security ✅ 100%
@@ -542,16 +542,24 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 ### Kurzfristig (Q1 2026 - 0-3 Monate)
 
 **P0 - Kritisch:**
-- ✅ Dokumentation konsolidieren (diese Aufgabe)
-- ⚠️ Column-Level Encryption implementieren
-- ⚠️ JavaScript/Python SDKs finalisieren
-- ⚠️ CI/CD verbessern (Trivy Scans, Coverage Reports)
+- ✅ Dokumentation konsolidieren (COMPLETED)
+- ✅ Column-Level Encryption (COMPLETED - implementiert als Field-Level Encryption)
+- ⚠️ JavaScript/Python SDKs finalisieren (Alpha → Beta)
 
 **P1 - Hoch:**
-- Content Processors erweitern (PDF, Office)
-- Window Functions implementieren
+- ⚠️ **CI/CD Workflows implementieren** (KRITISCH - Badges verlinken auf nicht-existierende Workflows)
+  - GitHub Actions Matrix (Linux + Windows)
+  - Trivy Security Scanning
+  - Coverage Reporting
+  - Automated Release Process
 - Query Optimizer verbessern (Join Optimizations)
-- Runtime Image optimieren (distroless)
+
+**Entfernt:**
+- ❌ Content Processors erweitern - Nicht DB-Aufgabe (Ingestion ist externe Verantwortung)
+- ✅ Window Functions - Bereits implementiert (WindowEvaluator: 885 Zeilen Code, 579 Zeilen Tests)
+
+**Post-v1.0.0 (Enterprise Features):**
+- Runtime Image optimieren (Docker distroless)
 
 ### Mittelfristig (Q2-Q3 2026 - 3-9 Monate)
 
