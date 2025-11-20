@@ -1,0 +1,466 @@
+# MIME Type Detection Configuration
+# This file defines file format detection rules for the Content Model
+# Integrity verification via external database (see docs/SECURITY_SIGNATURES.md)
+
+# Content Upload Policy - Controls which file types are allowed
+policies:
+  # Global defaults
+  default_max_size: 104857600  # 100 MB in bytes
+  default_action: allow  # 'allow' or 'deny' - default when type not explicitly listed
+  
+  # Whitelist: Explicitly allowed MIME types with optional size limits
+  allowed:
+    # Text formats (small limits)
+    - mime_type: text/plain
+      max_size: 10485760  # 10 MB
+      description: Plain text files
+    - mime_type: text/markdown
+      max_size: 5242880  # 5 MB
+    - mime_type: application/json
+      max_size: 52428800  # 50 MB
+    - mime_type: application/xml
+      max_size: 52428800  # 50 MB
+    
+    # Geo formats
+    - mime_type: application/geo+json
+      max_size: 524288000  # 500 MB (large datasets)
+      description: GeoJSON geographic data
+    - mime_type: application/vnd.google-earth.kml+xml
+      max_size: 104857600  # 100 MB
+    
+    # Themis proprietary formats
+    - mime_type: application/vnd.themis.vpb+json
+      max_size: 1073741824  # 1 GB
+      description: Themis VPB binary data
+    - mime_type: application/vnd.themis.metadata+json
+      max_size: 10485760  # 10 MB
+    - mime_type: application/vnd.themis.chunk+json
+      max_size: 104857600  # 100 MB
+    
+    # Images (moderate limits)
+    - mime_type: image/jpeg
+      max_size: 20971520  # 20 MB
+    - mime_type: image/png
+      max_size: 20971520  # 20 MB
+    - mime_type: image/webp
+      max_size: 10485760  # 10 MB
+    - mime_type: image/svg+xml
+      max_size: 5242880  # 5 MB
+    
+    # Documents
+    - mime_type: application/pdf
+      max_size: 52428800  # 50 MB
+    - mime_type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      max_size: 20971520  # 20 MB
+    - mime_type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      max_size: 104857600  # 100 MB
+    
+    # Binary data formats
+    - mime_type: application/x-parquet
+      max_size: 2147483648  # 2 GB
+      description: Apache Parquet columnar storage
+    - mime_type: application/avro
+      max_size: 1073741824  # 1 GB
+    - mime_type: application/msgpack
+      max_size: 524288000  # 500 MB
+    
+    # Archives (larger limits for batch uploads)
+    - mime_type: application/zip
+      max_size: 1073741824  # 1 GB
+    - mime_type: application/gzip
+      max_size: 524288000  # 500 MB
+    - mime_type: application/x-tar
+      max_size: 2147483648  # 2 GB
+  
+  # Blacklist: Explicitly denied MIME types (security risk)
+  denied:
+    - mime_type: application/vnd.microsoft.portable-executable
+      reason: Executable files not allowed for security
+    - mime_type: application/x-executable
+      reason: Native executables prohibited
+    - mime_type: application/x-mach-binary
+      reason: macOS executables prohibited
+    - mime_type: application/x-sharedlib
+      reason: Shared libraries not allowed
+    - mime_type: application/x-msdownload
+      reason: Windows executables prohibited
+    - mime_type: application/x-sh
+      reason: Shell scripts not allowed
+    - mime_type: application/x-bat
+      reason: Batch files prohibited
+    - mime_type: text/x-python
+      reason: Python scripts disabled (use designated endpoints)
+    - mime_type: application/javascript
+      reason: JavaScript execution disabled
+    - mime_type: text/html
+      reason: HTML uploads disabled (XSS risk)
+  
+  # Category-based rules
+  category_rules:
+    executable:
+      action: deny
+      reason: All executable formats prohibited
+    geo:
+      max_size: 1073741824  # 1 GB for all geo formats
+    themis:
+      max_size: 2147483648  # 2 GB for proprietary formats
+    binary_data:
+      max_size: 5368709120  # 5 GB for data science formats
+
+# Extension-based detection
+extensions:
+  # Text formats
+  txt: text/plain
+  md: text/markdown
+  markdown: text/markdown
+  html: text/html
+  htm: text/html
+  xml: application/xml
+  json: application/json
+  csv: text/csv
+  tsv: text/tab-separated-values
+  log: text/plain
+  ini: text/plain
+  cfg: text/plain
+  conf: text/plain
+  
+  # Geo formats (GeoJSON, KML, etc.)
+  geojson: application/geo+json
+  gjson: application/geo+json
+  topojson: application/geo+json
+  kml: application/vnd.google-earth.kml+xml
+  kmz: application/vnd.google-earth.kmz
+  gpx: application/gpx+xml
+  gml: application/gml+xml
+  wkt: text/plain
+  wkb: application/octet-stream
+  
+  # Themis proprietary formats
+  vpb.json: application/vnd.themis.vpb+json
+  metadata.json: application/vnd.themis.metadata+json
+  process.json: application/vnd.themis.process+json
+  chunk.json: application/vnd.themis.chunk+json
+  index.json: application/vnd.themis.index+json
+  
+  # Image formats
+  jpg: image/jpeg
+  jpeg: image/jpeg
+  png: image/png
+  gif: image/gif
+  bmp: image/bmp
+  webp: image/webp
+  svg: image/svg+xml
+  tiff: image/tiff
+  tif: image/tiff
+  ico: image/x-icon
+  heic: image/heic
+  heif: image/heif
+  avif: image/avif
+  
+  # Video formats
+  mp4: video/mp4
+  avi: video/x-msvideo
+  mov: video/quicktime
+  wmv: video/x-ms-wmv
+  flv: video/x-flv
+  mkv: video/x-matroska
+  webm: video/webm
+  m4v: video/x-m4v
+  
+  # Audio formats
+  mp3: audio/mpeg
+  wav: audio/wav
+  ogg: audio/ogg
+  flac: audio/flac
+  m4a: audio/mp4
+  wma: audio/x-ms-wma
+  aac: audio/aac
+  opus: audio/opus
+  
+  # Document formats
+  pdf: application/pdf
+  doc: application/msword
+  docx: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+  xls: application/vnd.ms-excel
+  xlsx: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+  ppt: application/vnd.ms-powerpoint
+  pptx: application/vnd.openxmlformats-officedocument.presentationml.presentation
+  odt: application/vnd.oasis.opendocument.text
+  ods: application/vnd.oasis.opendocument.spreadsheet
+  odp: application/vnd.oasis.opendocument.presentation
+  rtf: application/rtf
+  epub: application/epub+zip
+  
+  # Archive formats
+  zip: application/zip
+  tar: application/x-tar
+  gz: application/gzip
+  gzip: application/gzip
+  bz2: application/x-bzip2
+  xz: application/x-xz
+  7z: application/x-7z-compressed
+  rar: application/vnd.rar
+  
+  # Binary application formats
+  exe: application/vnd.microsoft.portable-executable
+  dll: application/vnd.microsoft.portable-executable
+  so: application/x-sharedlib
+  dylib: application/x-sharedlib
+  bin: application/octet-stream
+  dat: application/octet-stream
+  iso: application/x-iso9660-image
+  dmg: application/x-apple-diskimage
+  
+  # Database formats
+  db: application/x-sqlite3
+  sqlite: application/x-sqlite3
+  sqlite3: application/x-sqlite3
+  mdb: application/x-msaccess
+  accdb: application/x-msaccess
+  
+  # CAD/3D formats
+  dwg: application/acad
+  dxf: application/dxf
+  stl: model/stl
+  obj: model/obj
+  fbx: application/octet-stream
+  gltf: model/gltf+json
+  glb: model/gltf-binary
+  
+  # Programming languages
+  c: text/x-c
+  cpp: text/x-c++
+  cc: text/x-c++
+  cxx: text/x-c++
+  h: text/x-c
+  hpp: text/x-c++
+  hxx: text/x-c++
+  py: text/x-python
+  java: text/x-java
+  js: application/javascript
+  mjs: application/javascript
+  ts: application/typescript
+  tsx: application/typescript
+  rs: text/x-rust
+  go: text/x-go
+  rb: text/x-ruby
+  php: text/x-php
+  cs: text/x-csharp
+  swift: text/x-swift
+  kt: text/x-kotlin
+  scala: text/x-scala
+  r: text/x-r
+  sql: application/sql
+  
+  # Other binary formats
+  wasm: application/wasm
+  proto: application/x-protobuf
+  parquet: application/x-parquet
+  avro: application/avro
+  msgpack: application/msgpack
+  bson: application/bson
+  cbor: application/cbor
+
+# Magic number signatures for content-based detection
+magic_signatures:
+  # PDF
+  - signature: [0x25, 0x50, 0x44, 0x46]  # %PDF
+    mime_type: application/pdf
+    offset: 0
+    
+  # JPEG
+  - signature: [0xFF, 0xD8, 0xFF]
+    mime_type: image/jpeg
+    offset: 0
+    
+  # PNG
+  - signature: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    mime_type: image/png
+    offset: 0
+    
+  # GIF87a
+  - signature: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]
+    mime_type: image/gif
+    offset: 0
+    
+  # GIF89a
+  - signature: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]
+    mime_type: image/gif
+    offset: 0
+    
+  # WebP
+  - signature: [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]
+    mime_type: image/webp
+    offset: 0
+    wildcard_positions: [4, 5, 6, 7]  # File size bytes
+    
+  # ZIP (also DOCX, XLSX, PPTX, JAR, etc.)
+  - signature: [0x50, 0x4B, 0x03, 0x04]
+    mime_type: application/zip
+    offset: 0
+    
+  # GZIP
+  - signature: [0x1F, 0x8B]
+    mime_type: application/gzip
+    offset: 0
+    
+  # BMP
+  - signature: [0x42, 0x4D]
+    mime_type: image/bmp
+    offset: 0
+    
+  # TIFF (little endian)
+  - signature: [0x49, 0x49, 0x2A, 0x00]
+    mime_type: image/tiff
+    offset: 0
+    
+  # TIFF (big endian)
+  - signature: [0x4D, 0x4D, 0x00, 0x2A]
+    mime_type: image/tiff
+    offset: 0
+    
+  # MP3 (ID3v2)
+  - signature: [0x49, 0x44, 0x33]  # ID3
+    mime_type: audio/mpeg
+    offset: 0
+    
+  # WAV (RIFF)
+  - signature: [0x52, 0x49, 0x46, 0x46]  # RIFF
+    mime_type: audio/wav
+    offset: 0
+    
+  # 7z
+  - signature: [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]
+    mime_type: application/x-7z-compressed
+    offset: 0
+    
+  # RAR
+  - signature: [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07]
+    mime_type: application/vnd.rar
+    offset: 0
+    
+  # SQLite3
+  - signature: [0x53, 0x51, 0x4C, 0x69, 0x74, 0x65, 0x20, 0x66, 0x6F, 0x72, 0x6D, 0x61, 0x74, 0x20, 0x33, 0x00]
+    mime_type: application/x-sqlite3
+    offset: 0
+    
+  # ELF (Linux executables)
+  - signature: [0x7F, 0x45, 0x4C, 0x46]
+    mime_type: application/x-executable
+    offset: 0
+    
+  # Mach-O (macOS executables)
+  - signature: [0xFE, 0xED, 0xFA, 0xCE]
+    mime_type: application/x-mach-binary
+    offset: 0
+    
+  # PE (Windows executables)
+  - signature: [0x4D, 0x5A]  # MZ
+    mime_type: application/vnd.microsoft.portable-executable
+    offset: 0
+    
+  # WASM
+  - signature: [0x00, 0x61, 0x73, 0x6D]
+    mime_type: application/wasm
+    offset: 0
+    
+  # Parquet
+  - signature: [0x50, 0x41, 0x52, 0x31]  # PAR1
+    mime_type: application/x-parquet
+    offset: 0
+
+# MIME type categories for classification
+categories:
+  text:
+    - text/plain
+    - text/html
+    - text/markdown
+    - text/csv
+    - application/json
+    - application/xml
+    - application/javascript
+    - application/typescript
+    - application/sql
+    
+  geo:
+    - application/geo+json
+    - application/vnd.google-earth.kml+xml
+    - application/vnd.google-earth.kmz
+    - application/gpx+xml
+    - application/gml+xml
+    
+  themis:
+    - application/vnd.themis.vpb+json
+    - application/vnd.themis.metadata+json
+    - application/vnd.themis.chunk+json
+    - application/vnd.themis.index+json
+    
+  image:
+    - image/jpeg
+    - image/png
+    - image/gif
+    - image/bmp
+    - image/webp
+    - image/svg+xml
+    - image/tiff
+    - image/heic
+    - image/avif
+    
+  video:
+    - video/mp4
+    - video/x-msvideo
+    - video/quicktime
+    - video/x-matroska
+    - video/webm
+    
+  audio:
+    - audio/mpeg
+    - audio/wav
+    - audio/ogg
+    - audio/flac
+    - audio/mp4
+    
+  document:
+    - application/pdf
+    - application/msword
+    - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    - application/vnd.ms-excel
+    - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    - application/vnd.oasis.opendocument.text
+    - application/rtf
+    - application/epub+zip
+    
+  archive:
+    - application/zip
+    - application/x-tar
+    - application/gzip
+    - application/x-bzip2
+    - application/x-7z-compressed
+    - application/vnd.rar
+    
+  executable:
+    - application/vnd.microsoft.portable-executable
+    - application/x-executable
+    - application/x-mach-binary
+    - application/x-sharedlib
+    
+  database:
+    - application/x-sqlite3
+    - application/x-msaccess
+    
+  cad:
+    - application/acad
+    - application/dxf
+    - model/stl
+    - model/obj
+    - model/gltf+json
+    - model/gltf-binary
+    
+  binary_data:
+    - application/x-parquet
+    - application/avro
+    - application/msgpack
+    - application/bson
+    - application/cbor
+    - application/x-protobuf
+    - application/wasm

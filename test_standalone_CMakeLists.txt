@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(ContentFeaturesTest)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_executable(test_content_features_standalone
+    test_content_features_standalone.cpp
+)
+
+if(MSVC)
+    target_compile_options(test_content_features_standalone PRIVATE /W4 /EHsc)
+else()
+    target_compile_options(test_content_features_standalone PRIVATE -Wall -Wextra)
+endif()

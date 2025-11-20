@@ -1,0 +1,107 @@
+# Multi-stage Docker build for ThemisDB (Linux x86_64)
+# Uses vcpkg for consistent dependency management
+
+FROM ubuntu:22.04 AS build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake ninja-build git curl zip unzip tar pkg-config \
+    ca-certificates python3 perl nasm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bootstrap vcpkg
+ENV VCPKG_ROOT=/opt/vcpkg
+RUN git clone --depth 1 https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} \
+    && ${VCPKG_ROOT}/bootstrap-vcpkg.sh -disableMetrics
+
+# Ensure compilers are discoverable
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+ARG VCPKG_TRIPLET=x64-linux
+ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET}
+
+# Copy project files
+WORKDIR /src
+COPY . .
+
+# Install ALL dependencies via vcpkg manifest mode
+RUN ${VCPKG_ROOT}/vcpkg install --triplet=${VCPKG_TRIPLET} --clean-after-build
+
+# Build ThemisDB
+RUN cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
+    -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
+    -DTHEMIS_ENABLE_TRACING=OFF \
+    -DTHEMIS_BUILD_BENCHMARKS=OFF \
+    -DTHEMIS_BUILD_TESTS=OFF \
+    && cmake --build build --target themis_server -j$(nproc)
+
+# ===== Runtime Stage =====
+FROM ubuntu:22.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 libc6 libssl3 libcurl4 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash themis
+
+# Copy built binary
+COPY --from=build /src/build/themis_server /usr/local/bin/themis_server
+RUN chmod +x /usr/local/bin/themis_server
+
+# Create data directory
+RUN mkdir -p /var/lib/themis/data && chown -R themis:themis /var/lib/themis
+
+# Switch to non-root user
+USER themis
+WORKDIR /var/lib/themis
+
+# Expose default port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Run server
+ENTRYPOINT ["/usr/local/bin/themis_server"]
+CMD ["--data-dir", "/var/lib/themis/data", "--host", "0.0.0.0", "--port", "8080"]
+
+
+# Runtime image
+FROM ubuntu:22.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary to runtime image
+COPY --from=build /src/build/themis_server /usr/local/bin/themis_server
+
+# Triplet must match the build stage ARG; default to x64-linux
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib
+
+# Default config and data
+COPY config/config.json /etc/vccdb/config.json
+# Default Linux/QNAP config template inside image
+RUN mkdir -p /usr/local/share/themis
+COPY config/config.qnap.json /usr/local/share/themis/config.qnap.json
+VOLUME ["/data"]
+EXPOSE 8080 18765
+
+# Default to root; can be overridden via docker-compose (user: "0:0" or non-root)
+
+# Configurable server port (overrides JSON via entrypoint)
+ENV THEMIS_PORT=18765
+ENV THEMIS_CONFIG_PATH=/etc/vccdb/config.json
+
+# Bootstrap entrypoint to adjust config and ensure directories
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

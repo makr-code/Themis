@@ -1,0 +1,329 @@
+#include "content/mime_detector.h"
+#include <algorithm>
+#include <cctype>
+
+namespace themis {
+namespace content {
+
+MimeDetector::MimeDetector() {
+    initExtensionMap();
+    initMagicSignatures();
+}
+
+void MimeDetector::initExtensionMap() {
+    // Text formats
+    ext_to_mime_["txt"] = "text/plain";
+    ext_to_mime_["md"] = "text/markdown";
+    ext_to_mime_["html"] = "text/html";
+    ext_to_mime_["htm"] = "text/html";
+    ext_to_mime_["xml"] = "application/xml";
+    ext_to_mime_["json"] = "application/json";
+    ext_to_mime_["csv"] = "text/csv";
+    ext_to_mime_["tsv"] = "text/tab-separated-values";
+
+    // Image formats
+    ext_to_mime_["jpg"] = "image/jpeg";
+    ext_to_mime_["jpeg"] = "image/jpeg";
+    ext_to_mime_["png"] = "image/png";
+    ext_to_mime_["gif"] = "image/gif";
+    ext_to_mime_["bmp"] = "image/bmp";
+    ext_to_mime_["webp"] = "image/webp";
+    ext_to_mime_["svg"] = "image/svg+xml";
+    ext_to_mime_["tiff"] = "image/tiff";
+    ext_to_mime_["tif"] = "image/tiff";
+    ext_to_mime_["ico"] = "image/x-icon";
+
+    // Video formats
+    ext_to_mime_["mp4"] = "video/mp4";
+    ext_to_mime_["avi"] = "video/x-msvideo";
+    ext_to_mime_["mov"] = "video/quicktime";
+    ext_to_mime_["wmv"] = "video/x-ms-wmv";
+    ext_to_mime_["flv"] = "video/x-flv";
+    ext_to_mime_["mkv"] = "video/x-matroska";
+    ext_to_mime_["webm"] = "video/webm";
+
+    // Audio formats
+    ext_to_mime_["mp3"] = "audio/mpeg";
+    ext_to_mime_["wav"] = "audio/wav";
+    ext_to_mime_["ogg"] = "audio/ogg";
+    ext_to_mime_["flac"] = "audio/flac";
+    ext_to_mime_["m4a"] = "audio/mp4";
+    ext_to_mime_["wma"] = "audio/x-ms-wma";
+
+    // Document formats
+    ext_to_mime_["pdf"] = "application/pdf";
+    ext_to_mime_["doc"] = "application/msword";
+    ext_to_mime_["docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    ext_to_mime_["xls"] = "application/vnd.ms-excel";
+    ext_to_mime_["xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    ext_to_mime_["ppt"] = "application/vnd.ms-powerpoint";
+    ext_to_mime_["pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    ext_to_mime_["odt"] = "application/vnd.oasis.opendocument.text";
+    ext_to_mime_["ods"] = "application/vnd.oasis.opendocument.spreadsheet";
+    ext_to_mime_["odp"] = "application/vnd.oasis.opendocument.presentation";
+
+    // Archive formats
+    ext_to_mime_["zip"] = "application/zip";
+    ext_to_mime_["tar"] = "application/x-tar";
+    ext_to_mime_["gz"] = "application/gzip";
+    ext_to_mime_["bz2"] = "application/x-bzip2";
+    ext_to_mime_["7z"] = "application/x-7z-compressed";
+    ext_to_mime_["rar"] = "application/vnd.rar";
+
+    // Programming languages
+    ext_to_mime_["c"] = "text/x-c";
+    ext_to_mime_["cpp"] = "text/x-c++";
+    ext_to_mime_["h"] = "text/x-c";
+    ext_to_mime_["hpp"] = "text/x-c++";
+    ext_to_mime_["py"] = "text/x-python";
+    ext_to_mime_["java"] = "text/x-java";
+    ext_to_mime_["js"] = "application/javascript";
+    ext_to_mime_["ts"] = "application/typescript";
+    ext_to_mime_["rs"] = "text/x-rust";
+    ext_to_mime_["go"] = "text/x-go";
+
+    // Other
+    ext_to_mime_["bin"] = "application/octet-stream";
+}
+
+void MimeDetector::initMagicSignatures() {
+    // PDF
+    magic_signatures_.push_back({
+        {0x25, 0x50, 0x44, 0x46},  // %PDF
+        "application/pdf",
+        0
+    });
+
+    // JPEG
+    magic_signatures_.push_back({
+        {0xFF, 0xD8, 0xFF},
+        "image/jpeg",
+        0
+    });
+
+    // PNG
+    magic_signatures_.push_back({
+        {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
+        "image/png",
+        0
+    });
+
+    // GIF87a
+    magic_signatures_.push_back({
+        {0x47, 0x49, 0x46, 0x38, 0x37, 0x61},  // GIF87a
+        "image/gif",
+        0
+    });
+
+    // GIF89a
+    magic_signatures_.push_back({
+        {0x47, 0x49, 0x46, 0x38, 0x39, 0x61},  // GIF89a
+        "image/gif",
+        0
+    });
+
+    // ZIP (also DOCX, XLSX, etc.)
+    magic_signatures_.push_back({
+        {0x50, 0x4B, 0x03, 0x04},  // PK..
+        "application/zip",
+        0
+    });
+
+    // GZIP
+    magic_signatures_.push_back({
+        {0x1F, 0x8B},
+        "application/gzip",
+        0
+    });
+
+    // BMP
+    magic_signatures_.push_back({
+        {0x42, 0x4D},  // BM
+        "image/bmp",
+        0
+    });
+
+    // MP3 (ID3v2)
+    magic_signatures_.push_back({
+        {0x49, 0x44, 0x33},  // ID3
+        "audio/mpeg",
+        0
+    });
+
+    // WAV
+    magic_signatures_.push_back({
+        {0x52, 0x49, 0x46, 0x46},  // RIFF
+        "audio/wav",
+        0
+    });
+
+    // WEBP
+    magic_signatures_.push_back({
+        {0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50},
+        "image/webp",
+        0
+    });
+
+    // TIFF (little endian)
+    magic_signatures_.push_back({
+        {0x49, 0x49, 0x2A, 0x00},
+        "image/tiff",
+        0
+    });
+
+    // TIFF (big endian)
+    magic_signatures_.push_back({
+        {0x4D, 0x4D, 0x00, 0x2A},
+        "image/tiff",
+        0
+    });
+
+    // 7z
+    magic_signatures_.push_back({
+        {0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C},
+        "application/x-7z-compressed",
+        0
+    });
+
+    // RAR
+    magic_signatures_.push_back({
+        {0x52, 0x61, 0x72, 0x21, 0x1A, 0x07},  // Rar!
+        "application/vnd.rar",
+        0
+    });
+}
+
+std::string MimeDetector::extractExtension(std::string_view filename) const {
+    size_t dot_pos = filename.find_last_of('.');
+    if (dot_pos == std::string_view::npos || dot_pos == filename.length() - 1) {
+        return "";
+    }
+
+    std::string ext = std::string(filename.substr(dot_pos + 1));
+    
+    // Convert to lowercase
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    
+    return ext;
+}
+
+std::string MimeDetector::fromExtension(std::string_view filename) const {
+    std::string ext = extractExtension(filename);
+    if (ext.empty()) {
+        return "application/octet-stream";
+    }
+
+    auto it = ext_to_mime_.find(ext);
+    if (it != ext_to_mime_.end()) {
+        return it->second;
+    }
+
+    return "application/octet-stream";
+}
+
+std::string MimeDetector::fromContent(const std::vector<uint8_t>& data) const {
+    if (data.empty()) {
+        return "";
+    }
+
+    // Check magic signatures
+    for (const auto& sig : magic_signatures_) {
+        if (data.size() < sig.offset + sig.signature.size()) {
+            continue;
+        }
+
+        bool matches = true;
+        for (size_t i = 0; i < sig.signature.size(); ++i) {
+            // Skip wildcard bytes (0x00 in signature can mean "any byte")
+            if (sig.signature[i] == 0x00 && i > 0 && i < sig.signature.size() - 1) {
+                continue;
+            }
+            
+            if (data[sig.offset + i] != sig.signature[i]) {
+                matches = false;
+                break;
+            }
+        }
+
+        if (matches) {
+            return sig.mime_type;
+        }
+    }
+
+    // Check for text content (simple heuristic)
+    if (data.size() > 0) {
+        size_t text_chars = 0;
+        size_t sample_size = std::min<size_t>(data.size(), 512);
+        
+        for (size_t i = 0; i < sample_size; ++i) {
+            uint8_t c = data[i];
+            if ((c >= 0x20 && c <= 0x7E) || c == '\t' || c == '\n' || c == '\r') {
+                text_chars++;
+            }
+        }
+
+        if (text_chars > sample_size * 0.8) {
+            return "text/plain";
+        }
+    }
+
+    return "";
+}
+
+std::string MimeDetector::detect(std::string_view filename, const std::vector<uint8_t>& data) const {
+    // Try content-based detection first (more reliable)
+    std::string content_mime = fromContent(data);
+    if (!content_mime.empty()) {
+        // Special case: ZIP files can be Office docs
+        if (content_mime == "application/zip") {
+            std::string ext = extractExtension(filename);
+            if (ext == "docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            if (ext == "xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            if (ext == "pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+        }
+        return content_mime;
+    }
+
+    // Fallback to extension-based detection
+    return fromExtension(filename);
+}
+
+bool MimeDetector::isText(std::string_view mime_type) {
+    return mime_type.find("text/") == 0 || 
+           mime_type == "application/json" ||
+           mime_type == "application/xml" ||
+           mime_type == "application/javascript" ||
+           mime_type == "application/typescript";
+}
+
+bool MimeDetector::isImage(std::string_view mime_type) {
+    return mime_type.find("image/") == 0;
+}
+
+bool MimeDetector::isVideo(std::string_view mime_type) {
+    return mime_type.find("video/") == 0;
+}
+
+bool MimeDetector::isAudio(std::string_view mime_type) {
+    return mime_type.find("audio/") == 0;
+}
+
+bool MimeDetector::isArchive(std::string_view mime_type) {
+    return mime_type == "application/zip" ||
+           mime_type == "application/x-tar" ||
+           mime_type == "application/gzip" ||
+           mime_type == "application/x-bzip2" ||
+           mime_type == "application/x-7z-compressed" ||
+           mime_type == "application/vnd.rar";
+}
+
+bool MimeDetector::isDocument(std::string_view mime_type) {
+    return mime_type == "application/pdf" ||
+           mime_type.find("application/vnd.") == 0 ||
+           mime_type.find("application/vnd.openxmlformats-") == 0 ||
+           mime_type.find("application/vnd.oasis.opendocument.") == 0;
+}
+
+} // namespace content
+} // namespace themis
