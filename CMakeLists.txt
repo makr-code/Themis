@@ -317,6 +317,7 @@ set(THEMIS_CORE_SOURCES
     src/sharding/urn_resolver.cpp
     src/sharding/pki_shard_certificate.cpp
     src/sharding/mtls_client.cpp
+    src/sharding/signed_request.cpp
 )
 
 # Main library
@@ -552,6 +553,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_sharding_core.cpp
         tests/test_pki_shard_certificate.cpp
         tests/test_mtls_client.cpp
+        tests/test_signed_request.cpp
     )
     
     target_link_libraries(themis_tests
