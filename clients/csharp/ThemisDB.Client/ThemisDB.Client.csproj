@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>ThemisDB.Client</PackageId>
+    <Version>0.1.0-beta.1</Version>
+    <Authors>ThemisDB Team</Authors>
+    <Company>ThemisDB</Company>
+    <Description>Official .NET client library for ThemisDB - Multi-Model Database with ACID transactions</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/makr-code/ThemisDB</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/makr-code/ThemisDB</RepositoryUrl>
+    <PackageTags>database;multi-model;transaction;graph;vector;document;relational;themisdb</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

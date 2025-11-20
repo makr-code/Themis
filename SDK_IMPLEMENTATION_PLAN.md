@@ -2,7 +2,7 @@
 
 **Datum:** 20. November 2025  
 **Branch:** sdk-beta-release  
-**Status:** Phase 1 - ✅ COMPLETE | Phase 2 - 🚧 IN PROGRESS (Go ✅, Java ✅)
+**Status:** Phase 1 - ✅ COMPLETE | Phase 2 - 🚧 IN PROGRESS (Go ✅, Java ✅, C# ✅)
 
 ---
 
