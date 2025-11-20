@@ -61,7 +61,7 @@ Aus der konsolidierten Roadmap ergeben sich folgende **P0 (kritische Priorität)
 
 ---
 
-## 🎯 Empfohlener Nächster Branch: JavaScript/Python SDK Finalisierung
+## 🎯 Empfohlener Nächster Branch: JavaScript/Python/Rust SDK Finalisierung
 
 ### Begründung
 - **Priorität:** P0 (Kritisch)
@@ -70,36 +70,74 @@ Aus der konsolidierten Roadmap ergeben sich folgende **P0 (kritische Priorität)
 - **Impact:** Developer Experience, Ecosystem Growth
 - **Abhängigkeiten:** Keine
 - **Dokumentation:** Teilweise vorhanden (Alpha-Versionen in `clients/`)
+- **Hinweis:** **Kein C++ SDK** geplant (Server bereits in C++, nicht notwendig)
+
+### SDK Status Audit
+
+**Existierende SDKs:**
+- ✅ **JavaScript/TypeScript** - 436 Zeilen, Alpha, Tests vorhanden
+- ✅ **Python** - 540 Zeilen, Alpha, Tests vorhanden
+- ✅ **Rust** - 705 Zeilen, Alpha, Tests vorhanden
+- ❌ **C++** - Existiert nicht, **NICHT GEPLANT**
+
+**Siehe:** `SDK_AUDIT_STATUS.md` für vollständige Analyse
 
 ### Implementierungsumfang (Branch: `feature/sdk-beta-release`)
 
-**JavaScript SDK:**
-- TypeScript Definitions (.d.ts)
-- Transaction Support (BEGIN/COMMIT/ROLLBACK)
-- Error Handling (Custom Error Types)
-- Comprehensive Tests (Unit + Integration)
-- NPM Package Preparation
+**Alle SDKs benötigen:**
+1. **Transaction Support** ❌ KRITISCH
+   - BEGIN/COMMIT/ROLLBACK Implementierung
+   - Transaction Handle/Context
+   - Transaktions-spezifische get/put/delete/query
 
-**Python SDK:**
-- Type Hints (PEP 484)
-- Transaction Support
-- Async/Await Support (asyncio)
-- Comprehensive Tests (pytest)
-- PyPI Package Preparation
+2. **Package Publishing** ❌ KRITISCH
+   - JavaScript: NPM Package `@themisdb/client`
+   - Python: PyPI Package `themisdb-client`
+   - Rust: Crates.io Package `themisdb-client`
+
+3. **Fehlende Batch/Graph Operations**
+   - JavaScript: batchPut, batchDelete
+   - Rust: batch_put, batch_delete, graph_traverse
+
+4. **Dokumentation**
+   - Quick Start Guides (pro SDK)
+   - API Reference Documentation
+   - Code Examples (10+ pro SDK)
+   - Migration Guide (Alpha → Beta)
 
 **Deliverables:**
-- [ ] `clients/javascript/themisdb-client/` (NPM-ready)
-- [ ] `clients/python/themisdb-client/` (PyPI-ready)
+- [ ] Transaction Support in allen SDKs
+- [ ] NPM Package `@themisdb/client` publiziert
+- [ ] PyPI Package `themisdb-client` publiziert
+- [ ] Crates.io Package `themisdb-client` publiziert
 - [ ] `docs/sdk_quickstart_js.md`
 - [ ] `docs/sdk_quickstart_python.md`
+- [ ] `docs/sdk_quickstart_rust.md`
 - [ ] `docs/sdk_api_reference.md`
 
 **Akzeptanzkriterien:**
 - [ ] Alle Tests bestehen (Unit + Integration)
-- [ ] TypeScript definitions vollständig
-- [ ] Transaction support funktional
+- [ ] Transaction support funktional (alle SDKs)
+- [ ] Batch operations vollständig (alle SDKs)
 - [ ] Dokumentation vollständig
-- [ ] NPM + PyPI Package veröffentlicht (Beta)
+- [ ] NPM + PyPI + Crates.io Packages veröffentlicht (Beta)
+
+### Zukünftige SDKs (Post-Beta/v1.0.0)
+
+**Siehe:** `SDK_LANGUAGE_ANALYSIS.md` für vollständige Analyse
+
+**Höchste Priorität (Q2 2026):**
+1. **Go SDK** 🔥 - Cloud-Native, Kubernetes Ecosystem
+2. **Java SDK** 🔥 - Enterprise Standard, Android
+
+**Wichtig (Q3-Q4 2026):**
+3. **C# SDK** - Microsoft Ecosystem, Azure, Unity
+4. **PHP SDK** - Web Development, WordPress/Laravel
+5. **Swift SDK** - iOS/macOS Native
+
+**Nicht geplant:**
+- ❌ C++ SDK (Server bereits in C++)
+- ❌ Scala/Clojure (Java SDK reicht)
 
 ---
 
@@ -259,26 +297,34 @@ Woche 4-13:  Vorbereitung v1.0.0 Release
 
 ## ✅ Erfolgskriterien für nächsten Branch
 
-### JavaScript/Python SDK Finalisierung (Nächster Branch)
+### JavaScript/Python/Rust SDK Finalisierung (Nächster Branch)
 
 **JavaScript SDK:**
-- [ ] TypeScript definitions vollständig (.d.ts files)
 - [ ] Transaction support (BEGIN/COMMIT/ROLLBACK)
-- [ ] Error handling (Custom error types)
+- [ ] batchPut, batchDelete implementiert
+- [ ] TypeScript definitions vollständig (.d.ts files)
 - [ ] Unit tests (>80% coverage)
 - [ ] Integration tests (E2E scenarios)
-- [ ] NPM package published (Beta)
+- [ ] NPM package `@themisdb/client` published (Beta)
 
 **Python SDK:**
+- [ ] Transaction support (BEGIN/COMMIT/ROLLBACK)
+- [ ] AsyncThemisClient implementiert
 - [ ] Type hints vollständig (PEP 484)
-- [ ] Transaction support
-- [ ] Async/await support (asyncio)
 - [ ] Unit tests (pytest, >80% coverage)
 - [ ] Integration tests (E2E scenarios)
-- [ ] PyPI package published (Beta)
+- [ ] PyPI package `themisdb-client` published (Beta)
+
+**Rust SDK:**
+- [ ] Transaction support (BEGIN/COMMIT/ROLLBACK)
+- [ ] batch_put, batch_delete implementiert
+- [ ] graph_traverse implementiert
+- [ ] Unit tests (>80% coverage)
+- [ ] Integration tests (E2E scenarios)
+- [ ] Crates.io package `themisdb-client` published (Beta)
 
 **Dokumentation:**
-- [ ] Quick Start Guide (JS + Python)
+- [ ] Quick Start Guide (JS + Python + Rust)
 - [ ] API Reference (vollständig)
 - [ ] Code Examples (mindestens 10 pro SDK)
 - [ ] Migration Guide (Alpha → Beta)
@@ -287,7 +333,7 @@ Woche 4-13:  Vorbereitung v1.0.0 Release
 - [ ] Code Review abgeschlossen (0 CRITICAL/HIGH Issues)
 - [ ] Alle Tests bestehen (Unit + Integration)
 - [ ] Dokumentation vollständig
-- [ ] NPM + PyPI Packages veröffentlicht
+- [ ] Alle Packages veröffentlicht (NPM + PyPI + Crates.io)
 
 ---
 
@@ -298,35 +344,42 @@ Woche 4-13:  Vorbereitung v1.0.0 Release
 git checkout -b feature/sdk-beta-release
 
 # 2. JavaScript SDK finalisieren
-cd clients/javascript/themisdb-client
-# - TypeScript definitions (.d.ts)
-# - Transaction support
-# - Error handling
-# - Tests (jest/mocha)
+cd clients/javascript
+# - Transaction support implementieren
+# - batchPut, batchDelete hinzufügen
+# - TypeScript definitions prüfen
 npm test
 npm run build
 
 # 3. Python SDK finalisieren
-cd ../../python/themisdb-client
-# - Type hints
-# - Async support
-# - Transaction support
-# - Tests (pytest)
+cd ../python
+# - Transaction support implementieren
+# - AsyncThemisClient hinzufügen
+# - Type hints vervollständigen
 pytest
-python setup.py sdist bdist_wheel
+python -m build
 
-# 4. Dokumentation
+# 4. Rust SDK finalisieren
+cd ../rust
+# - Transaction support implementieren
+# - batch_put, batch_delete, graph_traverse hinzufügen
+cargo test
+cargo build --release
+
+# 5. Dokumentation
 # - docs/sdk_quickstart_js.md
 # - docs/sdk_quickstart_python.md
+# - docs/sdk_quickstart_rust.md
 # - docs/sdk_api_reference.md
 
-# 5. Publishing (Beta)
+# 6. Publishing (Beta)
 # JavaScript: npm publish --tag beta
-# Python: twine upload --repository pypi dist/*
+# Python: twine upload dist/*
+# Rust: cargo publish
 
-# 6. Code Review & Testing
+# 7. Code Review & Testing
 # - Pull Request erstellen
-# - Team Review
+# - Integration Tests laufen lassen
 ```
 
 ---
