@@ -309,6 +309,8 @@ set(THEMIS_CORE_SOURCES
     # Geo scaffolding (headers + stubs; safe no-ops until used)
     src/geo/cpu_backend.cpp
     src/geo/gpu_backend_stub.cpp
+    src/geo/boost_cpu_exact_backend.cpp
+    src/api/geo_index_hooks.cpp
     
     # Sharding (horizontal scaling)
     src/sharding/urn.cpp
@@ -329,6 +331,21 @@ set(THEMIS_CORE_SOURCES
 
 # Main library
 add_library(themis_core STATIC ${THEMIS_CORE_SOURCES})
+
+# Geo feature flags and Boost.Geometry support
+if(THEMIS_GEO)
+    target_compile_definitions(themis_core PUBLIC THEMIS_GEO_ENABLED)
+    # Try to find Boost for Boost.Geometry backend
+    find_package(Boost QUIET)
+    if(Boost_FOUND)
+        target_compile_definitions(themis_core PRIVATE THEMIS_GEO_BOOST_BACKEND)
+        target_include_directories(themis_core PRIVATE ${Boost_INCLUDE_DIRS})
+        message(STATUS "Boost.Geometry enabled for exact geometry checks")
+    else()
+        message(STATUS "Boost not found - Boost.Geometry backend disabled (will use MBR-only)")
+    endif()
+endif()
+
 # Defensive selection of Arrow linking target: prefer shared, fall back to static.
 if(TARGET Arrow::arrow_shared)
     set(THEMIS_ARROW_TARGET Arrow::arrow_shared)
@@ -496,6 +513,7 @@ if(THEMIS_BUILD_TESTS)
         tests/geo/test_spatial_index.cpp
         tests/geo/test_aql_st_functions.cpp
         tests/geo/test_aql_st_queryengine.cpp
+        tests/test_geo_index_integration.cpp
         tests/test_aql_let_st.cpp
         tests/test_hybrid_queries.cpp
         tests/test_http_audit.cpp

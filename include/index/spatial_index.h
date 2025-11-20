@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils/geo/ewkb.h"
+#include "geo/spatial_backend.h"
 #include "storage/rocksdb_wrapper.h"
 #include <string>
 #include <string_view>
@@ -69,9 +70,41 @@ public:
         static Status Error(std::string msg) { return Status{false, std::move(msg)}; }
         explicit operator bool() const { return ok; }
     };
+    
+    // Metrics for monitoring and benchmarking (G5)
+    struct Metrics {
+        std::atomic<uint64_t> query_count{0};           // Total searchIntersects() calls
+        std::atomic<uint64_t> mbr_candidate_count{0};   // Total MBR candidates found
+        std::atomic<uint64_t> exact_check_count{0};     // Exact geometry checks performed
+        std::atomic<uint64_t> exact_check_passed{0};    // Exact checks that passed
+        std::atomic<uint64_t> exact_check_failed{0};    // Exact checks that failed (false positives)
+        std::atomic<uint64_t> insert_count{0};          // Sidecar inserts
+        std::atomic<uint64_t> remove_count{0};          // Sidecar removes
+        std::atomic<uint64_t> update_count{0};          // Sidecar updates
+        
+        // Reset all metrics
+        void reset() {
+            query_count = 0;
+            mbr_candidate_count = 0;
+            exact_check_count = 0;
+            exact_check_passed = 0;
+            exact_check_failed = 0;
+            insert_count = 0;
+            remove_count = 0;
+            update_count = 0;
+        }
+    };
 
     explicit SpatialIndexManager(RocksDBWrapper& db);
     ~SpatialIndexManager() = default;
+    
+    // Set exact geometry backend (optional, for exact checks)
+    void setExactBackend(geo::ISpatialComputeBackend* backend) { exact_backend_ = backend; }
+    
+    // Get metrics (G5)
+    const Metrics& getMetrics() const { return metrics_; }
+    Metrics& getMetrics() { return metrics_; }
+    void resetMetrics() { metrics_.reset(); }
     
     // ===== Index Management =====
     
@@ -183,6 +216,8 @@ public:
     
 private:
     RocksDBWrapper& db_;
+    geo::ISpatialComputeBackend* exact_backend_ = nullptr; // Optional exact geometry backend
+    mutable Metrics metrics_; // G5: Performance metrics
     
     // RocksDB key prefixes
     std::string getSpatialKeyPrefix(std::string_view table) const;
@@ -192,6 +227,14 @@ private:
     // Key construction
     std::string makeSpatialKey(std::string_view table, uint64_t morton_code) const;
     std::string makeZRangeKey(std::string_view table, int z_bucket) const;
+    
+    // Per-PK sidecar key (storage improvement)
+    // Allows updating individual PKs without rewriting entire bucket JSON
+    std::string makeSpatialPerPKKey(
+        std::string_view table,
+        uint64_t morton_code,
+        std::string_view pk
+    ) const;
     
     // Get/Set config
     std::optional<RTreeConfig> getConfig(std::string_view table) const;

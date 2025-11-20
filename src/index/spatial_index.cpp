@@ -131,6 +131,19 @@ std::string SpatialIndexManager::makeZRangeKey(std::string_view table, int z_buc
     return getZRangeKeyPrefix(table) + buf;
 }
 
+// Helper: Make per-PK sidecar key
+// Format: spatial:<table>::pk:<morton_code>:<pk>
+// This allows individual PK updates without rewriting entire bucket JSON
+std::string SpatialIndexManager::makeSpatialPerPKKey(
+    std::string_view table,
+    uint64_t morton_code,
+    std::string_view pk
+) const {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(morton_code));
+    return getSpatialKeyPrefix(table) + "pk:" + buf + ":" + std::string(pk);
+}
+
 // Config persistence
 std::optional<RTreeConfig> SpatialIndexManager::getConfig(std::string_view table) const {
     auto value = db_.get(getConfigKey(table));
@@ -273,6 +286,9 @@ SpatialIndexManager::Status SpatialIndexManager::insert(
     std::string_view primary_key,
     const geo::GeoSidecar& sidecar
 ) {
+    // G5: Track insert metrics
+    metrics_.insert_count++;
+    
     auto config = getConfig(table);
     if (!config) {
         return Status::Error("Spatial index not found for table: " + std::string(table));
@@ -302,10 +318,33 @@ SpatialIndexManager::Status SpatialIndexManager::insert(
     new_entry.sidecar = sidecar;
     entries.push_back(new_entry);
     
-    // Save back
+    // Save back to bucket (for backward compatibility)
     const auto dump = serializeSidecarList(entries);
     std::vector<uint8_t> bytes(dump.begin(), dump.end());
-    return db_.put(key, bytes) ? Status::OK() : Status::Error("failed to insert");
+    if (!db_.put(key, bytes)) {
+        return Status::Error("failed to insert");
+    }
+    
+    // Storage improvement: Also write per-PK key
+    // This allows updating/deleting individual PKs without rewriting entire bucket
+    // Format: spatial:<table>::pk:<morton>:<pk> -> sidecar JSON
+    std::string pk_key = makeSpatialPerPKKey(table, morton, primary_key);
+    json pk_sidecar;
+    pk_sidecar["mbr"] = {
+        {"minx", sidecar.mbr.minx},
+        {"miny", sidecar.mbr.miny},
+        {"maxx", sidecar.mbr.maxx},
+        {"maxy", sidecar.mbr.maxy}
+    };
+    if (sidecar.z_min != 0.0 || sidecar.z_max != 0.0) {
+        pk_sidecar["z_min"] = sidecar.z_min;
+        pk_sidecar["z_max"] = sidecar.z_max;
+    }
+    const auto pk_dump = pk_sidecar.dump();
+    std::vector<uint8_t> pk_bytes(pk_dump.begin(), pk_dump.end());
+    db_.put(pk_key, pk_bytes); // Best effort, don't fail on error
+    
+    return Status::OK();
 }
 
 // Remove
@@ -314,6 +353,9 @@ SpatialIndexManager::Status SpatialIndexManager::remove(
     std::string_view primary_key,
     const geo::GeoSidecar& sidecar
 ) {
+    // G5: Track remove metrics
+    metrics_.remove_count++;
+    
     auto config = getConfig(table);
     if (!config) return Status::OK();
     
@@ -338,6 +380,10 @@ SpatialIndexManager::Status SpatialIndexManager::remove(
         entries.end()
     );
     
+    // Storage improvement: Also delete per-PK key
+    std::string pk_key = makeSpatialPerPKKey(table, morton, primary_key);
+    db_.del(pk_key); // Best effort
+    
     if (entries.empty()) {
         return db_.del(key) ? Status::OK() : Status::Error("failed to remove");
     } else {
@@ -354,6 +400,9 @@ SpatialIndexManager::Status SpatialIndexManager::update(
     const geo::GeoSidecar& old_sidecar,
     const geo::GeoSidecar& new_sidecar
 ) {
+    // G5: Track update metrics
+    metrics_.update_count++;
+    
     auto status = remove(table, primary_key, old_sidecar);
     if (!status) return status;
     
@@ -379,6 +428,9 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
     std::string_view table,
     const geo::MBR& query_bbox
 ) const {
+    // G5: Track query metrics
+    metrics_.query_count++;
+    
     auto config = getConfig(table);
     if (!config) return {};
     
@@ -386,6 +438,9 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
     auto ranges = MortonEncoder::getRanges(query_bbox, config->total_bounds);
     
     std::vector<SpatialResult> results;
+    size_t mbr_candidates_this_query = 0;
+    size_t exact_checks_this_query = 0;
+    size_t exact_passed_this_query = 0;
     
     for (const auto& [min_code, max_code] : ranges) {
         // Scan RocksDB range
@@ -402,8 +457,69 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
             auto entries = parseSidecarList(value);
             
             for (const auto& entry : entries) {
-                // Check MBR intersection
-                if (entry.sidecar.mbr.intersects(query_bbox)) {
+                // Phase 1: MBR intersection check (fast filter)
+                if (!entry.sidecar.mbr.intersects(query_bbox)) {
+                    continue; // Skip if MBR doesn't intersect
+                }
+                
+                // G5: Count MBR candidates
+                mbr_candidates_this_query++;
+                
+                // Phase 2: Exact geometry check (if backend available)
+                bool exact_match = true; // Default: assume match if no exact backend
+                
+                if (exact_backend_) {
+                    exact_checks_this_query++;
+                    
+                    try {
+                        // Load entity blob to get full geometry
+                        std::string entity_key = "entity:" + std::string(table) + ":" + entry.primary_key;
+                        auto blob = db_.get(entity_key);
+                        
+                        if (blob) {
+                            // Parse entity blob to extract geometry
+                            std::string blob_str(reinterpret_cast<const char*>(blob->data()), blob->size());
+                            
+                            try {
+                                auto j = json::parse(blob_str);
+                                std::vector<uint8_t> geom_blob;
+                                
+                                // Extract geometry from entity
+                                if (j.contains("geometry") && j["geometry"].is_object()) {
+                                    std::string geojson = j["geometry"].dump();
+                                    auto entity_geom = geo::EWKBParser::parseGeoJSON(geojson);
+                                    
+                                    // Create query geometry from bbox (as polygon)
+                                    geo::GeometryInfo query_geom(geo::GeometryType::Polygon);
+                                    query_geom.coords = {
+                                        geo::Coordinate(query_bbox.minx, query_bbox.miny),
+                                        geo::Coordinate(query_bbox.maxx, query_bbox.miny),
+                                        geo::Coordinate(query_bbox.maxx, query_bbox.maxy),
+                                        geo::Coordinate(query_bbox.minx, query_bbox.maxy),
+                                        geo::Coordinate(query_bbox.minx, query_bbox.miny) // close ring
+                                    };
+                                    
+                                    // Exact intersection check
+                                    exact_match = exact_backend_->exactIntersects(entity_geom, query_geom);
+                                    
+                                    // G5: Track exact check results
+                                    if (exact_match) {
+                                        exact_passed_this_query++;
+                                    }
+                                }
+                            } catch (...) {
+                                // Parse error - keep candidate (conservative approach)
+                                exact_match = true;
+                            }
+                        }
+                    } catch (...) {
+                        // Error loading/parsing - keep candidate (conservative)
+                        exact_match = true;
+                    }
+                }
+                
+                // Only add to results if exact check passed (or no exact backend)
+                if (exact_match) {
                     SpatialResult result;
                     result.primary_key = entry.primary_key;
                     result.mbr = entry.sidecar.mbr;
@@ -416,6 +532,12 @@ std::vector<SpatialResult> SpatialIndexManager::searchIntersects(
             }
         }
     }
+    
+    // G5: Update global metrics
+    metrics_.mbr_candidate_count += mbr_candidates_this_query;
+    metrics_.exact_check_count += exact_checks_this_query;
+    metrics_.exact_check_passed += exact_passed_this_query;
+    metrics_.exact_check_failed += (exact_checks_this_query - exact_passed_this_query);
     
     return results;
 }

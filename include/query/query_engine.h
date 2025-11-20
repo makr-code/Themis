@@ -98,6 +98,27 @@ struct PredicateFulltext {
     size_t limit = 1000;
 };
 
+// Spatial Predicate for Geo queries (G3 - AQL Parser Integration)
+struct PredicateSpatial {
+    enum class Operation {
+        Intersects,    // ST_Intersects(geometry_column, query_geometry)
+        Within,        // ST_Within(geometry_column, query_geometry)
+        Contains,      // ST_Contains(geometry_column, query_geometry)
+        DWithin        // ST_DWithin(geometry_column, center_point, distance)
+    };
+    
+    std::string column;                    // geometry column name (e.g., "location", "geometry")
+    Operation operation;                   // spatial operation type
+    std::shared_ptr<query::Expression> query_geom; // query geometry expression (parsed at runtime)
+    
+    // For DWithin queries
+    std::optional<double> distance;        // distance in meters
+    
+    // Computed MBR for index filtering (set by translator)
+    std::optional<std::pair<double, double>> bbox_min; // (minx, miny)
+    std::optional<std::pair<double, double>> bbox_max; // (maxx, maxy)
+};
+
 struct OrderBy {
     std::string column;
     bool desc = false;
@@ -115,6 +136,7 @@ struct ConjunctiveQuery {
     std::vector<PredicateRange> rangePredicates; // zusätzliche AND-Range-Prädikate
     std::optional<OrderBy> orderBy; // optionales ORDER BY über Range-Index
     std::optional<PredicateFulltext> fulltextPredicate; // optional: FULLTEXT(column, query, limit)
+    std::optional<PredicateSpatial> spatialPredicate; // optional: ST_*(geometry_column, ...) (G3)
 };
 
 // Disjunctive Query: OR-verknüpfte AND-Blöcke (Disjunctive Normal Form)

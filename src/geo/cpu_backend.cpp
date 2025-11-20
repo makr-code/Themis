@@ -1,4 +1,5 @@
 #include "geo/spatial_backend.h"
+#include "utils/geo/ewkb.h"
 
 namespace themis { namespace geo {
 
@@ -10,6 +11,14 @@ public:
         SpatialBatchResults out;
         out.mask.assign(in.count, 0u); // placeholder: no-ops
         return out;
+    }
+    
+    // Stub exact check - falls back to MBR only
+    bool exactIntersects(const GeometryInfo& geom1, const GeometryInfo& geom2) override {
+        // Without Boost.Geometry, fall back to MBR checks only
+        auto mbr1 = geom1.computeMBR();
+        auto mbr2 = geom2.computeMBR();
+        return mbr1.intersects(mbr2);
     }
 };
 

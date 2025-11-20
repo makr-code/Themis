@@ -56,6 +56,10 @@ class ContinuousAggregateManager;
 class AdaptiveIndexManager;
 class PromptManager;
 
+namespace index {
+class SpatialIndexManager;
+}
+
 namespace server {
 
 namespace beast = boost::beast;
@@ -229,6 +233,12 @@ private:
     http::response<http::string_body> handleIndexStats(const http::request<http::string_body>& req);
     http::response<http::string_body> handleIndexRebuild(const http::request<http::string_body>& req);
     http::response<http::string_body> handleIndexReindex(const http::request<http::string_body>& req);
+    
+    // G5: Spatial Index Management
+    http::response<http::string_body> handleSpatialIndexCreate(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSpatialIndexRebuild(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSpatialIndexStats(const http::request<http::string_body>& req);
+    http::response<http::string_body> handleSpatialMetrics(const http::request<http::string_body>& req);
 
     // Admin: Backup & Restore
     http::response<http::string_body> handleAdminBackup(const http::request<http::string_body>& req);
@@ -414,6 +424,9 @@ private:
     std::shared_ptr<GraphIndexManager> graph_index_;
     std::shared_ptr<VectorIndexManager> vector_index_;
     std::shared_ptr<TransactionManager> tx_manager_;
+    
+    // Spatial Index Manager (geo MVP)
+    std::unique_ptr<index::SpatialIndexManager> spatial_index_;
 
     // Content Manager
     std::unique_ptr<themis::content::ContentManager> content_manager_;

@@ -130,6 +130,92 @@ QueryEngine::executeAndKeys(const ConjunctiveQuery& q) const {
 		return {Status::OK(), std::move(fulltextKeys)};
 	}
 	
+	// Handle spatial queries (G3 - AQL Parser Integration)
+	if (q.spatialPredicate.has_value()) {
+		if (!spatialIdx_) {
+			return {Status::Error("Spatial index manager not available"), {}};
+		}
+		
+		const auto& sp = *q.spatialPredicate;
+		auto child = Tracer::startSpan("index.scanSpatial");
+		child.setAttribute("index.table", q.table);
+		child.setAttribute("index.column", sp.column);
+		child.setAttribute("spatial.operation", static_cast<int>(sp.operation));
+		
+		// Check if table has spatial index
+		if (!spatialIdx_->hasSpatialIndex(q.table)) {
+			child.setStatus(false, "No spatial index on table");
+			return {Status::Error("Table " + q.table + " has no spatial index"), {}};
+		}
+		
+		// Execute spatial query based on operation type
+		std::vector<std::string> spatialKeys;
+		
+		if (sp.bbox_min.has_value() && sp.bbox_max.has_value()) {
+			// Use pre-computed bbox for query
+			geo::MBR query_bbox(
+				sp.bbox_min->first, sp.bbox_min->second,
+				sp.bbox_max->first, sp.bbox_max->second
+			);
+			
+			auto results = spatialIdx_->searchIntersects(q.table, query_bbox);
+			spatialKeys.reserve(results.size());
+			for (const auto& res : results) {
+				spatialKeys.push_back(res.primary_key);
+			}
+		} else {
+			child.setStatus(false, "Spatial predicate missing bbox");
+			return {Status::Error("Spatial predicate must have computed bbox"), {}};
+		}
+		
+		child.setAttribute("index.result_count", static_cast<int64_t>(spatialKeys.size()));
+		child.setStatus(true);
+		
+		// If there are additional predicates (AND combination), intersect with spatial results
+		if (!q.predicates.empty() || !q.rangePredicates.empty()) {
+			auto intersectSpan = Tracer::startSpan("query.spatial_and_intersection");
+			intersectSpan.setAttribute("spatial.result_count", static_cast<int64_t>(spatialKeys.size()));
+			intersectSpan.setAttribute("additional.eq_count", static_cast<int64_t>(q.predicates.size()));
+			intersectSpan.setAttribute("additional.range_count", static_cast<int64_t>(q.rangePredicates.size()));
+			
+			// Create a temporary query with only the structural predicates
+			ConjunctiveQuery structuralQuery;
+			structuralQuery.table = q.table;
+			structuralQuery.predicates = q.predicates;
+			structuralQuery.rangePredicates = q.rangePredicates;
+			structuralQuery.orderBy = q.orderBy;
+			
+			// Execute structural predicates
+			auto [structStatus, structKeys] = executeAndKeysRangeAware_(structuralQuery);
+			if (!structStatus.ok) {
+				intersectSpan.setStatus(false, structStatus.message);
+				return {structStatus, {}};
+			}
+			
+			// Intersect spatial results with structural predicate results
+			std::sort(spatialKeys.begin(), spatialKeys.end());
+			std::sort(structKeys.begin(), structKeys.end());
+			
+			std::vector<std::string> intersection;
+			std::set_intersection(
+				spatialKeys.begin(), spatialKeys.end(),
+				structKeys.begin(), structKeys.end(),
+				std::back_inserter(intersection)
+			);
+			
+			intersectSpan.setAttribute("intersection.result_count", static_cast<int64_t>(intersection.size()));
+			intersectSpan.setStatus(true);
+			span.setAttribute("query.result_count", static_cast<int64_t>(intersection.size()));
+			span.setStatus(true);
+			return {Status::OK(), std::move(intersection)};
+		}
+		
+		// Standalone SPATIAL (no additional predicates)
+		span.setAttribute("query.result_count", static_cast<int64_t>(spatialKeys.size()));
+		span.setStatus(true);
+		return {Status::OK(), std::move(spatialKeys)};
+	}
+	
 	// Erlaube ORDER BY ohne weitere Prädikate (liefert die ersten N gemäß Range-Index)
 	if (q.predicates.empty() && q.rangePredicates.empty() && !q.orderBy.has_value()) {
 		return {Status::Error("executeAndKeys: keine Prädikate"), {}};
