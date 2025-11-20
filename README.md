@@ -12,6 +12,14 @@
 
 The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Database System Based on LSM Tree
 
+## 📊 Sachstandsbericht & Audit
+
+**Für Stakeholder:** Komprimierter Überblick über alle Funktionsbereiche und den aktuellen Entwicklungsstand:
+- **[Themis Sachstandsbericht 2025](THEMIS_SACHSTANDSBERICHT_2025.md)** - Executive Summary, Feature-Status, Performance-Benchmarks, Compliance-Readiness
+
+**Für Entwickler:** Technische Verifikationsberichte:
+- **[Documentation Verification Report](DOCUMENTATION_VERIFICATION_REPORT.md)** - Verifizierung der Übereinstimmung zwischen Dokumentation und Code
+
 ## Dokumentation
 
 - Primärquelle: GitHub Wiki unter https://github.com/makr-code/ThemisDB/wiki
