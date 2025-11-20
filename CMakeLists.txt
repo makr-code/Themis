@@ -365,6 +365,7 @@ set(THEMIS_CORE_SOURCES
     src/acceleration/backend_registry.cpp
     src/acceleration/cpu_backend.cpp
     src/acceleration/plugin_loader.cpp
+    src/acceleration/plugin_security.cpp
 )
 
 # Add hardware acceleration backends based on build options

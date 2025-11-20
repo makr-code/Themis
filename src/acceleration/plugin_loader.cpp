@@ -1,4 +1,5 @@
 #include "acceleration/plugin_loader.h"
+#include "acceleration/plugin_security.h"
 #include <filesystem>
 #include <iostream>
 
@@ -42,6 +43,44 @@ void PluginLoader::unloadLibrary(void* handle) {
 }
 
 bool PluginLoader::loadPlugin(const std::string& libraryPath) {
+    // SECURITY: Verify plugin before loading
+    PluginSecurityPolicy policy;
+    // Load policy from config if available
+    // For now, use default policy (requires signature in production)
+    
+#ifdef NDEBUG
+    // Production: Require signature
+    policy.requireSignature = true;
+    policy.allowUnsigned = false;
+#else
+    // Development: Allow unsigned
+    policy.requireSignature = false;
+    policy.allowUnsigned = true;
+#endif
+    
+    PluginSecurityVerifier verifier(policy);
+    std::string errorMessage;
+    
+    if (!verifier.verifyPlugin(libraryPath, errorMessage)) {
+        std::cerr << "SECURITY: Plugin verification failed: " << libraryPath << std::endl;
+        std::cerr << "  Reason: " << errorMessage << std::endl;
+        
+        // Log security event
+        auto& auditor = PluginSecurityAuditor::instance();
+        auditor.logEvent({
+            PluginSecurityEvent::EventType::PLUGIN_LOAD_FAILED,
+            libraryPath,
+            verifier.calculateFileHash(libraryPath),
+            errorMessage,
+            static_cast<uint64_t>(std::time(nullptr)),
+            "ERROR"
+        });
+        
+        return false;
+    }
+    
+    std::cout << "SECURITY: Plugin verification passed: " << libraryPath << std::endl;
+    
     // Load the shared library
     void* handle = loadLibrary(libraryPath);
     if (!handle) {
@@ -74,11 +113,13 @@ bool PluginLoader::loadPlugin(const std::string& libraryPath) {
     pluginHandle.plugin.reset(plugin);
     pluginHandle.name = plugin->pluginName();
     pluginHandle.path = libraryPath;
+    pluginHandle.fileHash = verifier.calculateFileHash(libraryPath);
     
     plugins_.push_back(std::move(pluginHandle));
     
     std::cout << "Loaded plugin: " << plugin->pluginName() 
-              << " v" << plugin->pluginVersion() << std::endl;
+              << " v" << plugin->pluginVersion() 
+              << " (Hash: " << pluginHandle.fileHash.substr(0, 16) << "...)" << std::endl;
     
     return true;
 }

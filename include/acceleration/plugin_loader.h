@@ -55,6 +55,7 @@ private:
         std::unique_ptr<BackendPlugin> plugin;
         std::string name;
         std::string path;
+        std::string fileHash;  // SHA-256 hash for security verification
     };
     
     std::vector<PluginHandle> plugins_;
