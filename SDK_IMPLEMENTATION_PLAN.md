@@ -2,7 +2,7 @@
 
 **Datum:** 20. November 2025  
 **Branch:** sdk-beta-release  
-**Status:** Phase 1 - IN PROGRESS (JavaScript Transaction Support ✅)
+**Status:** Phase 1 - IN PROGRESS (JavaScript ✅, Python ✅)
 
 ---
 
@@ -13,7 +13,7 @@
 ### ✅ COMPLETED: JavaScript Transaction Support (2025-11-20)
 
 **Status:** ✅ DONE - Proof-of-Concept implementiert  
-**Commit:** TBD  
+**Commit:** 189353b  
 **Time:** ~4 hours
 
 **Implemented:**
@@ -32,6 +32,31 @@
 - `clients/javascript/tests/client.spec.ts` (updated)
 - `clients/javascript/README.md` (comprehensive update)
 - `clients/javascript/package.json` (version bump)
+
+---
+
+### ✅ COMPLETED: Python Transaction Support (2025-11-20)
+
+**Status:** ✅ DONE - Full implementation with context manager  
+**Commit:** TBD  
+**Time:** ~4 hours
+
+**Implemented:**
+- ✅ Transaction class mit BEGIN/COMMIT/ROLLBACK
+- ✅ Context manager support (`with` statement)
+- ✅ Isolation level support (READ_COMMITTED, SNAPSHOT)
+- ✅ All CRUD operations (get, put, delete, query)
+- ✅ State management (is_active, transaction_id)
+- ✅ Error handling (TransactionError)
+- ✅ Tests (9 passing tests + 5 integration placeholders)
+- ✅ Documentation (README update with examples)
+- ✅ Package version bump (0.1.0b1)
+
+**Files Changed:**
+- `clients/python/themis/__init__.py` (+260 lines)
+- `clients/python/tests/test_transaction.py` (new, +224 lines)
+- `clients/python/README.md` (comprehensive update)
+- `clients/python/pyproject.toml` (version bump, dev dependencies)
 
 ---
 

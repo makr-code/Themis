@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Python SDK Transaction Support (2025-11-20 Phase 1 Continued)
+
+#### Python SDK Transaction Implementation
+- **Transaction Support** - Full BEGIN/COMMIT/ROLLBACK implementation
+  - `ThemisClient.begin_transaction(isolation_level, timeout)` method
+  - `Transaction` class with CRUD operations
+  - Context manager support (Pythonic `with` statement)
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (is_active, transaction_id)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with TransactionError class
+
+- **Test Coverage** - Comprehensive transaction tests
+  - Unit tests for Transaction class
+  - Context manager tests (with statement)
+  - State management tests (commit/rollback tracking)
+  - API structure validation
+  - Integration test placeholders (requires running server)
+  - 9 passing tests + 5 integration test placeholders
+
+- **Documentation** - Updated Python SDK docs
+  - README.md with transaction examples
+  - Context manager examples (`with` statement)
+  - Money transfer example
+  - API reference for Transaction class
+  - Quick start guide
+  - Error handling patterns
+
+- **Package Updates**
+  - Version bumped to 0.1.0b1
+  - Package name updated to themisdb-client
+  - Added dev dependencies (pytest, pytest-cov)
+  - Additional keywords (transaction, multi-model, graph, vector)
+
+#### Implementation Details
+- **Files Modified:**
+  - `clients/python/themis/__init__.py` - Added Transaction class and support methods (+260 lines)
+  - `clients/python/tests/test_transaction.py` - New test file (9 tests passing)
+  - `clients/python/README.md` - Comprehensive documentation update
+  - `clients/python/pyproject.toml` - Version, metadata, and dev dependencies
+
+- **Server Integration:**
+  - Uses existing `/transaction/begin` endpoint
+  - Uses existing `/transaction/commit` endpoint
+  - Uses existing `/transaction/rollback` endpoint
+  - Injects `X-Transaction-Id` header for all operations
+
 ### Added - JavaScript SDK Transaction Support (2025-11-20 Phase 1 Start)
 
 #### JavaScript/TypeScript SDK Transaction Implementation
