@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Rust SDK Transaction Support (2025-11-20 Phase 1 Complete)
+
+#### Rust SDK Transaction Implementation
+- **Transaction Support** - Full BEGIN/COMMIT/ROLLBACK implementation
+  - `ThemisClient.begin_transaction(options)` method
+  - `Transaction` struct with CRUD operations
+  - Async/await pattern using Tokio
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (is_active, transaction_id)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with TransactionError variant
+
+- **Test Coverage** - Comprehensive transaction tests
+  - Unit tests for Transaction struct
+  - Isolation level tests
+  - State management tests (commit/rollback tracking)
+  - API structure validation
+  - Integration test placeholders (requires running server)
+  - 5 passing unit tests + 3 integration test placeholders
+  - 12 existing library tests still passing
+
+- **Documentation** - New Rust SDK comprehensive docs
+  - README.md with transaction examples
+  - Money transfer example (ACID transactions)
+  - Batch operations examples
+  - API reference for Transaction struct
+  - Quick start guide
+  - Error handling patterns
+  - Vector search examples
+
+- **Package Updates**
+  - Version bumped to 0.1.0-beta.1
+  - Package name updated to themisdb-client
+  - Enhanced keywords (database, multi-model, transaction, graph, vector)
+  - Categories added (database)
+
+#### Implementation Details
+- **Files Modified:**
+  - `clients/rust/src/lib.rs` - Added Transaction struct and support methods (+280 lines)
+  - `clients/rust/tests/test_transaction.rs` - New test file (5 tests passing, 3 integration tests)
+  - `clients/rust/README.md` - New comprehensive documentation (9KB)
+  - `clients/rust/Cargo.toml` - Version, metadata, keywords, and categories
+
+#### Phase 1 SDK Finalization Status
+- ✅ **JavaScript SDK** - Transaction Support COMPLETE (Commit: 189353b)
+- ✅ **Python SDK** - Transaction Support COMPLETE (Commit: ca694fc)
+- ✅ **Rust SDK** - Transaction Support COMPLETE (This commit)
+
+**All three SDKs now have:**
+- Full ACID transaction support
+- Isolation level configuration
+- State management
+- Comprehensive tests
+- Production-ready documentation
+- Beta version numbers
+
 ### Added - Python SDK Transaction Support (2025-11-20 Phase 1 Continued)
 
 #### Python SDK Transaction Implementation

@@ -105,9 +105,39 @@ pub enum ThemisError {
     Transport(#[from] reqwest::Error),
     #[error("serialization error: {0}")]
     Serde(String),
+    #[error("transaction error: {0}")]
+    Transaction(String),
 }
 
 pub type Result<T> = std::result::Result<T, ThemisError>;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum IsolationLevel {
+    ReadCommitted,
+    Snapshot,
+}
+
+impl Default for IsolationLevel {
+    fn default() -> Self {
+        IsolationLevel::ReadCommitted
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransactionOptions {
+    pub isolation_level: IsolationLevel,
+    pub timeout_ms: Option<u64>,
+}
+
+impl Default for TransactionOptions {
+    fn default() -> Self {
+        Self {
+            isolation_level: IsolationLevel::default(),
+            timeout_ms: None,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct ThemisClient {
@@ -425,11 +455,70 @@ impl ThemisClient {
         Ok(format!("{base}/_admin/cluster/topology"))
     }
 
+    pub async fn begin_transaction(&self, options: TransactionOptions) -> Result<Transaction> {
+        let endpoint = self
+            .config
+            .endpoints
+            .first()
+            .cloned()
+            .ok_or_else(|| ThemisError::InvalidConfig("endpoints must not be empty".into()))?;
+        
+        let mut payload = Map::new();
+        payload.insert(
+            "isolation_level".into(),
+            serde_json::to_value(options.isolation_level)
+                .map_err(|e| ThemisError::Serde(e.to_string()))?,
+        );
+        if let Some(timeout) = options.timeout_ms {
+            payload.insert("timeout".into(), Value::Number(timeout.into()));
+        }
+
+        let url = format!("{endpoint}/transaction/begin");
+        let response = self
+            .request(
+                Method::POST,
+                url,
+                Some(RequestBody {
+                    body: Some(Value::Object(payload).to_string()),
+                    content_type: Some(JSON_CONTENT_TYPE.to_string()),
+                }),
+            )
+            .await?;
+
+        let result = ensure_success(response)
+            .await?
+            .json::<Value>()
+            .await
+            .map_err(|err| ThemisError::Serde(err.to_string()))?;
+
+        let transaction_id = result
+            .get("transaction_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ThemisError::Transaction("missing transaction_id in response".into()))?
+            .to_string();
+
+        Ok(Transaction {
+            client: self.clone(),
+            transaction_id,
+            is_active: true,
+        })
+    }
+
     async fn request(
         &self,
         method: Method,
         url: String,
         body: Option<RequestBody>,
+    ) -> Result<Response> {
+        self.request_with_headers(method, url, body, None).await
+    }
+
+    async fn request_with_headers(
+        &self,
+        method: Method,
+        url: String,
+        body: Option<RequestBody>,
+        headers: Option<HashMap<String, String>>,
     ) -> Result<Response> {
         let mut attempt = 0usize;
         let max_attempts = self.config.max_retries.max(1);
@@ -441,6 +530,11 @@ impl ThemisClient {
                 }
                 if let Some(payload) = &body.body {
                     builder = builder.body(payload.clone());
+                }
+            }
+            if let Some(headers) = &headers {
+                for (key, value) in headers {
+                    builder = builder.header(key, value);
                 }
             }
             let result = builder.send().await;
@@ -462,6 +556,204 @@ impl ThemisClient {
                 }
             }
         }
+    }
+}
+
+pub struct Transaction {
+    client: ThemisClient,
+    transaction_id: String,
+    is_active: bool,
+}
+
+impl Transaction {
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    fn ensure_active(&self) -> Result<()> {
+        if !self.is_active {
+            return Err(ThemisError::Transaction(
+                "transaction is not active".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn transaction_headers(&self) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        headers.insert("X-Transaction-Id".to_string(), self.transaction_id.clone());
+        headers
+    }
+
+    pub async fn get<T>(&self, model: &str, collection: &str, uuid: &str) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        self.ensure_active()?;
+        let endpoint = self.client.resolve_endpoint(model, collection, uuid).await?;
+        let key = build_entity_key(model, &self.client.config.namespace, collection, uuid);
+        let url = format!("{endpoint}/entities/{key}");
+        let response = self
+            .client
+            .request_with_headers(Method::GET, url, None, Some(self.transaction_headers()))
+            .await?;
+        if response.status() == 404 {
+            return Ok(None);
+        }
+        let payload = ensure_success(response)
+            .await?
+            .json::<Value>()
+            .await
+            .map_err(|err| ThemisError::Serde(err.to_string()))?;
+        decode_entity::<T>(payload).map(Some)
+    }
+
+    pub async fn put<T>(&self, model: &str, collection: &str, uuid: &str, data: &T) -> Result<()>
+    where
+        T: Serialize,
+    {
+        self.ensure_active()?;
+        let endpoint = self.client.resolve_endpoint(model, collection, uuid).await?;
+        let key = build_entity_key(model, &self.client.config.namespace, collection, uuid);
+        let url = format!("{endpoint}/entities/{key}");
+        let body = json!({ "blob": encode_entity(data)? });
+        let response = self
+            .client
+            .request_with_headers(
+                Method::PUT,
+                url,
+                Some(RequestBody {
+                    body: Some(body.to_string()),
+                    content_type: Some(JSON_CONTENT_TYPE.to_string()),
+                }),
+                Some(self.transaction_headers()),
+            )
+            .await?;
+        ensure_success(response).await.map(|_| ())
+    }
+
+    pub async fn delete(&self, model: &str, collection: &str, uuid: &str) -> Result<bool> {
+        self.ensure_active()?;
+        let endpoint = self.client.resolve_endpoint(model, collection, uuid).await?;
+        let key = build_entity_key(model, &self.client.config.namespace, collection, uuid);
+        let url = format!("{endpoint}/entities/{key}");
+        let response = self
+            .client
+            .request_with_headers(Method::DELETE, url, None, Some(self.transaction_headers()))
+            .await?;
+        if response.status() == 404 {
+            return Ok(false);
+        }
+        ensure_success(response).await.map(|_| true)
+    }
+
+    pub async fn query<T>(&self, aql: &str, options: QueryOptions) -> Result<QueryResult<T>>
+    where
+        T: DeserializeOwned,
+    {
+        self.ensure_active()?;
+        let mut payload = Map::new();
+        payload.insert("query".into(), Value::String(aql.to_string()));
+        if let Some(params) = options.params {
+            payload.insert("params".into(), Value::Object(params));
+        }
+        if options.use_cursor {
+            payload.insert("use_cursor".into(), Value::Bool(true));
+        }
+        if let Some(cursor) = options.cursor {
+            payload.insert("cursor".into(), Value::String(cursor));
+        }
+        if let Some(batch_size) = options.batch_size {
+            payload.insert("batch_size".into(), Value::Number(batch_size.into()));
+        }
+
+        let endpoint = self
+            .client
+            .config
+            .endpoints
+            .first()
+            .cloned()
+            .ok_or_else(|| ThemisError::InvalidConfig("endpoints must not be empty".into()))?;
+
+        let url = format!("{endpoint}/query/aql");
+        let response = self
+            .client
+            .request_with_headers(
+                Method::POST,
+                url,
+                Some(RequestBody {
+                    body: Some(Value::Object(payload).to_string()),
+                    content_type: Some(JSON_CONTENT_TYPE.to_string()),
+                }),
+                Some(self.transaction_headers()),
+            )
+            .await?;
+        let payload = ensure_success(response)
+            .await?
+            .json::<Value>()
+            .await
+            .map_err(|err| ThemisError::Serde(err.to_string()))?;
+        parse_query_result::<T>(payload)
+    }
+
+    pub async fn commit(mut self) -> Result<()> {
+        self.ensure_active()?;
+        let endpoint = self
+            .client
+            .config
+            .endpoints
+            .first()
+            .cloned()
+            .ok_or_else(|| ThemisError::InvalidConfig("endpoints must not be empty".into()))?;
+
+        let url = format!("{endpoint}/transaction/commit");
+        let payload = json!({ "transaction_id": self.transaction_id });
+        let response = self
+            .client
+            .request(
+                Method::POST,
+                url,
+                Some(RequestBody {
+                    body: Some(payload.to_string()),
+                    content_type: Some(JSON_CONTENT_TYPE.to_string()),
+                }),
+            )
+            .await?;
+        ensure_success(response).await?;
+        self.is_active = false;
+        Ok(())
+    }
+
+    pub async fn rollback(mut self) -> Result<()> {
+        self.ensure_active()?;
+        let endpoint = self
+            .client
+            .config
+            .endpoints
+            .first()
+            .cloned()
+            .ok_or_else(|| ThemisError::InvalidConfig("endpoints must not be empty".into()))?;
+
+        let url = format!("{endpoint}/transaction/rollback");
+        let payload = json!({ "transaction_id": self.transaction_id });
+        let response = self
+            .client
+            .request(
+                Method::POST,
+                url,
+                Some(RequestBody {
+                    body: Some(payload.to_string()),
+                    content_type: Some(JSON_CONTENT_TYPE.to_string()),
+                }),
+            )
+            .await?;
+        ensure_success(response).await?;
+        self.is_active = false;
+        Ok(())
     }
 }
 
