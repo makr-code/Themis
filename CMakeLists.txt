@@ -315,6 +315,7 @@ set(THEMIS_CORE_SOURCES
     src/sharding/consistent_hash.cpp
     src/sharding/shard_topology.cpp
     src/sharding/urn_resolver.cpp
+    src/sharding/pki_shard_certificate.cpp
 )
 
 # Main library
@@ -548,6 +549,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_group_dek.cpp
         tests/test_input_validator.cpp
         tests/test_sharding_core.cpp
+        tests/test_pki_shard_certificate.cpp
     )
     
     target_link_libraries(themis_tests
