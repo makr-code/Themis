@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - JavaScript SDK Transaction Support (2025-11-20 Phase 1 Start)
+
+#### JavaScript/TypeScript SDK Transaction Implementation
+- **Transaction Support** - Full BEGIN/COMMIT/ROLLBACK implementation
+  - `ThemisClient.beginTransaction(options?)` method
+  - `Transaction` class with CRUD operations
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (isActive, transactionId)
+  - Automatic X-Transaction-Id header injection
+  - Error handling with TransactionError class
+
+- **Test Coverage** - Comprehensive transaction tests
+  - Unit tests for Transaction class
+  - State management tests (commit/rollback tracking)
+  - API structure validation
+  - Integration test placeholders (requires running server)
+
+- **Documentation** - Updated JavaScript SDK docs
+  - README.md with transaction examples
+  - API reference for Transaction class
+  - Quick start guide
+  - Error handling examples
+
+- **Package Updates**
+  - Version bumped to 0.1.0-beta.1
+  - Package name updated to @themisdb/client
+  - Additional keywords (transaction, multi-model, graph, vector)
+
+#### Implementation Details
+- **Files Modified:**
+  - `clients/javascript/src/index.ts` - Added Transaction class and support methods
+  - `clients/javascript/tests/transaction.spec.ts` - New test file (7 tests passing)
+  - `clients/javascript/tests/client.spec.ts` - Added basic client tests
+  - `clients/javascript/README.md` - Comprehensive documentation update
+  - `clients/javascript/package.json` - Version and metadata update
+
+- **Server Integration:**
+  - Uses existing `/transaction/begin` endpoint
+  - Uses existing `/transaction/commit` endpoint
+  - Uses existing `/transaction/rollback` endpoint
+  - Injects `X-Transaction-Id` header for all operations
+
 ### Added - SDK Implementation Plan (2025-11-20 v5)
 
 #### SDK Development Roadmap

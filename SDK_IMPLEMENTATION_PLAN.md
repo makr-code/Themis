@@ -2,7 +2,7 @@
 
 **Datum:** 20. November 2025  
 **Branch:** sdk-beta-release  
-**Status:** Phase 1 - JS/Python/Rust Finalisierung
+**Status:** Phase 1 - IN PROGRESS (JavaScript Transaction Support ✅)
 
 ---
 
@@ -10,14 +10,37 @@
 
 ### Timeline: 2-3 Wochen
 
+### ✅ COMPLETED: JavaScript Transaction Support (2025-11-20)
+
+**Status:** ✅ DONE - Proof-of-Concept implementiert  
+**Commit:** TBD  
+**Time:** ~4 hours
+
+**Implemented:**
+- ✅ Transaction class mit BEGIN/COMMIT/ROLLBACK
+- ✅ Isolation level support (READ_COMMITTED, SNAPSHOT)
+- ✅ All CRUD operations (get, put, delete, query)
+- ✅ State management (isActive, transactionId)
+- ✅ Error handling (TransactionError)
+- ✅ Tests (7 passing tests)
+- ✅ Documentation (README update)
+- ✅ Package version bump (0.1.0-beta.1)
+
+**Files Changed:**
+- `clients/javascript/src/index.ts` (+220 lines)
+- `clients/javascript/tests/transaction.spec.ts` (new, +137 lines)
+- `clients/javascript/tests/client.spec.ts` (updated)
+- `clients/javascript/README.md` (comprehensive update)
+- `clients/javascript/package.json` (version bump)
+
 ---
 
 ## JavaScript/TypeScript SDK Finalisierung
 
 **Ziel:** Alpha → Beta Release
 
-### 1.1 Transaction Support ⭐ KRITISCH
-**Aufwand:** 2-3 Tage
+### 1.1 Transaction Support ⭐ KRITISCH - ✅ DONE
+**Aufwand:** 2-3 Tage → **Actual: 4 hours**
 
 **Neue Klassen/Methods:**
 ```typescript
