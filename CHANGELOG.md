@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - CI/CD Timeline Update (2025-11-20 v3)
+
+#### Priority Adjustment
+- **CI/CD Workflows** - Moved from "next priority" to Post-v1.0.0
+  - Decision: CI/CD workflows will be implemented with v1.0.0 release, not before
+  - README badges remain (placeholder for future workflows)
+  - Focus shifts to SDK Beta Release as next priority
+
+#### Documentation Updates
+- **NEXT_IMPLEMENTATION_PRIORITIES.md Updates v3**
+  - Changed next branch back from CI/CD to SDK Finalization
+  - Moved CI/CD Workflows to "Post-v1.0.0 Features" section
+  - Updated implementation timeline: SDK Beta (Woche 1-3), then v1.0.0 prep (Woche 4-13)
+  - Updated Quick Start guide back to SDK development
+  - Updated recommendation section
+
+- **DEVELOPMENT_AUDITLOG.md Updates v2**
+  - Removed CI/CD from P1 priorities
+  - Moved CI/CD to "Post-v1.0.0" section
+  - SDK Finalization marked as "NÄCHSTE PRIORITÄT"
+
 ### Changed - Window Functions & CI/CD Status Update (2025-11-20 v2)
 
 #### Code Audit Findings

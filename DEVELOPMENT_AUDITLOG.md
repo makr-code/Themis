@@ -544,21 +544,17 @@ ThemisDB ist eine produktionsreife Multi-Model-Datenbank mit **67% Gesamtimpleme
 **P0 - Kritisch:**
 - ✅ Dokumentation konsolidieren (COMPLETED)
 - ✅ Column-Level Encryption (COMPLETED - implementiert als Field-Level Encryption)
-- ⚠️ JavaScript/Python SDKs finalisieren (Alpha → Beta)
+- ⚠️ JavaScript/Python SDKs finalisieren (Alpha → Beta) ← **NÄCHSTE PRIORITÄT**
 
 **P1 - Hoch:**
-- ⚠️ **CI/CD Workflows implementieren** (KRITISCH - Badges verlinken auf nicht-existierende Workflows)
-  - GitHub Actions Matrix (Linux + Windows)
-  - Trivy Security Scanning
-  - Coverage Reporting
-  - Automated Release Process
 - Query Optimizer verbessern (Join Optimizations)
 
 **Entfernt:**
 - ❌ Content Processors erweitern - Nicht DB-Aufgabe (Ingestion ist externe Verantwortung)
 - ✅ Window Functions - Bereits implementiert (WindowEvaluator: 885 Zeilen Code, 579 Zeilen Tests)
 
-**Post-v1.0.0 (Enterprise Features):**
+**Post-v1.0.0:**
+- CI/CD Workflows (mit v1.0.0 Release)
 - Runtime Image optimieren (Docker distroless)
 
 ### Mittelfristig (Q2-Q3 2026 - 3-9 Monate)

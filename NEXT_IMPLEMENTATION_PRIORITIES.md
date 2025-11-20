@@ -2,12 +2,12 @@
 
 **Datum:** 20. November 2025  
 **Basierend auf:** ROADMAP.md v2.0  
-**Status:** Aktualisiert nach Code-Audit (v2)
+**Status:** Aktualisiert nach Code-Audit (v3)
 
 > **⚠️ WICHTIGE UPDATES:**
 > - Column-Level Encryption ist bereits vollständig implementiert als "Field-Level Encryption" + "Schema-Based Encryption"
 > - Window Functions sind bereits vollständig implementiert (885 Zeilen Code, 579 Zeilen Tests)
-> - CI/CD Workflows existieren noch nicht (nur Badges im README)
+> - CI/CD Workflows werden erst mit v1.0.0 implementiert (nicht jetzt)
 
 ---
 
@@ -61,51 +61,45 @@ Aus der konsolidierten Roadmap ergeben sich folgende **P0 (kritische Priorität)
 
 ---
 
-## 🎯 Empfohlener Nächster Branch: CI/CD Verbesserungen
+## 🎯 Empfohlener Nächster Branch: JavaScript/Python SDK Finalisierung
 
 ### Begründung
-- **Priorität:** P1 (Hoch)
-- **Status:** Nicht implementiert (nur README Badges vorhanden)
-- **Aufwand:** 1 Woche
-- **Impact:** Code Quality, Automated Testing, Security Scanning
+- **Priorität:** P0 (Kritisch)
+- **Status:** Alpha → Beta
+- **Aufwand:** 2-3 Wochen
+- **Impact:** Developer Experience, Ecosystem Growth
 - **Abhängigkeiten:** Keine
-- **Dringlichkeit:** HIGH - Workflows im README referenziert aber fehlen
+- **Dokumentation:** Teilweise vorhanden (Alpha-Versionen in `clients/`)
 
-### Implementierungsumfang (Branch: `feature/cicd-improvements`)
+### Implementierungsumfang (Branch: `feature/sdk-beta-release`)
 
-**GitHub Actions Workflows:**
-- CI Workflow (.github/workflows/ci.yml)
-  - Linux + Windows Matrix Builds
-  - Automated Testing (alle 303 Tests)
-  - Build Verification
-  
-- Code Quality Workflow (.github/workflows/code-quality.yml)
-  - Trivy Security Scanning (fail on HIGH/CRITICAL)
-  - CodeQL Analysis
-  - Linting (clang-tidy)
-  
-- Coverage Workflow
-  - Coverage Reporting (Codecov/Coveralls)
-  - Coverage Badge Generation
-  
-- Release Workflow
-  - Automated Release Process
-  - Container Multi-Arch Builds (amd64, arm64)
-  - GitHub Release Creation
+**JavaScript SDK:**
+- TypeScript Definitions (.d.ts)
+- Transaction Support (BEGIN/COMMIT/ROLLBACK)
+- Error Handling (Custom Error Types)
+- Comprehensive Tests (Unit + Integration)
+- NPM Package Preparation
+
+**Python SDK:**
+- Type Hints (PEP 484)
+- Transaction Support
+- Async/Await Support (asyncio)
+- Comprehensive Tests (pytest)
+- PyPI Package Preparation
 
 **Deliverables:**
-- [ ] `.github/workflows/ci.yml` (CI Build & Test)
-- [ ] `.github/workflows/code-quality.yml` (Security & Linting)
-- [ ] `.github/workflows/coverage.yml` (Coverage Reporting)
-- [ ] `.github/workflows/release.yml` (Automated Releases)
-- [ ] `docs/ci_cd_guide.md` (CI/CD Documentation)
+- [ ] `clients/javascript/themisdb-client/` (NPM-ready)
+- [ ] `clients/python/themisdb-client/` (PyPI-ready)
+- [ ] `docs/sdk_quickstart_js.md`
+- [ ] `docs/sdk_quickstart_python.md`
+- [ ] `docs/sdk_api_reference.md`
 
 **Akzeptanzkriterien:**
-- [ ] Alle Workflows funktionieren
-- [ ] Tests laufen auf Linux + Windows
-- [ ] Security Scanning aktiv
-- [ ] Coverage Reports generiert
-- [ ] Badge-Links im README funktionieren
+- [ ] Alle Tests bestehen (Unit + Integration)
+- [ ] TypeScript definitions vollständig
+- [ ] Transaction support funktional
+- [ ] Dokumentation vollständig
+- [ ] NPM + PyPI Package veröffentlicht (Beta)
 
 ---
 
@@ -175,11 +169,28 @@ Die ursprünglich geplante "Column-Level Encryption" wurde bereits implementiert
 
 ---
 
-## 📋 Post-v1.0.0 Enterprise Features
+## 📋 Post-v1.0.0 Features
 
 Diese Features werden **nach** v1.0.0 Release implementiert:
 
-### 1. Docker Runtime Optimierung
+### 1. CI/CD Workflows
+**Typ:** Post-v1.0.0 Feature  
+**Aufwand:** 1 Woche  
+**Branch:** `feature/cicd-improvements` (Post-v1.0.0)
+
+**Hinweis:** README Badges existieren bereits, aber Workflows werden erst mit v1.0.0 implementiert.
+
+**GitHub Actions Workflows:**
+- CI Workflow (.github/workflows/ci.yml)
+  - Linux + Windows Matrix Builds
+  - Automated Testing (alle 303 Tests)
+- Code Quality Workflow (.github/workflows/code-quality.yml)
+  - Trivy Security Scanning
+  - CodeQL Analysis
+- Coverage Workflow (.github/workflows/coverage.yml)
+- Release Workflow (.github/workflows/release.yml)
+
+### 2. Docker Runtime Optimierung
 **Typ:** Enterprise Feature  
 **Aufwand:** 3-5 Tage  
 **Branch:** `feature/docker-runtime-optimization` (Post-v1.0.0)
@@ -191,20 +202,10 @@ Diese Features werden **nach** v1.0.0 Release implementiert:
 - Security Hardening
 - Non-root User (bereits implementiert)
 
-### 2. Content Processors Erweiterung
-**Typ:** ❌ **ENTFERNT** - Nicht Teil einer Datenbank  
-**Begründung:** Ingestion/Content Processing ist nicht Aufgabe einer Datenbank
-
-**Anmerkung:** Ursprünglich geplante Features (PDF, Office, Video/Audio Processing) werden nicht implementiert, da Content Ingestion außerhalb des DB-Scopes liegt.
-
----
-
-## 📋 Mögliche zukünftige Prioritäten (Post-v1.0.0)
-
-### Hardware GPU CUDA Support
+### 3. GPU CUDA Support
 **Status:** Design/Research  
 **Aufwand:** 2-3 Monate  
-**Priorität:** TBD
+**Priorität:** TBD (Post-v1.0.0)
 
 **Features:**
 - Faiss GPU Integration für Vector Search
@@ -212,10 +213,10 @@ Diese Features werden **nach** v1.0.0 Release implementiert:
 - GPU Memory Management
 - 10-50x Speedup für Batch Queries
 
-### REST API Erweiterungen
+### 4. REST API Erweiterungen
 **Status:** Planning  
 **Aufwand:** TBD  
-**Priorität:** TBD
+**Priorität:** TBD (Post-v1.0.0)
 
 **Features:**
 - GraphQL API Support
@@ -225,72 +226,68 @@ Diese Features werden **nach** v1.0.0 Release implementiert:
 
 ---
 
-## 📊 Implementierungsreihenfolge (Q1 2026) - AKTUALISIERT v2
+## 📊 Implementierungsreihenfolge (Bis v1.0.0) - AKTUALISIERT v3
 
 ```
-Woche 1:     CI/CD Verbesserungen              [P1] ← NÄCHSTER BRANCH
-              └─ feature/cicd-improvements
-              • GitHub Actions Workflows (ci.yml, code-quality.yml, coverage.yml, release.yml)
-              • Trivy Security Scanning
-              • Automated Testing Matrix (Linux + Windows)
-
-Woche 2-4:   JavaScript/Python SDK Beta        [P0]
+Woche 1-3:   JavaScript/Python SDK Beta        [P0] ← NÄCHSTER BRANCH
               └─ feature/sdk-beta-release
               • TypeScript Definitions + Transaction Support
               • Python Type Hints + Async/Await
               • NPM + PyPI Package Publishing
 
-Woche 5-13:  TBD - Based on priorities post-v1.0.0
-              • Mögliche Optionen: GPU CUDA Support, REST API Erweiterungen
-              • Enterprise Features: Docker Optimization
+Woche 4-13:  Vorbereitung v1.0.0 Release
+              • Bug Fixes
+              • Performance Optimierung
+              • Dokumentation finalisieren
+              • Release Notes
 ```
 
+**Bereits implementiert (aus Roadmap entfernt):**
+- ✅ Column-Level Encryption (implementiert als Field-Level Encryption)
+- ✅ Window Functions (WindowEvaluator vollständig implementiert)
+
 **Entfernte Features:**
-- ❌ Content Processors (Nicht DB-Aufgabe, Ingestion ist externe Verantwortung)
-- ✅ Column-Level Encryption (Bereits implementiert als Field-Level Encryption)
-- ✅ Window Functions (Bereits vollständig implementiert)
+- ❌ Content Processors (nicht DB-Aufgabe, Ingestion ist externe Verantwortung)
 
 **Post-v1.0.0 Features:**
+- CI/CD Workflows (mit v1.0.0 Release)
 - Docker Runtime Optimization (Enterprise Feature)
 - GPU CUDA Support (Research/Design Phase)
+- REST API Enhancements
 
 ---
 
 ## ✅ Erfolgskriterien für nächsten Branch
 
-### CI/CD Verbesserungen (Nächster Branch)
+### JavaScript/Python SDK Finalisierung (Nächster Branch)
 
-**GitHub Actions Workflows:**
-- [ ] CI Workflow (.github/workflows/ci.yml) erstellt
-  - [ ] Linux Build Matrix (Ubuntu 20.04, 22.04)
-  - [ ] Windows Build Matrix (Windows 2019, 2022)
-  - [ ] Alle 303 Tests laufen automatisch
-  - [ ] Build Artifacts werden gespeichert
-  
-- [ ] Code Quality Workflow (.github/workflows/code-quality.yml) erstellt
-  - [ ] Trivy Security Scanning (fail on HIGH/CRITICAL)
-  - [ ] CodeQL Analysis aktiviert
-  - [ ] clang-tidy Linting
-  
-- [ ] Coverage Workflow (.github/workflows/coverage.yml) erstellt
-  - [ ] Coverage Reports generiert
-  - [ ] Codecov/Coveralls Integration
-  - [ ] Coverage Badge funktioniert
-  
-- [ ] Release Workflow (.github/workflows/release.yml) erstellt
-  - [ ] Automated GitHub Releases
-  - [ ] Container Multi-Arch Builds (amd64, arm64)
-  - [ ] Semantic Versioning Support
+**JavaScript SDK:**
+- [ ] TypeScript definitions vollständig (.d.ts files)
+- [ ] Transaction support (BEGIN/COMMIT/ROLLBACK)
+- [ ] Error handling (Custom error types)
+- [ ] Unit tests (>80% coverage)
+- [ ] Integration tests (E2E scenarios)
+- [ ] NPM package published (Beta)
+
+**Python SDK:**
+- [ ] Type hints vollständig (PEP 484)
+- [ ] Transaction support
+- [ ] Async/await support (asyncio)
+- [ ] Unit tests (pytest, >80% coverage)
+- [ ] Integration tests (E2E scenarios)
+- [ ] PyPI package published (Beta)
 
 **Dokumentation:**
-- [ ] `docs/ci_cd_guide.md` erstellt
-- [ ] README Badge-Links funktionieren
-- [ ] Workflow-Dokumentation vollständig
+- [ ] Quick Start Guide (JS + Python)
+- [ ] API Reference (vollständig)
+- [ ] Code Examples (mindestens 10 pro SDK)
+- [ ] Migration Guide (Alpha → Beta)
 
 **Qualität:**
-- [ ] Alle Workflows laufen erfolgreich
-- [ ] Keine Security Alerts
-- [ ] Coverage Reports sichtbar
+- [ ] Code Review abgeschlossen (0 CRITICAL/HIGH Issues)
+- [ ] Alle Tests bestehen (Unit + Integration)
+- [ ] Dokumentation vollständig
+- [ ] NPM + PyPI Packages veröffentlicht
 
 ---
 
@@ -298,39 +295,38 @@ Woche 5-13:  TBD - Based on priorities post-v1.0.0
 
 ```bash
 # 1. Neuen Branch erstellen
-git checkout -b feature/cicd-improvements
+git checkout -b feature/sdk-beta-release
 
-# 2. GitHub Actions Workflows erstellen
-mkdir -p .github/workflows
+# 2. JavaScript SDK finalisieren
+cd clients/javascript/themisdb-client
+# - TypeScript definitions (.d.ts)
+# - Transaction support
+# - Error handling
+# - Tests (jest/mocha)
+npm test
+npm run build
 
-# 3. CI Workflow erstellen (.github/workflows/ci.yml)
-# - Linux + Windows Build Matrix
-# - vcpkg dependency management
-# - Run all 303 tests
-# - Upload build artifacts
+# 3. Python SDK finalisieren
+cd ../../python/themisdb-client
+# - Type hints
+# - Async support
+# - Transaction support
+# - Tests (pytest)
+pytest
+python setup.py sdist bdist_wheel
 
-# 4. Code Quality Workflow (.github/workflows/code-quality.yml)
-# - Trivy security scanning
-# - CodeQL analysis
-# - clang-tidy linting
+# 4. Dokumentation
+# - docs/sdk_quickstart_js.md
+# - docs/sdk_quickstart_python.md
+# - docs/sdk_api_reference.md
 
-# 5. Coverage Workflow (.github/workflows/coverage.yml)
-# - Generate coverage reports
-# - Upload to Codecov/Coveralls
-# - Update coverage badge
+# 5. Publishing (Beta)
+# JavaScript: npm publish --tag beta
+# Python: twine upload --repository pypi dist/*
 
-# 6. Release Workflow (.github/workflows/release.yml)
-# - Build multi-arch Docker images (amd64, arm64)
-# - Create GitHub releases
-# - Tag versioning
-
-# 7. Dokumentation
-# - docs/ci_cd_guide.md erstellen
-# - README Badge-Links verifizieren
-
-# 8. Testing
-# - Workflows lokal testen (act oder manual trigger)
+# 6. Code Review & Testing
 # - Pull Request erstellen
+# - Team Review
 ```
 
 ---
@@ -349,31 +345,33 @@ mkdir -p .github/workflows
 
 ## 💡 Empfehlung
 
-**Start mit `feature/cicd-improvements`:**
-1. **KRITISCH:** Workflows im README referenziert aber fehlen
-2. Hohe Priorität (P1) → Security & Code Quality
-3. Kurze Implementierungszeit (1 Woche)
-4. Keine externen Abhängigkeiten
-5. Klare Akzeptanzkriterien
-6. Ermöglicht automatisierte Testing & Security Scanning
-7. Basis für alle weiteren Entwicklungen
+**Start mit `feature/sdk-beta-release`:**
+1. Hohe Priorität (P0)
+2. Developer Experience & Ecosystem Growth
+3. Überschaubare Implementierungszeit (2-3 Wochen)
+4. Alpha-Versionen bereits vorhanden
+5. Keine externen Abhängigkeiten
+6. Klare Akzeptanzkriterien
+7. Hoher Business Value (Adoption fördern)
 
-**Warum CI/CD vor SDK:**
-- README Badges verlinken auf nicht-existierende Workflows (ci.yml, code-quality.yml)
-- Automatisierte Tests kritisch für Code Quality
-- Security Scanning (Trivy) fehlt komplett
-- SDK-Entwicklung profitiert von CI/CD Infrastructure
+**Warum SDK jetzt:**
+- Column-Level Encryption bereits implementiert (nicht mehr notwendig)
+- Window Functions bereits implementiert (nicht mehr notwendig)
+- CI/CD Workflows werden erst mit v1.0.0 implementiert
+- SDK Beta ermöglicht frühe Adoption durch Entwickler
+- Community Feedback für v1.0.0 Release
 
 **Warum nicht mehr geplant:**
 - ❌ **Content Processors:** Ingestion ist nicht DB-Aufgabe (externe Verantwortung)
 - ✅ **Column-Level Encryption:** Bereits komplett (Field-Level Encryption)
 - ✅ **Window Functions:** Bereits komplett (885 Zeilen Code, 579 Zeilen Tests)
+- ⏭️ **CI/CD Workflows:** Erst mit v1.0.0 Release
 
-**Nächster Meilenstein nach CI/CD:**
-- JavaScript/Python SDK Beta Release (P0, 2-3 Wochen)
-- Danach: Post-v1.0.0 Features (Docker Optimization, GPU CUDA Support)
+**Nächste Schritte nach SDK Beta:**
+- v1.0.0 Release Vorbereitung (Bug Fixes, Performance, Docs)
+- Post-v1.0.0: CI/CD Workflows, Docker Optimization, GPU CUDA Support
 
 ---
 
-**Letzte Aktualisierung:** 20. November 2025 (v2)  
-**Nächstes Review:** Nach Abschluss CI/CD Improvements
+**Letzte Aktualisierung:** 20. November 2025 (v3)  
+**Nächstes Review:** Nach Abschluss SDK Beta Release
