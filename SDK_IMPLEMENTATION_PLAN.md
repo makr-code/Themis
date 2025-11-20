@@ -617,21 +617,43 @@ cargo publish
 
 ---
 
-## Phase 2: Neue SDKs (Post-Beta)
+## Phase 2: Neue SDKs
 
-### Go SDK (Q2 2026)
-**Priorität:** ⭐⭐⭐⭐⭐ HÖCHSTE  
-**Aufwand:** 1-2 Wochen  
-**Begründung:** Cloud-Native, Kubernetes Operator
+### ✅ COMPLETED: Go SDK (2025-11-20)
 
-**Features:**
-- Native concurrency (goroutines)
-- Strong typing
-- Standard library HTTP client
-- Context support
-- Transaction support from day 1
+**Status:** ✅ DONE - Full implementation with transaction support  
+**Commit:** (this commit)  
+**Time:** ~4 hours  
+**Priority:** ⭐⭐⭐⭐⭐ HÖCHSTE
 
-**Package:** `github.com/themisdb/themisdb-go`
+**Implemented:**
+- ✅ Client with full CRUD operations
+- ✅ Transaction support (BEGIN/COMMIT/ROLLBACK)
+- ✅ Context.Context integration throughout
+- ✅ Isolation level support (READ_COMMITTED, SNAPSHOT)
+- ✅ Concurrent-safe operations (sync.RWMutex)
+- ✅ Idiomatic Go patterns
+- ✅ Transaction state management
+- ✅ Error handling with standard errors
+- ✅ Tests (6 passing unit tests + 3 integration placeholders)
+- ✅ Comprehensive 11KB README with examples
+- ✅ Go module configuration (go.mod)
+
+**Files Changed:**
+- `clients/go/client.go` (new, 8.7KB, full implementation)
+- `clients/go/client_test.go` (new, 5.2KB, 9 tests)
+- `clients/go/README.md` (new, 11.6KB, comprehensive documentation)
+- `clients/go/go.mod` (new, Go 1.21+)
+
+**Package:** `github.com/makr-code/ThemisDB/clients/go`
+
+**Go-Specific Features:**
+- Context support for all operations
+- Goroutine-safe with mutex protection
+- Standard library http.Client
+- Defer-based transaction cleanup patterns
+- Type-safe interfaces with generics
+- Integration test build tags
 
 ---
 

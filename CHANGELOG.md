@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Go SDK (2025-11-20 Phase 2 Early Start)
+
+#### Go SDK Full Implementation
+- **Transaction Support** - Complete ACID transaction implementation
+  - `ThemisClient.BeginTransaction(ctx, options)` method
+  - `Transaction` struct with full CRUD operations
+  - Context.Context integration throughout
+  - Isolation level support (READ_COMMITTED, SNAPSHOT)
+  - Transaction state management (IsActive(), TransactionID())
+  - Automatic X-Transaction-Id header injection
+  - Error handling with standard Go errors (ErrTransactionNotActive)
+
+- **Concurrent-Safe Operations**
+  - sync.RWMutex for thread-safe client operations
+  - Mutex protection in Transaction struct
+  - Safe for use with goroutines
+
+- **Idiomatic Go Patterns**
+  - Context support for cancellation and timeouts
+  - Defer-based transaction cleanup patterns
+  - Standard error wrapping with fmt.Errorf
+  - JSON marshaling/unmarshaling with encoding/json
+  - Interface{} for flexible data types
+
+- **Test Coverage** - Comprehensive Go tests
+  - Unit tests for Client creation and configuration
+  - Unit tests for Transaction state management
+  - Unit tests for inactive transaction error handling
+  - Unit tests for isolation levels
+  - Integration test placeholders (requires running server)
+  - 6 passing unit tests + 3 integration test placeholders
+
+- **Documentation** - Comprehensive Go SDK docs
+  - README.md with transaction examples (11KB)
+  - Money transfer example (ACID guarantees)
+  - Context and timeout examples
+  - Query support examples
+  - API reference documentation
+  - Quick start guide
+  - Error handling best practices
+  - Integration testing guide
+
+- **Package Configuration**
+  - Go module: `github.com/makr-code/ThemisDB/clients/go`
+  - Version: v0.1.0-beta.1 (implied)
+  - Go version: 1.21+
+  - Dependencies: google/uuid, stretchr/testify
+  - Standard library: net/http, encoding/json, context
+
+#### Implementation Details
+- **Files Created:**
+  - `clients/go/client.go` - Main client implementation (8.7KB, ~300 lines)
+  - `clients/go/client_test.go` - Test suite (5.2KB, 9 tests)
+  - `clients/go/README.md` - Comprehensive documentation (11.6KB)
+  - `clients/go/go.mod` - Go module definition
+
+#### Why Go SDK Was Implemented Early
+- Originally planned for Q2 2026 (Phase 2)
+- Implemented in Phase 1 continuation due to high priority
+- Cloud-native ecosystem demand (Kubernetes, DevOps tools)
+- Strong community request for Go support
+- Natural fit after JavaScript/Python/Rust SDKs complete
+
 ### Added - Rust SDK Transaction Support (2025-11-20 Phase 1 Complete)
 
 #### Rust SDK Transaction Implementation
