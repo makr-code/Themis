@@ -1,5 +1,15 @@
-# Headers
+# Llm Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the llm module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for llm functionality.
+
+## Implementation
+
+See `../../src/llm/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/llm/` for detailed module documentation.

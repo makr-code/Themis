@@ -1,5 +1,15 @@
-# Headers
+# Utils Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the utils module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for utils functionality.
+
+## Implementation
+
+See `../../src/utils/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/utils/` for detailed module documentation.

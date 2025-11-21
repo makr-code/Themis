@@ -1,5 +1,15 @@
-# Headers
+# Cache Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the cache module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for cache functionality.
+
+## Implementation
+
+See `../../src/cache/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/cache/` for detailed module documentation.

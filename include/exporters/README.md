@@ -1,5 +1,15 @@
-# Headers
+# Exporters Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the exporters module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for exporters functionality.
+
+## Implementation
+
+See `../../src/exporters/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/exporters/` for detailed module documentation.

@@ -1,5 +1,15 @@
-# Headers
+# Document Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the document module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for document functionality.
+
+## Implementation
+
+See `../../src/document/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/document/` for detailed module documentation.

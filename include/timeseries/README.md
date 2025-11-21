@@ -1,5 +1,15 @@
-# Headers
+# Timeseries Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the timeseries module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for timeseries functionality.
+
+## Implementation
+
+See `../../src/timeseries/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/timeseries/` for detailed module documentation.

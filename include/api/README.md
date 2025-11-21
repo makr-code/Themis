@@ -1,5 +1,15 @@
-# Headers
+# Api Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the api module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for api functionality.
+
+## Implementation
+
+See `../../src/api/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/api/` for detailed module documentation.

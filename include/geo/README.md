@@ -1,5 +1,15 @@
-# Headers
+# Geo Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the geo module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for geo functionality.
+
+## Implementation
+
+See `../../src/geo/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/geo/` for detailed module documentation.

@@ -1,5 +1,15 @@
-# Headers
+# Content Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the content module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for content functionality.
+
+## Implementation
+
+See `../../src/content/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/content/` for detailed module documentation.

@@ -1,5 +1,15 @@
-# Headers
+# Server Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the server module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for server functionality.
+
+## Implementation
+
+See `../../src/server/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/server/` for detailed module documentation.

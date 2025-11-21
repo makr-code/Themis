@@ -1,5 +1,15 @@
-# Headers
+# Auth Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the auth module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for auth functionality.
+
+## Implementation
+
+See `../../src/auth/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/auth/` for detailed module documentation.

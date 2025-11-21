@@ -1,5 +1,15 @@
-# Headers
+# Transaction Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the transaction module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for transaction functionality.
+
+## Implementation
+
+See `../../src/transaction/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/transaction/` for detailed module documentation.

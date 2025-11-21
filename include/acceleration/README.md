@@ -1,5 +1,15 @@
-# Headers
+# Acceleration Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the acceleration module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for acceleration functionality.
+
+## Implementation
+
+See `../../src/acceleration/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/acceleration/` for detailed module documentation.

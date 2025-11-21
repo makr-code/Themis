@@ -1,5 +1,15 @@
-# Headers
+# Importers Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the importers module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for importers functionality.
+
+## Implementation
+
+See `../../src/importers/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/importers/` for detailed module documentation.

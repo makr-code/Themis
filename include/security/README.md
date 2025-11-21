@@ -1,5 +1,15 @@
-# Headers
+# Security Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the security module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for security functionality.
+
+## Implementation
+
+See `../../src/security/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/security/` for detailed module documentation.

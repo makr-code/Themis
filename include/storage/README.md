@@ -1,5 +1,15 @@
-# Headers
+# Storage Module Headers
 
-Header files for this module.
+This directory contains header files (.h, .hpp) for the storage module.
 
-See the corresponding source directory in `../../src/` for implementation details and documentation.
+## Purpose
+
+Public interfaces and declarations for storage functionality.
+
+## Implementation
+
+See `../../src/storage/` for the implementation code.
+
+## Documentation
+
+See `../../docs/src/storage/` for detailed module documentation.
