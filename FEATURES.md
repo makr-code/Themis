@@ -99,7 +99,7 @@ POST /index/create
 **Algorithmen:**
 - ✅ **BFS (Breadth-First Search)** - Tiefenbegrenzte Traversierung
 - ✅ **Dijkstra** - Kürzeste Pfade (gewichtet)
-- ✅ **A\*** - Heuristische Pfadsuche
+- ✅ **A*** - Heuristische Pfadsuche
 - ✅ **Recursive Path Queries** - Variable Tiefe (1-N hops)
 - ✅ **Temporal Graph Queries** - Zeitbereichs-Filter
 
