@@ -624,6 +624,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_hybrid_queries.cpp
         tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
+        tests/test_transaction_isolation.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_with_clause.cpp
@@ -798,6 +799,32 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_hsm_provider
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Phase 1 Benchmarks - Critical Performance Testing
+
+    # Shard Routing benchmark
+    add_executable(bench_shard_routing
+        benchmarks/bench_shard_routing.cpp
+    )
+    
+    target_link_libraries(bench_shard_routing
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Transaction Throughput benchmark
+    add_executable(bench_transaction_throughput
+        benchmarks/bench_transaction_throughput.cpp
+    )
+    
+    target_link_libraries(bench_transaction_throughput
         PRIVATE
             themis_core
             benchmark::benchmark
