@@ -627,6 +627,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_transaction_isolation.cpp
         tests/test_changefeed_ordering.cpp
         tests/test_gorilla_codec_edge_cases.cpp
+        tests/test_saga_concurrent_execution.cpp
+        tests/test_consistent_hash_distribution.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_with_clause.cpp
@@ -851,6 +853,18 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_timeseries_ingestion
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # SAGA Compensation benchmark
+    add_executable(bench_saga_compensation
+        benchmarks/bench_saga_compensation.cpp
+    )
+    
+    target_link_libraries(bench_saga_compensation
         PRIVATE
             themis_core
             benchmark::benchmark
