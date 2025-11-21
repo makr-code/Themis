@@ -1,0 +1,42 @@
+{
+  "name": "azure_blob_storage",
+  "version": "1.0.0",
+  "type": "blob_storage",
+  "description": "Azure Blob Storage backend with encryption",
+  "author": "ThemisDB Team",
+  "binary": {
+    "windows": "themis_blob_azure.dll",
+    "linux": "themis_blob_azure.so",
+    "macos": "themis_blob_azure.dylib"
+  },
+  "auto_load": false,
+  "load_priority": 20,
+  "dependencies": {
+    "azure-storage-blobs-cpp": ">=12.0.0",
+    "openssl": ">=1.1.1"
+  },
+  "capabilities": {
+    "server_side_encryption": true,
+    "access_tiers": true,
+    "lifecycle_management": true,
+    "immutable_storage": true
+  },
+  "configuration": {
+    "connection_string": {
+      "type": "string",
+      "required": true,
+      "description": "Azure Storage connection string"
+    },
+    "container": {
+      "type": "string",
+      "required": true,
+      "description": "Container name"
+    },
+    "prefix": {
+      "type": "string",
+      "required": false,
+      "default": "",
+      "description": "Blob name prefix"
+    }
+  }
+}

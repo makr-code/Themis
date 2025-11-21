@@ -1,0 +1,43 @@
+{
+  "name": "s3_blob_storage",
+  "version": "1.0.0",
+  "type": "blob_storage",
+  "description": "AWS S3 blob storage backend with server-side encryption",
+  "author": "ThemisDB Team",
+  "binary": {
+    "windows": "themis_blob_s3.dll",
+    "linux": "themis_blob_s3.so",
+    "macos": "themis_blob_s3.dylib"
+  },
+  "auto_load": false,
+  "load_priority": 20,
+  "dependencies": {
+    "aws-sdk-cpp": ">=1.11.0",
+    "openssl": ">=1.1.1"
+  },
+  "capabilities": {
+    "server_side_encryption": true,
+    "versioning": true,
+    "lifecycle_management": true,
+    "multipart_upload": true
+  },
+  "configuration": {
+    "bucket": {
+      "type": "string",
+      "required": true,
+      "description": "S3 bucket name"
+    },
+    "region": {
+      "type": "string",
+      "required": true,
+      "default": "us-east-1",
+      "description": "AWS region"
+    },
+    "prefix": {
+      "type": "string",
+      "required": false,
+      "default": "",
+      "description": "Object key prefix"
+    }
+  }
+}

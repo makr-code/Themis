@@ -1,0 +1,26 @@
+{
+  "name": "jsonl_llm_exporter",
+  "version": "1.0.0",
+  "type": "exporter",
+  "description": "JSONL exporter for LLM fine-tuning (LoRA/QLoRA) with weighted training samples",
+  "author": "ThemisDB Team",
+  "binary": {
+    "windows": "themis_jsonl_llm.dll",
+    "linux": "themis_jsonl_llm.so",
+    "macos": "themis_jsonl_llm.dylib"
+  },
+  "dependencies": [],
+  "capabilities": {
+    "formats": ["jsonl", "llm_jsonl", "lora_jsonl", "qlora_jsonl"],
+    "styles": ["instruction_tuning", "chat_completion", "text_completion"],
+    "features": [
+      "weighted_samples",
+      "quality_filtering",
+      "duplicate_detection",
+      "metadata_enrichment",
+      "progress_reporting"
+    ]
+  },
+  "auto_load": false,
+  "load_priority": 5
+}
