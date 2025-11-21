@@ -630,6 +630,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_saga_concurrent_execution.cpp
         tests/test_consistent_hash_distribution.cpp
         tests/test_vulkan_backend.cpp
+        tests/test_postgres_importer_datatypes.cpp
+        tests/test_plugin_lifecycle.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_with_clause.cpp
@@ -916,6 +918,40 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_gnn_embeddings
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+    
+    # Phase 3: Content Management & Governance Benchmarks
+    add_executable(bench_content_versioning
+        benchmarks/bench_content_versioning.cpp
+    )
+    
+    target_link_libraries(bench_content_versioning
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+    
+    add_executable(bench_text_extraction
+        benchmarks/bench_text_extraction.cpp
+    )
+    
+    target_link_libraries(bench_text_extraction
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+    
+    add_executable(bench_policy_evaluation
+        benchmarks/bench_policy_evaluation.cpp
+    )
+    
+    target_link_libraries(bench_policy_evaluation
         PRIVATE
             themis_core
             benchmark::benchmark
