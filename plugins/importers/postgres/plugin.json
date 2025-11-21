@@ -1,0 +1,50 @@
+{
+  "name": "postgres_importer",
+  "version": "1.0.0",
+  "type": "importer",
+  "description": "PostgreSQL pg_dump importer for ThemisDB",
+  "author": "ThemisDB Team",
+  "license": "Proprietary",
+  "binary": {
+    "windows": "themis_import_postgres.dll",
+    "linux": "themis_import_postgres.so",
+    "macos": "themis_import_postgres.dylib"
+  },
+  "dependencies": [
+    "nlohmann/json"
+  ],
+  "capabilities": {
+    "streaming": true,
+    "batching": true,
+    "transactions": false,
+    "thread_safe": false,
+    "gpu_accelerated": false
+  },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "batch_size": {
+        "type": "integer",
+        "default": 1000,
+        "description": "Number of records to process per batch"
+      },
+      "default_namespace": {
+        "type": "string",
+        "default": "imported",
+        "description": "Default namespace for imported entities"
+      },
+      "preserve_ids": {
+        "type": "boolean",
+        "default": false,
+        "description": "Try to preserve original IDs from PostgreSQL"
+      }
+    }
+  },
+  "supported_formats": [
+    "postgresql",
+    "postgres",
+    "pg_dump"
+  ],
+  "auto_load": false,
+  "load_priority": 50
+}
