@@ -2,32 +2,39 @@
 
 ## Overview
 
-ThemisDB's JSONL LLM Exporter has been enhanced with support for **LoRax/Outlines integration** and **LoRAExchange.ai-compatible metadata tracking**. These improvements enable:
+ThemisDB's JSONL LLM Exporter has been enhanced with **vendor-neutral, open-source** support for structured generation and comprehensive LoRA adapter metadata tracking. These improvements enable:
 
-1. **Structured Generation** - JSON schema validation for training data (Outlines compatibility)
-2. **Adapter Provenance** - Complete metadata tracking for LoRA adapters (LoRAExchange.ai standard)
+1. **Structured Generation** - JSON schema validation for training data (using open-source Outlines library)
+2. **Adapter Provenance** - Complete metadata tracking for LoRA adapters (LoRAExchange.ai open standard)
 3. **Quality Assurance** - Automated quality metrics and compliance reporting
 
-## Inspiration & Background
+**Important**: This implementation uses **open-source tools only** (vLLM, Outlines, standard formats) with **no vendor lock-in**.
 
-### LoRax (Predibase)
-LoRax is a multi-LoRA serving infrastructure that enables efficient serving of multiple fine-tuned adapters with dynamic loading and batching. Key benefits:
-- Reduced serving costs through adapter sharing
-- Dynamic adapter loading/unloading
-- Efficient multi-tenant serving
+## Open-Source Technology Stack
 
 ### Outlines (Structured Generation)
-Outlines ensures LLMs generate valid, structured output through:
+**Open-source library** for structured LLM output generation:
 - JSON schema-guided generation
 - Regex-based constraints
 - Context-free grammar (CFG) support
 - Guaranteed valid JSON output
+- **License**: Apache 2.0
+- **Repository**: https://github.com/outlines-dev/outlines
 
-### LoRAExchange.ai
-A marketplace and standard for LoRA adapter discovery, versioning, and metadata. Defines standards for:
-- Adapter metadata (base model, task, performance)
+### vLLM (Multi-LoRA Serving)
+**Open-source inference engine** with native multi-LoRA support (see `VLLM_MULTI_LORA_INTEGRATION.md`):
+- PagedAttention for efficient KV cache management
+- Continuous batching with multi-LoRA support
+- Dynamic adapter loading/unloading
+- **License**: Apache 2.0
+- **Repository**: https://github.com/vllm-project/vllm
+
+### LoRAExchange.ai (Metadata Standard)
+**Open standard** for LoRA adapter discovery, versioning, and metadata:
+- Adapter metadata format (base model, task, performance)
 - Provenance tracking (training data, hyperparameters)
 - Version control and discovery
+- **Standard**: Community-driven, vendor-neutral
 
 ## Features
 
@@ -509,8 +516,14 @@ result = generator(sample["instruction"])
 
 ## References
 
-- [LoRax by Predibase](https://predibase.com/blog/lorax-outlines-better-json-extraction-with-structured-generation-and-lora)
-- [Outlines - Structured Generation](https://github.com/outlines-dev/outlines)
-- [LoRAExchange.ai](https://loraexchange.ai/)
-- [PEFT - Parameter-Efficient Fine-Tuning](https://github.com/huggingface/peft)
-- [JSON Schema](https://json-schema.org/)
+### Open-Source Tools
+- [Outlines - Structured Generation](https://github.com/outlines-dev/outlines) - Apache 2.0 License
+- [vLLM - Inference Engine](https://github.com/vllm-project/vllm) - Apache 2.0 License
+- [PEFT - Parameter-Efficient Fine-Tuning](https://github.com/huggingface/peft) - Apache 2.0 License
+
+### Standards & Specifications
+- [LoRAExchange.ai](https://loraexchange.ai/) - Open metadata standard
+- [JSON Schema](https://json-schema.org/) - Open specification
+
+### Background Research
+- Predibase article on structured generation concepts (reference only, no vendor dependency)

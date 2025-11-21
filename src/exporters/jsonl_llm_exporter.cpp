@@ -71,7 +71,7 @@ ExportStats JSONLLLMExporter::exportEntities(
                 continue;
             }
             
-            // Schema validation (LoRax/Outlines integration)
+            // Schema validation (Outlines open-source integration)
             if (config_.structured_gen.enable_schema_validation) {
                 std::string validation_error;
                 if (!validateAgainstSchema(line, &validation_error)) {
@@ -382,7 +382,7 @@ std::string JSONLLLMExporter::extractMetadata(const BaseEntity& entity) {
 }
 
 // ============================================================================
-// LoRax/Outlines Integration - Schema Validation
+// Outlines (Open-Source) Integration - Schema Validation
 // ============================================================================
 
 bool JSONLLLMExporter::validateAgainstSchema(const std::string& json_str, std::string* error) const {

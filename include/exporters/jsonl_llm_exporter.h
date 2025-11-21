@@ -56,7 +56,7 @@ struct JSONLLLMConfig {
     bool include_metadata = true;
     std::vector<std::string> metadata_fields = {"source", "category", "tags"};
     
-    // Structured generation support (LoRax/Outlines integration)
+    // Structured generation support (Outlines open-source integration)
     struct StructuredGeneration {
         bool enable_schema_validation = false;
         std::string json_schema;  // JSON Schema for output validation

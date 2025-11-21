@@ -2,11 +2,13 @@
 
 ## Executive Summary
 
-ThemisDB has been enhanced with comprehensive support for modern LoRA (Low-Rank Adaptation) training workflows, structured generation, and vLLM multi-LoRA inference. These improvements were derived from analysis of:
+ThemisDB has been enhanced with comprehensive support for modern LoRA (Low-Rank Adaptation) training workflows, structured generation, and multi-LoRA inference using **100% open-source technologies**. These improvements were derived from analysis of:
 
-1. **Predibase LoRax + Outlines** - Structured generation with JSON schema validation
-2. **LoRAExchange.ai** - Adapter metadata standards and provenance tracking
-3. **vLLM Multi-LoRA** - Efficient multi-adapter serving infrastructure for VCC-Clara
+1. **Outlines** (open-source) - Structured generation with JSON schema validation
+2. **LoRAExchange.ai** (open standard) - Adapter metadata standards and provenance tracking
+3. **vLLM** (open-source) - Efficient multi-LoRA serving infrastructure for VCC-Clara
+
+**Important**: This implementation uses **exclusively open-source components** (Apache 2.0 licensed) with **no vendor lock-in or proprietary dependencies**.
 
 ## What Was Implemented
 
@@ -449,19 +451,28 @@ TEST(JSONLLLMExporter, vLLMMetadataExport) {
 
 ## References
 
-- [Predibase LoRax + Outlines](https://predibase.com/blog/lorax-outlines-better-json-extraction-with-structured-generation-and-lora)
-- [LoRAExchange.ai](https://loraexchange.ai/)
+### Open-Source Tools (Apache 2.0 License)
+- [vLLM - Inference Engine](https://github.com/vllm-project/vllm)
 - [vLLM Multi-LoRA Documentation](https://docs.vllm.ai/en/v0.4.1/getting_started/examples/multilora_inference.html)
 - [Outlines - Structured Generation](https://github.com/outlines-dev/outlines)
 - [HuggingFace PEFT](https://github.com/huggingface/peft)
-- [JSON Schema](https://json-schema.org/)
+
+### Open Standards
+- [LoRAExchange.ai](https://loraexchange.ai/) - Community-driven metadata standard
+- [JSON Schema](https://json-schema.org/) - Open specification
+
+### Background Research
+- Predibase article on structured generation concepts (reference only, no dependency)
+
+**Note**: This implementation uses **exclusively open-source components** with no vendor lock-in.
 
 ## Conclusion
 
 ThemisDB now provides production-ready support for modern LoRA workflows with:
-- **Quality Assurance** through schema validation
-- **Complete Provenance** via comprehensive metadata
-- **Efficient Serving** through vLLM integration
+- **Quality Assurance** through schema validation (open-source Outlines)
+- **Complete Provenance** via comprehensive metadata (open standard)
+- **Efficient Serving** through vLLM integration (open-source)
 - **VCC-Clara Ready** with multi-domain adapter support
+- **No Vendor Lock-in** - 100% open-source technology stack
 
 These improvements position ThemisDB as a complete platform for enterprise AI/LLM training data management and adapter lifecycle management.

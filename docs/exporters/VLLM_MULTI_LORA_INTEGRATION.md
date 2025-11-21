@@ -2,25 +2,30 @@
 
 ## Overview
 
-ThemisDB provides native support for **vLLM multi-LoRA inference**, designed to power the VCC-Clara AI system. This integration enables efficient serving of multiple domain-specific LoRA adapters with dynamic loading and batching.
+ThemisDB provides native support for **vLLM multi-LoRA inference** (open-source), designed to power the VCC-Clara AI system. This integration enables efficient serving of multiple domain-specific LoRA adapters with dynamic loading and batching.
+
+**Technology**: 100% open-source implementation using vLLM (Apache 2.0) with no vendor lock-in.
 
 ## Background: vLLM Multi-LoRA Architecture
 
 ### What is vLLM?
-vLLM is a fast and memory-efficient inference engine for LLMs with:
+**vLLM** is an open-source, fast and memory-efficient inference engine for LLMs:
+- **License**: Apache 2.0
+- **Repository**: https://github.com/vllm-project/vllm
 - PagedAttention for efficient KV cache management
 - Continuous batching for high throughput
-- Multi-LoRA support for efficient adapter serving
+- Native multi-LoRA support for efficient adapter serving
 - CUDA/ROCm GPU acceleration
+- **Vendor-neutral**: Works with any HuggingFace-compatible model
 
-### Multi-LoRA Inference
-vLLM can serve multiple LoRA adapters simultaneously:
+### Multi-LoRA Inference (Open-Source)
+vLLM's native multi-LoRA support enables serving multiple adapters simultaneously:
 - **Single Base Model**: One base model loaded in VRAM
 - **Multiple Adapters**: LoRA adapters dynamically loaded per request
 - **Efficient Batching**: Batch requests across different adapters
 - **Zero Overhead**: Adapters add minimal memory/compute cost
 
-**Key Benefit for VCC-Clara**: Serve specialized adapters (legal, medical, environmental) without deploying separate model instances.
+**Key Benefit for VCC-Clara**: Serve specialized adapters (legal, medical, environmental) without deploying separate model instances, using only open-source infrastructure.
 
 ## ThemisDB → vLLM Integration
 
@@ -658,8 +663,17 @@ vllm_metrics = requests.get("http://vllm:8000/metrics").text
 
 ## References
 
-- [vLLM Documentation](https://docs.vllm.ai/)
+### Open-Source Infrastructure
+- [vLLM Documentation](https://docs.vllm.ai/) - Apache 2.0 License
+- [vLLM Repository](https://github.com/vllm-project/vllm) - Open-source inference engine
 - [vLLM Multi-LoRA Example](https://docs.vllm.ai/en/v0.4.1/getting_started/examples/multilora_inference.html)
-- [PEFT Library](https://github.com/huggingface/peft)
+- [HuggingFace PEFT](https://github.com/huggingface/peft) - Apache 2.0 License
+
+### ThemisDB Documentation
 - [ThemisDB JSONL Export API](./JSONL_LLM_EXPORTER.md)
 - [LoRA Adapter Metadata](./LORA_ADAPTER_METADATA.md)
+
+### Standards
+- [LoRAExchange.ai Metadata Standard](https://loraexchange.ai/) - Open standard
+
+**Note**: This implementation uses **100% open-source tools** with no vendor dependencies or lock-in.
