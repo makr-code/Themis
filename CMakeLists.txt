@@ -629,6 +629,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_gorilla_codec_edge_cases.cpp
         tests/test_saga_concurrent_execution.cpp
         tests/test_consistent_hash_distribution.cpp
+        tests/test_vulkan_backend.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_with_clause.cpp
@@ -903,6 +904,18 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_gpu_backends
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # GNN Embeddings benchmark
+    add_executable(bench_gnn_embeddings
+        benchmarks/bench_gnn_embeddings.cpp
+    )
+    
+    target_link_libraries(bench_gnn_embeddings
         PRIVATE
             themis_core
             benchmark::benchmark
