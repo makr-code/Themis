@@ -625,6 +625,8 @@ if(THEMIS_BUILD_TESTS)
         tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
         tests/test_transaction_isolation.cpp
+        tests/test_changefeed_ordering.cpp
+        tests/test_gorilla_codec_edge_cases.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_with_clause.cpp
@@ -825,6 +827,30 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_transaction_throughput
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Changefeed Throughput benchmark
+    add_executable(bench_changefeed_throughput
+        benchmarks/bench_changefeed_throughput.cpp
+    )
+    
+    target_link_libraries(bench_changefeed_throughput
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Timeseries Ingestion benchmark
+    add_executable(bench_timeseries_ingestion
+        benchmarks/bench_timeseries_ingestion.cpp
+    )
+    
+    target_link_libraries(bench_timeseries_ingestion
         PRIVATE
             themis_core
             benchmark::benchmark
