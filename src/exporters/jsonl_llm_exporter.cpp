@@ -418,11 +418,12 @@ bool JSONLLLMExporter::validateJsonSchema(
                 std::string field = required_field.get<std::string>();
                 if (!data.contains(field)) {
                     runtime_metrics_.schema_violations++;
+                    std::string err_msg = "Missing required field: " + field;
                     if (error) {
-                        *error = "Missing required field: " + field;
+                        *error = err_msg;
                     }
                     if (config_.structured_gen.log_validation_errors) {
-                        runtime_metrics_.validation_errors.push_back(*error);
+                        runtime_metrics_.validation_errors.push_back(err_msg);
                     }
                     return false;
                 }
