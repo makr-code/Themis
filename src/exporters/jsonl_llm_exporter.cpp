@@ -104,7 +104,8 @@ ExportStats JSONLLLMExporter::exportEntities(
             if (config_.quality_metrics.enable_metrics) {
                 // Track length distribution
                 if (config_.quality_metrics.track_length_distribution) {
-                    size_t bucket = (line.size() / 100) * 100;  // 100-char buckets
+                    constexpr size_t BUCKET_SIZE = 100;  // 100-char buckets
+                    size_t bucket = (line.size() / BUCKET_SIZE) * BUCKET_SIZE;
                     runtime_metrics_.length_distribution[bucket]++;
                 }
             }
