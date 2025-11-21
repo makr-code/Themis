@@ -246,7 +246,70 @@ namespace themis {
 
 ### 🟡 KATEGORIE 4: Incomplete Features (teilweise implementiert)
 
-#### 4.1 CTE Subquery Support
+#### 4.1 Externe Blob-Storage (S3, Azure, ActiveDirectory)
+**Status:** 🟡 **Design vorhanden, Implementation ausstehend**
+
+**Anforderung:**
+> Dokumente als Binärblob in der RocksDB speichern UND Support für externe Storage 
+> (ActiveDirectory, AWS S3, Azure, etc.)
+
+**Was existiert ✅:**
+- Design dokumentiert in `docs/content_architecture.md`, `docs/content_pipeline.md`
+- Threshold-Strategie definiert:
+  - < 1 MB → RocksDB inline
+  - \> 1 MB → Externes Storage (Filesystem/S3/Azure)
+- Datenmodell vorbereitet: `blob_ref` Feld in ChunkMeta
+- RocksDB BlobDB Support bereits aktiv
+
+**Was fehlt ❌:**
+- ❌ `IBlobStorageBackend` Interface
+- ❌ `FilesystemBlobBackend` Implementation
+- ❌ `S3Backend` (aws-sdk-cpp Integration)
+- ❌ `AzureBlobBackend` (azure-storage-blobs-cpp)
+- ❌ `WebDAVBackend` (für ActiveDirectory/SharePoint)
+- ❌ `BlobStorageManager` (Orchestrator)
+- ❌ Konfiguration in config.yaml
+
+**Dokumentierte Backends:**
+| Backend | Status | Aufwand | Use Case |
+|---------|--------|---------|----------|
+| Filesystem | 📋 Design | 2 Tage | Lokale Blobs > 1 MB |
+| S3 | 📋 Design | 1 Woche | Cloud Storage, Archiv |
+| Azure Blob | 📋 Design | 3 Tage | Azure-Umgebungen |
+| WebDAV | ❌ Nicht dokumentiert | 2 Tage | ActiveDirectory/SharePoint |
+
+**Geplante Architektur:**
+```cpp
+// Aus docs/content_architecture.md
+struct BlobStorageConfig {
+    int64_t inline_threshold_bytes = 1024 * 1024; // 1 MB
+    std::string external_storage_path = "./data/blobs/";
+};
+
+if (blob.size() < config.inline_threshold_bytes) {
+    // Store inline in RocksDB
+    entity.setBlob(blob);
+} else {
+    // Store externally (filesystem or S3)
+    std::string blob_path = external_storage_path + content_id + ".blob";
+    backend->put(blob_path, blob);
+    entity.set("blob_ref", blob_path);
+}
+```
+
+**Aufwand:** 
+- Phase 1 (Filesystem + Interface): 1 Woche
+- Phase 2 (S3, Azure, WebDAV): 2 Wochen
+- Phase 3 (Dokumentation): 3 Tage
+- **Gesamt:** 3-4 Wochen
+
+**Detaillierte Analyse:** Siehe `EXTERNAL_BLOB_STORAGE_ANALYSIS.md`
+
+**Empfehlung:** 🟡 **MEDIUM Priorität** - Filesystem-Backend zuerst implementieren (löst 80% der Use Cases)
+
+---
+
+#### 4.2 CTE Subquery Support
 **Datei:** `src/query/cte_subquery.cpp`
 
 **Status:** 🟡 **Phase 1 Stub mit klarer Roadmap**
@@ -376,7 +439,20 @@ Alle Stubs haben production-ready Alternativen oder bewusste Fallback-Strategien
 
 ### 🟡 MEDIUM (Feature-Vollständigkeit)
 
-#### 1. SDK Transaction Support
+#### 1. Externe Blob-Storage Backends
+**Betroffene Komponenten:** ContentManager, BlobStorage  
+**Server-Integration:** Interface-Design vorhanden
+
+**Aufwand:** 3-4 Wochen (gesamt)
+- Phase 1: Filesystem Backend (1 Woche)
+- Phase 2: S3/Azure/WebDAV (2 Wochen)
+- Phase 3: Dokumentation (3 Tage)
+
+**Details:** Siehe `EXTERNAL_BLOB_STORAGE_ANALYSIS.md`
+
+---
+
+#### 2. SDK Transaction Support
 **Betroffene SDKs:** JavaScript, Python, Rust, Go, C#, Swift (6 von 7)  
 **Server-Endpoints:** ✅ Vorhanden (`/transaction/begin`, `/commit`, `/rollback`)
 
@@ -397,7 +473,7 @@ class Transaction {
 
 ---
 
-#### 2. CTE (Common Table Expression) Support
+#### 3. CTE (Common Table Expression) Support
 **Datei:** `src/query/cte_subquery.cpp`  
 **Status:** Phase 1 Stub
 
@@ -410,7 +486,7 @@ class Transaction {
 
 ---
 
-#### 3. Allgemeiner Traversal Dispatch
+#### 4. Allgemeiner Traversal Dispatch
 **Datei:** `src/query/aql_runner.cpp`  
 **Status:** Shortest Path ✅, BFS ✅, Generisch ❌
 
