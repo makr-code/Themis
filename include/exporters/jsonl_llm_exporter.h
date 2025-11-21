@@ -55,6 +55,67 @@ struct JSONLLLMConfig {
     // Metadata enrichment
     bool include_metadata = true;
     std::vector<std::string> metadata_fields = {"source", "category", "tags"};
+    
+    // Structured generation support (Outlines open-source integration)
+    struct StructuredGeneration {
+        bool enable_schema_validation = false;
+        std::string json_schema;  // JSON Schema for output validation
+        bool include_schema_in_output = false;  // Add schema field to JSONL
+        bool reject_invalid_samples = true;  // Skip samples that don't match schema
+        bool log_validation_errors = true;
+    } structured_gen;
+    
+    // LoRA adapter metadata tracking
+    struct AdapterMetadata {
+        bool enable_tracking = false;
+        std::string adapter_id;  // Unique identifier for this LoRA adapter
+        std::string adapter_version = "1.0.0";
+        std::string base_model_name;  // e.g., "llama-2-7b", "mistralai/Mistral-7B-v0.1"
+        std::string base_model_version;
+        std::string task_type;  // e.g., "question-answering", "summarization"
+        std::string domain;  // e.g., "legal", "medical", "general"
+        std::string language = "en";
+        
+        // vLLM-specific configuration
+        struct VLLMConfig {
+            bool enabled = false;
+            std::string adapter_path;  // Path where adapter will be deployed for vLLM
+            std::string vllm_version = ">=0.4.0";  // Minimum vLLM version required
+            int max_lora_rank = 16;  // Maximum LoRA rank supported
+            bool enable_multi_lora = true;  // Support multi-LoRA batching
+            std::map<std::string, std::string> serving_config;  // vLLM serving parameters
+        } vllm_config;
+        
+        // Training metadata (to be filled during training)
+        struct TrainingConfig {
+            std::string dataset_name;
+            size_t num_samples = 0;
+            int epochs = 0;
+            double learning_rate = 0.0;
+            int lora_rank = 8;
+            double lora_alpha = 16.0;
+            double lora_dropout = 0.1;
+            std::vector<std::string> target_modules;  // e.g., ["q_proj", "v_proj"]
+        } training_config;
+        
+        // Provenance
+        std::string created_by;
+        std::string data_source_uri;  // ThemisDB connection string or query
+        std::string parent_adapter_id;  // For incremental training
+        std::map<std::string, std::string> custom_metadata;
+    } adapter_metadata;
+    
+    // Quality metrics tracking
+    struct QualityMetrics {
+        bool enable_metrics = false;
+        bool track_per_sample = false;
+        bool aggregate_stats = true;
+        
+        // Metrics to track
+        bool track_schema_compliance = true;
+        bool track_length_distribution = true;
+        bool track_diversity_score = true;  // Unique n-grams ratio
+    } quality_metrics;
 };
 
 /// JSONL exporter for LLM fine-tuning (LoRA/QLoRA)
@@ -80,6 +141,18 @@ public:
     /// Get current configuration
     const JSONLLLMConfig& getConfig() const { return config_; }
     
+    /// Validate sample against JSON schema (Outlines compatibility)
+    bool validateAgainstSchema(const std::string& json_str, std::string* error = nullptr) const;
+    
+    /// Get adapter metadata as JSON (for LoRAExchange compatibility)
+    std::string getAdapterMetadataJson() const;
+    
+    /// Set adapter metadata from JSON
+    bool setAdapterMetadataFromJson(const std::string& json_str, std::string* error = nullptr);
+    
+    /// Get quality metrics report
+    std::string getQualityMetricsReport() const;
+    
 private:
     JSONLLLMConfig config_;
     
@@ -91,6 +164,19 @@ private:
     double calculateWeight(const BaseEntity& entity);
     bool passesQualityFilter(const BaseEntity& entity);
     std::string extractMetadata(const BaseEntity& entity);
+    
+    // Schema validation helpers
+    bool validateJsonSchema(const std::string& json_str, const std::string& schema, std::string* error) const;
+    
+    // Quality metrics tracking
+    mutable struct RuntimeMetrics {
+        size_t total_validated = 0;
+        size_t schema_compliant = 0;
+        size_t schema_violations = 0;
+        std::map<size_t, size_t> length_distribution;  // bucket -> count
+        double diversity_score = 0.0;
+        std::vector<std::string> validation_errors;
+    } runtime_metrics_;
 };
 
 /// Plugin wrapper for JSONL LLM Exporter

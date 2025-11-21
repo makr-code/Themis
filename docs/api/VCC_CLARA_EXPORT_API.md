@@ -1,16 +1,38 @@
-# VCC-Clara JSONL Export API
+# VCC-Clara JSONL Export API (Enhanced with vLLM Support)
 
-REST API endpoint for VCC-Clara integration to export thematically and temporally filtered training data in JSONL format for LLM fine-tuning.
+REST API endpoint for VCC-Clara integration to export thematically and temporally filtered training data in JSONL format for LLM fine-tuning with **vLLM multi-LoRA serving**.
 
 ## Overview
 
-The VCC-Clara system can query ThemisDB to export domain-specific knowledge (e.g., Rechtssprechung, Immissionsschutz) with temporal boundaries for AI training purposes.
+The VCC-Clara system can query ThemisDB to export domain-specific knowledge (e.g., Rechtssprechung, Immissionsschutz) with temporal boundaries for AI training purposes. **New**: Full support for vLLM multi-LoRA inference with adapter metadata tracking.
 
 **Use Cases:**
 - Export legal case law (Rechtssprechung) from specific time periods
 - Extract environmental protection (Immissionsschutz) documentation
 - Generate weighted training datasets for domain-specific LLMs
 - Support LoRA/QLoRA fine-tuning workflows
+- **NEW**: vLLM multi-LoRA adapter deployment and serving
+- **NEW**: Structured generation with JSON schema validation (Outlines)
+- **NEW**: Complete adapter provenance tracking (LoRAExchange.ai standard)
+
+## What's New
+
+### vLLM Integration
+- Export adapter metadata in vLLM-compatible format
+- Multi-LoRA configuration for efficient serving
+- Automatic adapter path management
+- Version compatibility tracking
+
+### Structured Generation (Outlines)
+- JSON schema validation for training samples
+- Guaranteed valid output format
+- Quality assurance through schema compliance
+
+### Adapter Metadata
+- Complete provenance tracking
+- Version control and lineage
+- Performance metrics integration
+- LoRAExchange.ai compatibility
 
 ## Endpoint
 
