@@ -60,7 +60,7 @@ protected:
         }
     }
     
-    void createTestManifest(const std::string& name, const std::string& type) {
+    void createTestManifest(const std::string& name, const std::string& type, bool with_signature = false) {
         std::string manifest_path = test_plugin_dir + "/" + name + "/plugin.json";
         fs::create_directories(test_plugin_dir + "/" + name);
         
@@ -84,6 +84,14 @@ protected:
         
         std::ofstream file(manifest_path);
         file << manifest.dump(2);
+        file.close();
+        
+        if (with_signature) {
+            // Generate signature file
+            std::string hash = themis::plugins::PluginManager::instance().calculateFileHash(manifest_path);
+            std::ofstream sig_file(manifest_path + ".sig");
+            sig_file << hash << std::endl;
+        }
     }
 };
 
@@ -95,6 +103,37 @@ TEST_F(PluginManagerTest, PluginManifestParsing) {
     
     // Will discover manifest but not load (no binary)
     EXPECT_EQ(discovered, 0);  // Binary doesn't exist, so discovery skips it
+}
+
+TEST_F(PluginManagerTest, ManifestSignatureVerification) {
+    // In development mode, signature is optional
+    createTestManifest("test_signed", "blob_storage", true);  // With signature
+    
+    std::string manifest_path = test_plugin_dir + "/test_signed/plugin.json";
+    std::string error_msg;
+    
+    auto& pm = themis::plugins::PluginManager::instance();
+    
+    // Should succeed with valid signature
+    EXPECT_TRUE(pm.verifyManifestSignature(manifest_path, error_msg));
+}
+
+TEST_F(PluginManagerTest, ManifestSignatureMissing) {
+    createTestManifest("test_unsigned", "blob_storage", false);  // Without signature
+    
+    std::string manifest_path = test_plugin_dir + "/test_unsigned/plugin.json";
+    std::string error_msg;
+    
+    auto& pm = themis::plugins::PluginManager::instance();
+    
+#ifdef NDEBUG
+    // Production: Should fail
+    EXPECT_FALSE(pm.verifyManifestSignature(manifest_path, error_msg));
+    EXPECT_FALSE(error_msg.empty());
+#else
+    // Development: Should succeed with warning
+    EXPECT_TRUE(pm.verifyManifestSignature(manifest_path, error_msg));
+#endif
 }
 
 TEST_F(PluginManagerTest, PluginRegistry) {

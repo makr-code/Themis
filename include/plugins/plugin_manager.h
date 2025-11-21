@@ -56,6 +56,9 @@ private:
     // Manifest loading
     std::optional<PluginManifest> loadManifest(const std::string& manifest_path);
     
+    // Manifest signature verification
+    bool verifyManifestSignature(const std::string& manifest_path, std::string& error_message);
+    
     // Security verification (reuse acceleration/plugin_security.h)
     bool verifyPlugin(const std::string& path, std::string& error_message);
     

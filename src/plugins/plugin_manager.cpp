@@ -98,12 +98,112 @@ bool PluginManager::verifyPlugin(const std::string& path, std::string& error_mes
 }
 
 // ============================================================================
+// Manifest Signature Verification
+// ============================================================================
+
+bool PluginManager::verifyManifestSignature(const std::string& manifest_path, std::string& error_message) {
+    // Signature verification strategy:
+    // 1. Check for manifest_path + ".sig" file (digital signature)
+    // 2. Verify SHA256 hash matches signature file content
+    // 3. In production, require valid signature
+    
+#ifdef NDEBUG
+    // Production mode: Require signature
+    std::string sig_path = manifest_path + ".sig";
+    
+    if (!fs::exists(sig_path)) {
+        error_message = "Manifest signature file not found: " + sig_path;
+        THEMIS_ERROR("{}", error_message);
+        return false;
+    }
+    
+    try {
+        // Read signature file (contains expected SHA256 hash)
+        std::ifstream sig_file(sig_path);
+        std::string expected_hash;
+        std::getline(sig_file, expected_hash);
+        
+        // Trim whitespace
+        expected_hash.erase(0, expected_hash.find_first_not_of(" \t\n\r"));
+        expected_hash.erase(expected_hash.find_last_not_of(" \t\n\r") + 1);
+        
+        // Compute actual hash of manifest
+        std::string actual_hash = calculateFileHash(manifest_path);
+        
+        if (actual_hash.empty()) {
+            error_message = "Failed to compute hash for manifest: " + manifest_path;
+            THEMIS_ERROR("{}", error_message);
+            return false;
+        }
+        
+        // Compare hashes
+        if (expected_hash != actual_hash) {
+            error_message = "Manifest signature verification failed: hash mismatch\n"
+                          "  Expected: " + expected_hash + "\n"
+                          "  Actual:   " + actual_hash;
+            THEMIS_ERROR("{}", error_message);
+            return false;
+        }
+        
+        THEMIS_INFO("Manifest signature verified: {}", manifest_path);
+        return true;
+        
+    } catch (const std::exception& e) {
+        error_message = std::string("Signature verification error: ") + e.what();
+        THEMIS_ERROR("{}", error_message);
+        return false;
+    }
+#else
+    // Development mode: Signature optional, just warn if missing
+    std::string sig_path = manifest_path + ".sig";
+    
+    if (!fs::exists(sig_path)) {
+        THEMIS_WARN("Manifest signature file not found (development mode): {}", sig_path);
+        return true;  // Allow in development
+    }
+    
+    try {
+        // Verify if signature exists
+        std::ifstream sig_file(sig_path);
+        std::string expected_hash;
+        std::getline(sig_file, expected_hash);
+        
+        expected_hash.erase(0, expected_hash.find_first_not_of(" \t\n\r"));
+        expected_hash.erase(expected_hash.find_last_not_of(" \t\n\r") + 1);
+        
+        std::string actual_hash = calculateFileHash(manifest_path);
+        
+        if (!actual_hash.empty() && expected_hash != actual_hash) {
+            THEMIS_WARN("Manifest signature mismatch (development mode, allowing): {}", manifest_path);
+            THEMIS_WARN("  Expected: {}", expected_hash);
+            THEMIS_WARN("  Actual:   {}", actual_hash);
+        } else {
+            THEMIS_INFO("Manifest signature verified: {}", manifest_path);
+        }
+        
+    } catch (const std::exception& e) {
+        THEMIS_WARN("Signature verification warning (development mode): {}", e.what());
+    }
+    
+    return true;  // Always allow in development
+#endif
+}
+
+// ============================================================================
 // Manifest Loading
 // ============================================================================
 
 std::optional<PluginManifest> PluginManager::loadManifest(const std::string& manifest_path) {
     if (!fs::exists(manifest_path)) {
         THEMIS_WARN("Plugin manifest not found: {}", manifest_path);
+        return std::nullopt;
+    }
+    
+    // Verify manifest signature before loading
+    std::string error_message;
+    if (!verifyManifestSignature(manifest_path, error_message)) {
+        THEMIS_ERROR("Manifest signature verification failed for {}: {}", 
+            manifest_path, error_message);
         return std::nullopt;
     }
     
