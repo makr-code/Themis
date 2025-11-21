@@ -870,6 +870,44 @@ if(THEMIS_BUILD_BENCHMARKS)
             benchmark::benchmark
             benchmark::benchmark_main
     )
+
+    # Phase 2 Benchmarks - GPU Backends and Graph Analytics
+
+    # Graph Traversal benchmark
+    add_executable(bench_graph_traversal
+        benchmarks/bench_graph_traversal.cpp
+    )
+    
+    target_link_libraries(bench_graph_traversal
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # PageRank benchmark
+    add_executable(bench_pagerank
+        benchmarks/bench_pagerank.cpp
+    )
+    
+    target_link_libraries(bench_pagerank
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # GPU Backends benchmark
+    add_executable(bench_gpu_backends
+        benchmarks/bench_gpu_backends.cpp
+    )
+    
+    target_link_libraries(bench_gpu_backends
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
 endif()
 
 # Admin Tools (.NET)
