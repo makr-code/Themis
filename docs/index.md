@@ -2,6 +2,8 @@
 
 Willkommen bei ThemisDB. Diese Dokumentation beschreibt Architektur, Datenmodell, Storage & MVCC, Query/AQL, Indexe, Content-Pipeline, Vektor-/Zeitreihenfunktionen, Sicherheit/Governance, APIs, Admin-Tools sowie Betrieb & Performance.
 
+> **Features-Übersicht:** Vollständige Liste aller Funktionen mit Status-Indikatoren → [FEATURES.md](../FEATURES.md)
+
 > **Für Stakeholder:** Umfassender Sachstandsbericht verfügbar unter [Sachstandsbericht 2025](THEMIS_SACHSTANDSBERICHT_2025.md)
 
 > Hinweis: Für Weitergabe/Archivierung

@@ -4,6 +4,9 @@ Welcome to the ThemisDB documentation! This directory contains comprehensive doc
 
 ## Quick Navigation
 
+### 📋 Overview
+- **[FEATURES.md](../FEATURES.md)** - **Comprehensive features list** with production-ready status indicators (✅/🔧/📋)
+
 ### 🚀 Getting Started
 - [Main README](../README.md) - Quick start guide and basic usage
 - [Architecture Overview](architecture.md) - High-level system architecture  

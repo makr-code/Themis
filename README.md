@@ -15,6 +15,7 @@ The ThemisDB Architecture: A Technical In-Depth Analysis of a Multi-Model Databa
 ## 📊 Entwicklungsstand & Dokumentation
 
 **Kern-Dokumentation (Neu konsolidiert):**
+- **[Features Liste](FEATURES.md)** - Vollständige Features-Übersicht mit Status-Indikatoren (✅ Production-Ready | 🔧 Beta | 📋 Geplant)
 - **[Development Audit Log](DEVELOPMENT_AUDITLOG.md)** - Vollständiger Entwicklungsstand, Feature-Status, Metriken, nächste Schritte
 - **[Roadmap](ROADMAP.md)** - Konsolidierte Entwicklungs-Roadmap (Q1-Q4 2026+), GPU/CUDA Pläne
 - **[Next Implementation Priorities](NEXT_IMPLEMENTATION_PRIORITIES.md)** - Priorisierung der nächsten Entwicklungsschritte (empfohlen: Column-Level Encryption)
