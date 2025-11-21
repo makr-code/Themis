@@ -624,6 +624,14 @@ if(THEMIS_BUILD_TESTS)
         tests/test_hybrid_queries.cpp
         tests/test_http_audit.cpp
         tests/test_transaction_manager.cpp
+        tests/test_transaction_isolation.cpp
+        tests/test_changefeed_ordering.cpp
+        tests/test_gorilla_codec_edge_cases.cpp
+        tests/test_saga_concurrent_execution.cpp
+        tests/test_consistent_hash_distribution.cpp
+        tests/test_vulkan_backend.cpp
+        tests/test_postgres_importer_datatypes.cpp
+        tests/test_plugin_lifecycle.cpp
         tests/test_mvcc.cpp
         tests/test_aql_parser.cpp
         tests/test_aql_with_clause.cpp
@@ -798,6 +806,152 @@ if(THEMIS_BUILD_BENCHMARKS)
     )
     
     target_link_libraries(bench_hsm_provider
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Phase 1 Benchmarks - Critical Performance Testing
+
+    # Shard Routing benchmark
+    add_executable(bench_shard_routing
+        benchmarks/bench_shard_routing.cpp
+    )
+    
+    target_link_libraries(bench_shard_routing
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Transaction Throughput benchmark
+    add_executable(bench_transaction_throughput
+        benchmarks/bench_transaction_throughput.cpp
+    )
+    
+    target_link_libraries(bench_transaction_throughput
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Changefeed Throughput benchmark
+    add_executable(bench_changefeed_throughput
+        benchmarks/bench_changefeed_throughput.cpp
+    )
+    
+    target_link_libraries(bench_changefeed_throughput
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Timeseries Ingestion benchmark
+    add_executable(bench_timeseries_ingestion
+        benchmarks/bench_timeseries_ingestion.cpp
+    )
+    
+    target_link_libraries(bench_timeseries_ingestion
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # SAGA Compensation benchmark
+    add_executable(bench_saga_compensation
+        benchmarks/bench_saga_compensation.cpp
+    )
+    
+    target_link_libraries(bench_saga_compensation
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # Phase 2 Benchmarks - GPU Backends and Graph Analytics
+
+    # Graph Traversal benchmark
+    add_executable(bench_graph_traversal
+        benchmarks/bench_graph_traversal.cpp
+    )
+    
+    target_link_libraries(bench_graph_traversal
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # PageRank benchmark
+    add_executable(bench_pagerank
+        benchmarks/bench_pagerank.cpp
+    )
+    
+    target_link_libraries(bench_pagerank
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # GPU Backends benchmark
+    add_executable(bench_gpu_backends
+        benchmarks/bench_gpu_backends.cpp
+    )
+    
+    target_link_libraries(bench_gpu_backends
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+
+    # GNN Embeddings benchmark
+    add_executable(bench_gnn_embeddings
+        benchmarks/bench_gnn_embeddings.cpp
+    )
+    
+    target_link_libraries(bench_gnn_embeddings
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+    
+    # Phase 3: Content Management & Governance Benchmarks
+    add_executable(bench_content_versioning
+        benchmarks/bench_content_versioning.cpp
+    )
+    
+    target_link_libraries(bench_content_versioning
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+    
+    add_executable(bench_text_extraction
+        benchmarks/bench_text_extraction.cpp
+    )
+    
+    target_link_libraries(bench_text_extraction
+        PRIVATE
+            themis_core
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
+    
+    add_executable(bench_policy_evaluation
+        benchmarks/bench_policy_evaluation.cpp
+    )
+    
+    target_link_libraries(bench_policy_evaluation
         PRIVATE
             themis_core
             benchmark::benchmark
