@@ -7,11 +7,8 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/buildflags.mk
 
-# Reduce memory usage during parallel builds
-export MAKEFLAGS += -j$(shell nproc)
-
 %:
-	dh $@ --buildsystem=cmake
+	dh $@ --buildsystem=cmake --parallel
 
 override_dh_auto_configure:
 	dh_auto_configure -- \

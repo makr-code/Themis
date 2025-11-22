@@ -9,7 +9,10 @@ if ($service) {
     Stop-Service -Name 'ThemisDB' -Force -ErrorAction SilentlyContinue
     
     Write-Host "Removing ThemisDB service..."
-    sc.exe delete 'ThemisDB'
+    $result = sc.exe delete 'ThemisDB'
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Failed to delete service: $result"
+    }
 }
 
 # Remove from PATH

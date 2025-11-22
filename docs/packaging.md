@@ -6,7 +6,7 @@ This document describes how to build and publish ThemisDB packages for various o
 
 - [Linux Distributions](#linux-distributions)
   - [Debian/Ubuntu (.deb)](#debianubuntu-deb)
-  - [Fedora/RHEL/CentOS (.rpm)](#fedorарhelcentos-rpm)
+  - [Fedora/RHEL/CentOS (.rpm)](#fedorarhel-centos-rpm)
   - [Arch Linux (PKGBUILD)](#arch-linux-pkgbuild)
 - [Windows](#windows)
   - [Chocolatey](#chocolatey)
