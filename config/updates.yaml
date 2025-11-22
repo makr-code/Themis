@@ -1,0 +1,109 @@
+# ThemisDB Updates Configuration
+# This file configures the update checker and hot-reload system
+
+updates:
+  # Update Checker Settings
+  checker:
+    # Enable the update checker
+    enabled: true
+    
+    # How often to check for updates (in seconds)
+    # Default: 3600 (1 hour)
+    check_interval_seconds: 3600
+    
+    # GitHub repository settings
+    github_owner: makr-code
+    github_repo: ThemisDB
+    github_api_url: https://api.github.com
+    
+    # Optional: GitHub API token for higher rate limits
+    # Without token: 60 requests/hour
+    # With token: 5000 requests/hour
+    # github_api_token: ghp_xxxxxxxxxxxxx
+    
+    # Optional: Proxy URL for GitHub API requests
+    # proxy_url: http://proxy.example.com:8080
+  
+  # Auto-Update Settings
+  auto_update:
+    # Enable automatic updates
+    # WARNING: Be careful with auto-updates in production!
+    enabled: false
+    
+    # Only auto-apply critical security updates
+    # If false, all updates will be auto-applied (not recommended)
+    critical_only: true
+    
+    # Require manual approval even for critical updates
+    # If true, critical updates will be downloaded but not applied automatically
+    require_approval: true
+    
+    # Auto-approve timeout (in seconds)
+    # If set > 0, critical updates will be auto-applied after this timeout
+    # Set to 0 to never auto-approve
+    approval_timeout_seconds: 300
+    
+    # Use scheduled updates instead of immediate application
+    scheduled: false
+    
+    # Time to apply updates (HH:MM format, 24-hour)
+    schedule_time: "02:00"
+    
+    # Days of week to apply updates
+    schedule_days:
+      - Sunday
+  
+  # Hot-Reload Settings
+  hot_reload:
+    # Enable hot-reload capability
+    enabled: true
+    
+    # Directory for downloaded release files
+    download_directory: /tmp/themis_updates
+    
+    # Directory for rollback backups
+    backup_directory: /var/lib/themisdb/rollback
+    
+    # Installation directory (where ThemisDB is installed)
+    # Use "." for current directory
+    install_directory: .
+    
+    # Always verify digital signatures
+    # NEVER disable this in production!
+    verify_signatures: true
+    
+    # Always create backup before applying updates
+    # NEVER disable this in production!
+    create_backup: true
+    
+    # Number of rollback points to keep
+    # Older rollback points will be automatically cleaned
+    keep_rollback_points: 3
+    
+    # Download timeout per file (in seconds)
+    download_timeout_seconds: 300
+    
+    # Maximum number of download retries on failure
+    max_retries: 3
+    
+    # Delay between retries (in seconds)
+    retry_delay_seconds: 5
+  
+  # Notification Settings
+  notifications:
+    # Enable notifications
+    enabled: false
+    
+    # Events to send notifications for
+    on_events:
+      - update_available      # New update detected
+      - critical_update       # Critical security update detected
+      - update_applied        # Update successfully applied
+      - update_failed         # Update application failed
+      - rollback_performed    # Rollback was performed
+    
+    # Optional: Webhook URL for notifications (e.g., Slack, Discord)
+    # webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    
+    # Optional: Email address for notifications
+    # email_to: admin@example.com

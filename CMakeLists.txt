@@ -341,6 +341,7 @@ set(THEMIS_CORE_SOURCES
     src/updates/release_manifest.cpp
     src/updates/manifest_database.cpp
     src/updates/hot_reload_engine.cpp
+    src/updates/updates_config.cpp
     
     # Geo utilities
     src/utils/geo/ewkb.cpp
