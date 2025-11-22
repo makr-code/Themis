@@ -429,7 +429,11 @@ HttpServer::HttpServer(
             themis::utils::UpdateCheckerConfig update_config;
             update_config.github_owner = "makr-code";
             update_config.github_repo = "ThemisDB";
-            update_config.current_version = "1.0.0"; // TODO: Read from build config
+#ifdef THEMIS_VERSION_STRING
+            update_config.current_version = THEMIS_VERSION_STRING;
+#else
+            update_config.current_version = "1.0.0"; // Fallback if version not defined
+#endif
             update_config.check_interval = std::chrono::seconds(3600); // 1 hour
             
             // Allow configuration via environment variables

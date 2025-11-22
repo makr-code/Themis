@@ -1,8 +1,8 @@
 #include "utils/update_checker.h"
 #include "utils/logger.h"
+#include <algorithm>
 #include <regex>
 #include <sstream>
-#include <algorithm>
 #include <variant>
 
 #ifdef THEMIS_ENABLE_CURL
@@ -435,7 +435,11 @@ std::variant<std::vector<ReleaseInfo>, std::string> UpdateChecker::fetchReleases
             // Skip drafts
             if (!release->draft) {
                 releases.push_back(*release);
+            } else {
+                LOG_DEBUG("Skipping draft release: {}", release->tag_name);
             }
+        } else {
+            LOG_DEBUG("Skipping release with invalid format");
         }
     }
     

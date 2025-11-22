@@ -491,6 +491,14 @@ if(CURL_FOUND)
     target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_CURL)
 endif()
 
+# Define version string for runtime use
+target_compile_definitions(themis_core PUBLIC 
+    THEMIS_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    THEMIS_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    THEMIS_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    THEMIS_VERSION_STRING="${PROJECT_VERSION}"
+)
+
 if(THEMIS_ENABLE_GPU)
     target_link_libraries(themis_core PUBLIC faiss)
     target_compile_definitions(themis_core PUBLIC THEMIS_GPU_ENABLED)
