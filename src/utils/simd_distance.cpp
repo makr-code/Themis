@@ -77,12 +77,22 @@ static inline float neon_l2_sq(const float* a, const float* b, std::size_t dim) 
         float32x4_t va0 = vld1q_f32(a + i);
         float32x4_t vb0 = vld1q_f32(b + i);
         float32x4_t diff0 = vsubq_f32(va0, vb0);
-        acc0 = vmlaq_f32(acc0, diff0, diff0);  // acc += diff * diff
+        // Use FMA for better performance and accuracy (available on ARMv8+)
+        // Falls back to vmlaq_f32 on older architectures
+        #if defined(__ARM_FEATURE_FMA)
+        acc0 = vfmaq_f32(acc0, diff0, diff0);  // Fused multiply-add
+        #else
+        acc0 = vmlaq_f32(acc0, diff0, diff0);  // Regular multiply-add
+        #endif
         
         float32x4_t va1 = vld1q_f32(a + i + 4);
         float32x4_t vb1 = vld1q_f32(b + i + 4);
         float32x4_t diff1 = vsubq_f32(va1, vb1);
+        #if defined(__ARM_FEATURE_FMA)
+        acc1 = vfmaq_f32(acc1, diff1, diff1);
+        #else
         acc1 = vmlaq_f32(acc1, diff1, diff1);
+        #endif
     }
     
     // Combine accumulators

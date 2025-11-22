@@ -4,6 +4,17 @@
 
 set -e
 
+# Setup cleanup trap to remove build artifacts even on early exit
+BUILD_DIR="build-arm-test"
+cleanup() {
+    if [ -d "$BUILD_DIR" ]; then
+        echo ""
+        echo "Cleaning up test build directory..."
+        rm -rf "$BUILD_DIR"
+    fi
+}
+trap cleanup EXIT
+
 echo "=== ThemisDB ARM/Raspberry Pi Compilation Test ==="
 echo ""
 
@@ -108,8 +119,7 @@ fi
 echo ""
 echo "Testing CMake configuration..."
 
-# Create a test build directory
-BUILD_DIR="build-arm-test"
+# Remove any existing test build directory
 rm -rf "$BUILD_DIR"
 
 # Try to configure the build
@@ -197,5 +207,4 @@ echo "  ./build.sh"
 echo ""
 echo "For more information, see: docs/ARM_RASPBERRY_PI_BUILD.md"
 
-# Cleanup
-rm -rf "$BUILD_DIR"
+# Note: Cleanup happens automatically via trap on EXIT
