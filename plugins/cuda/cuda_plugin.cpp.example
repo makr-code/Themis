@@ -1,0 +1,41 @@
+// Example CUDA Plugin Implementation
+// File: plugins/cuda/cuda_plugin.cpp
+
+#include "acceleration/plugin_loader.h"
+#include "acceleration/cuda_backend.h"  // Would need to be implemented
+
+namespace themis {
+namespace acceleration {
+
+class CUDAPlugin : public BackendPlugin {
+public:
+    const char* pluginName() const noexcept override {
+        return "CUDA Acceleration Plugin";
+    }
+    
+    const char* pluginVersion() const noexcept override {
+        return "1.0.0";
+    }
+    
+    BackendType backendType() const noexcept override {
+        return BackendType::CUDA;
+    }
+    
+    std::unique_ptr<IVectorBackend> createVectorBackend() override {
+        return std::make_unique<CUDAVectorBackend>();
+    }
+    
+    std::unique_ptr<IGraphBackend> createGraphBackend() override {
+        return std::make_unique<CUDAGraphBackend>();
+    }
+    
+    std::unique_ptr<IGeoBackend> createGeoBackend() override {
+        return std::make_unique<CUDAGeoBackend>();
+    }
+};
+
+} // namespace acceleration
+} // namespace themis
+
+// Plugin entry point - exported from DLL
+THEMIS_DEFINE_PLUGIN(themis::acceleration::CUDAPlugin)

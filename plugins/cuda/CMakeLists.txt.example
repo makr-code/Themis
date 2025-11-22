@@ -1,0 +1,60 @@
+# Example Plugin CMakeLists.txt
+# This shows how to build a hardware acceleration plugin as a separate DLL/SO
+
+cmake_minimum_required(VERSION 3.20)
+project(themis_accel_cuda VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find CUDA
+find_package(CUDAToolkit REQUIRED)
+
+# Find Themis headers (install location)
+find_path(THEMIS_INCLUDE_DIR 
+    NAMES acceleration/compute_backend.h
+    PATHS 
+        ${CMAKE_INSTALL_PREFIX}/include
+        /usr/local/include
+        /usr/include
+)
+
+if(NOT THEMIS_INCLUDE_DIR)
+    message(FATAL_ERROR "ThemisDB headers not found. Install ThemisDB first.")
+endif()
+
+# Plugin library
+add_library(themis_accel_cuda SHARED
+    cuda_plugin.cpp
+    cuda_vector_backend.cpp
+    cuda_graph_backend.cpp
+    cuda_geo_backend.cpp
+)
+
+target_include_directories(themis_accel_cuda PRIVATE
+    ${THEMIS_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+target_link_libraries(themis_accel_cuda PRIVATE
+    CUDA::cudart
+    CUDA::cuda_driver
+)
+
+# Set output name to follow plugin naming convention
+set_target_properties(themis_accel_cuda PROPERTIES
+    OUTPUT_NAME "themis_accel_cuda"
+    PREFIX ""  # No 'lib' prefix on Unix
+    SUFFIX ".plugin${CMAKE_SHARED_LIBRARY_SUFFIX}"
+)
+
+# Installation
+install(TARGETS themis_accel_cuda
+    LIBRARY DESTINATION lib/themis/plugins
+    RUNTIME DESTINATION lib/themis/plugins
+)
+
+# Optional: Install plugin metadata
+install(FILES cuda_plugin.json
+    DESTINATION lib/themis/plugins
+)
