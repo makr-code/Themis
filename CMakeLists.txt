@@ -296,6 +296,7 @@ set(THEMIS_CORE_SOURCES
     src/server/policy_engine.cpp
     src/server/auth_middleware.cpp
     src/server/rate_limiter.cpp
+    src/server/update_api_handler.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp
@@ -333,6 +334,7 @@ set(THEMIS_CORE_SOURCES
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
     src/utils/simd_distance.cpp
+    src/utils/update_checker.cpp
     
     # Geo utilities
     src/utils/geo/ewkb.cpp
@@ -482,6 +484,11 @@ target_link_libraries(themis_core
 if(DEFINED THEMIS_ZSTD_TARGET)
     target_link_libraries(themis_core PUBLIC ${THEMIS_ZSTD_TARGET})
     target_compile_definitions(themis_core PUBLIC THEMIS_HAS_ZSTD)
+endif()
+
+# Define THEMIS_ENABLE_CURL if CURL is found
+if(CURL_FOUND)
+    target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_CURL)
 endif()
 
 if(THEMIS_ENABLE_GPU)

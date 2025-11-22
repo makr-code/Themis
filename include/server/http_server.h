@@ -34,11 +34,13 @@
 #include "server/pki_api_handler.h"
 #include "server/classification_api_handler.h"
 #include "server/reports_api_handler.h"
+#include "server/update_api_handler.h"
 #include "server/rate_limiter.h"
 #include "server/auth_middleware.h"
 #include "server/policy_engine.h"
 #include "server/ranger_adapter.h"
 #include "utils/pii_pseudonymizer.h"
+#include "utils/update_checker.h"
 #include "security/encryption.h"
 #include "utils/input_validator.h"
 
@@ -97,6 +99,7 @@ public:
         bool feature_cdc = false;
         bool feature_timeseries = false;
     bool feature_pii_manager = false; // PII mappings persistence (RocksDB CF + API handler)
+    bool feature_update_checker = false; // GitHub update checker subsystem
         // SSE/CDC streaming config
         uint32_t sse_max_events_per_second = 0; // 0 = unlimited; server-side rate limit per connection
         // API rate limits
@@ -495,6 +498,10 @@ private:
     
     // Reports API Handler (Skeleton)
     std::unique_ptr<themis::server::ReportsApiHandler> reports_api_;
+    
+    // Update API Handler
+    std::unique_ptr<themis::server::UpdateApiHandler> update_api_;
+    std::shared_ptr<themis::utils::UpdateChecker> update_checker_;
     
     // Adaptive Index Manager (Sprint C)
     std::unique_ptr<AdaptiveIndexManager> adaptive_index_;
