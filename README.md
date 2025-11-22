@@ -811,7 +811,82 @@ Weitere Ressourcen:
 - Gesamt‑PDF: https://makr-code.github.io/ThemisDB/themisdb-docs-complete.pdf
 - GitHub Wiki: https://github.com/makr-code/ThemisDB/wiki
 
+## Installation
+
+### Package Managers
+
+ThemisDB is available through various package managers for easy installation:
+
+#### Linux
+
+**Debian/Ubuntu:**
+```bash
+# Add repository (once available)
+sudo apt-get install themisdb
+
+# Or download .deb package
+wget https://github.com/makr-code/ThemisDB/releases/download/v1.0.0/themisdb_1.0.0-1_amd64.deb
+sudo dpkg -i themisdb_1.0.0-1_amd64.deb
+sudo apt-get install -f
+```
+
+**Fedora/RHEL/CentOS:**
+```bash
+# Install from RPM
+sudo dnf install https://github.com/makr-code/ThemisDB/releases/download/v1.0.0/themisdb-1.0.0-1.x86_64.rpm
+```
+
+**Arch Linux:**
+```bash
+# Install from AUR (once available)
+yay -S themisdb
+
+# Or build manually
+git clone https://aur.archlinux.org/themisdb.git
+cd themisdb
+makepkg -si
+```
+
+#### Windows
+
+**Chocolatey:**
+```powershell
+choco install themisdb
+```
+
+**WinGet:**
+```powershell
+winget install ThemisDB.ThemisDB
+```
+
+#### macOS
+
+**Homebrew:**
+```bash
+brew install themisdb
+
+# Start the service
+brew services start themisdb
+```
+
+### Docker
+
+```bash
+# Pull from GitHub Container Registry
+docker pull ghcr.io/makr-code/themis:latest
+
+# Or from Docker Hub
+docker pull themisdb/themis:latest
+
+# Run with Docker Compose
+docker compose up
+```
+
+For detailed packaging and distribution information, see [docs/packaging.md](docs/packaging.md).
+
 ## Quick Start
+
+### From Source
 
 ```powershell
 # 1. Clone and setup

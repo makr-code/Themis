@@ -419,12 +419,68 @@ Any other relevant information
 - **API docs**: Generated from code comments, `docs/apis/`
 - **User guides**: `docs/*.md`
 - **Deployment**: `docs/deployment.md`
+- **Packaging**: `docs/packaging.md`, `docs/PACKAGING-QUICKREF.md`
 
 **Updating documentation:**
 - Keep docs in sync with code changes
 - Use clear, concise language
 - Include code examples where appropriate
 - Update `mkdocs.yml` if adding new pages
+
+## Package Maintenance
+
+If you're interested in maintaining ThemisDB packages for a specific distribution:
+
+### Becoming a Package Maintainer
+
+We welcome package maintainers for all platforms! To become a maintainer:
+
+1. **Review the packaging documentation:**
+   - Read `docs/packaging.md` for detailed instructions
+   - Check `docs/PACKAGING-QUICKREF.md` for quick reference
+
+2. **Test the package build:**
+   - Build the package for your target platform
+   - Install and test in a clean environment
+   - Verify all functionality works as expected
+
+3. **Submit to distribution repositories:**
+   - Follow platform-specific guidelines (see `docs/packaging.md`)
+   - Submit package to appropriate repository (PPA, AUR, Copr, etc.)
+   - Notify us via GitHub issue when package is published
+
+4. **Keep packages updated:**
+   - Monitor releases and security updates
+   - Update packages within 1-2 weeks of new releases
+   - Coordinate with core team for pre-release testing
+
+### Supported Platforms
+
+We currently support packaging for:
+- **Linux**: Debian/Ubuntu (.deb), Fedora/RHEL/CentOS (.rpm), Arch Linux (PKGBUILD)
+- **Windows**: Chocolatey, WinGet
+- **macOS**: Homebrew
+
+### Automation Tools
+
+Use the provided scripts to prepare new releases:
+
+```bash
+# Linux/macOS
+./scripts/prepare-release.sh 1.0.1
+
+# Windows
+.\scripts\prepare-release.ps1 -Version 1.0.1
+```
+
+These scripts automatically update version numbers across all packaging files.
+
+### Package Maintainer Benefits
+
+- Listed as package maintainer in README
+- Early access to release candidates for testing
+- Direct communication channel with core team
+- Recognition in release notes
 
 ## Questions?
 
