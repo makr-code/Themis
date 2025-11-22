@@ -17,20 +17,21 @@ class GeoIndexIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Create temporary RocksDB instance
-        db_ = std::make_unique<RocksDBWrapper>("test_geo_integration.db");
+        RocksDBWrapper::Config cfg; cfg.db_path = "test_geo_integration_db"; cfg.memtable_size_mb = 16; cfg.block_cache_size_mb = 16;
+        db_ = std::make_unique<RocksDBWrapper>(cfg); ASSERT_TRUE(db_->open());
         spatial_mgr_ = std::make_unique<SpatialIndexManager>(*db_);
         
         // Create spatial index for test table
         RTreeConfig config;
         config.total_bounds = MBR(-180.0, -90.0, 180.0, 90.0);
         auto status = spatial_mgr_->createSpatialIndex("test_points", "geometry", config);
-        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(status.ok);
     }
     
     void TearDown() override {
         spatial_mgr_.reset();
         db_.reset();
-        std::remove("test_geo_integration.db");
+        std::filesystem::remove_all("test_geo_integration_db");
     }
     
     std::unique_ptr<RocksDBWrapper> db_;

@@ -1,0 +1,129 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "THEMIS_BUILD_TESTS": "ON",
+        "THEMIS_BUILD_BENCHMARKS": "OFF",
+        "THEMIS_ENABLE_TRACING": "ON",
+        "THEMIS_ENABLE_GPU": "OFF",
+        "THEMIS_ENABLE_ASAN": "OFF",
+        "THEMIS_STRICT_BUILD": "OFF"
+      }
+    },
+    {
+      "name": "windows-ninja-msvc-debug",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-msvc-ninja-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-ninja-msvc-release",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-msvc-ninja-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-ninja-clangcl-debug",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-clangcl-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe"
+      }
+    },
+    {
+      "name": "windows-ninja-clangcl-release",
+      "inherits": ["windows-ninja-clangcl-debug"],
+      "binaryDir": "${sourceDir}/build-clangcl-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-ninja-clang-debug",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-linux-clang-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "linux-ninja-clang-release",
+      "inherits": ["linux-ninja-clang-debug"],
+      "binaryDir": "${sourceDir}/build-linux-clang-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-ninja-msvc-debug",
+      "configurePreset": "windows-ninja-msvc-debug"
+    },
+    {
+      "name": "windows-ninja-msvc-release",
+      "configurePreset": "windows-ninja-msvc-release"
+    },
+    {
+      "name": "windows-ninja-clangcl-debug",
+      "configurePreset": "windows-ninja-clangcl-debug"
+    },
+    {
+      "name": "windows-ninja-clangcl-release",
+      "configurePreset": "windows-ninja-clangcl-release"
+    },
+    {
+      "name": "linux-ninja-clang-debug",
+      "configurePreset": "linux-ninja-clang-debug"
+    },
+    {
+      "name": "linux-ninja-clang-release",
+      "configurePreset": "linux-ninja-clang-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-ninja-msvc-debug",
+      "configurePreset": "windows-ninja-msvc-debug"
+    },
+    {
+      "name": "windows-ninja-msvc-release",
+      "configurePreset": "windows-ninja-msvc-release"
+    },
+    {
+      "name": "windows-ninja-clangcl-debug",
+      "configurePreset": "windows-ninja-clangcl-debug"
+    },
+    {
+      "name": "windows-ninja-clangcl-release",
+      "configurePreset": "windows-ninja-clangcl-release"
+    },
+    {
+      "name": "linux-ninja-clang-debug",
+      "configurePreset": "linux-ninja-clang-debug"
+    },
+    {
+      "name": "linux-ninja-clang-release",
+      "configurePreset": "linux-ninja-clang-release"
+    }
+  ]
+}

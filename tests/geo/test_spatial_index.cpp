@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "index/spatial_index.h"
-#include "storage/storage_engine.h"
+#include "storage/rocksdb_wrapper.h"
+#include <filesystem>
 #include <memory>
 #include <cmath>
 
@@ -11,21 +12,22 @@ using namespace themis::geo;
 class SpatialIndexTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        storage_ = std::make_shared<StorageEngine>("test_spatial_index.db");
-        spatial_mgr_ = std::make_unique<SpatialIndexManager>(storage_);
+        RocksDBWrapper::Config cfg; cfg.db_path = "test_spatial_index_db"; cfg.memtable_size_mb = 16; cfg.block_cache_size_mb = 16;
+        db_ = std::make_unique<RocksDBWrapper>(cfg); ASSERT_TRUE(db_->open());
+        spatial_mgr_ = std::make_unique<SpatialIndexManager>(*db_);
     }
     
     void TearDown() override {
         spatial_mgr_.reset();
-        storage_.reset();
-        std::remove("test_spatial_index.db");
+        db_.reset();
+        std::filesystem::remove_all("test_spatial_index_db");
     }
     
     bool approxEqual(double a, double b, double epsilon = 1e-6) {
         return std::fabs(a - b) < epsilon;
     }
     
-    std::shared_ptr<StorageEngine> storage_;
+    std::unique_ptr<RocksDBWrapper> db_;
     std::unique_ptr<SpatialIndexManager> spatial_mgr_;
 };
 
@@ -35,7 +37,7 @@ TEST_F(SpatialIndexTest, CreateIndex) {
     config.total_bounds = MBR(-180.0, -90.0, 180.0, 90.0);
     
     auto status = spatial_mgr_->createSpatialIndex("cities", "geometry", config);
-    EXPECT_TRUE(status.ok());
+    EXPECT_TRUE(status);
     
     EXPECT_TRUE(spatial_mgr_->hasSpatialIndex("cities"));
     EXPECT_FALSE(spatial_mgr_->hasSpatialIndex("nonexistent"));
@@ -52,7 +54,7 @@ TEST_F(SpatialIndexTest, InsertAndSearchPoint) {
     berlin_sidecar.centroid = Coordinate(13.4, 52.5);
     
     auto status = spatial_mgr_->insert("cities", "cities/berlin", berlin_sidecar);
-    EXPECT_TRUE(status.ok());
+    EXPECT_TRUE(status);
     
     // Search: query box around Berlin
     MBR query_box(13.0, 52.0, 14.0, 53.0);
@@ -326,7 +328,4 @@ TEST_F(SpatialIndexTest, DropIndex) {
     EXPECT_FALSE(spatial_mgr_->hasSpatialIndex("drop_test"));
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+ 

@@ -513,7 +513,4 @@ TEST(AQLParserTest, ModulusInReturn) {
     EXPECT_EQ(result.query->return_node->expression->getType(), ASTNodeType::ObjectConstruct);
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+ 

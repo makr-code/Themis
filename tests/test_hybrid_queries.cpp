@@ -29,7 +29,7 @@ protected:
         engine = std::make_unique<QueryEngine>(*db, *secIdx, *graphIdx);
 
         // Create fulltext index for Content+Geo tests
-        auto st = secIdx->createIndex("documents", "text", SecondaryIndexManager::IndexType::FULLTEXT);
+        auto st = secIdx->createFulltextIndex("documents", "text");
         ASSERT_TRUE(st.ok);
 
         setupTestData();

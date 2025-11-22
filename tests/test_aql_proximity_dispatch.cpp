@@ -5,6 +5,7 @@
 #include "query/query_engine.h"
 #include "storage/rocksdb_wrapper.h"
 #include "index/secondary_index.h"
+#include "storage/base_entity.h"
 
 using namespace themis;
 
@@ -20,8 +21,8 @@ protected:
         SecondaryIndexManager::FulltextConfig config; config.language="en"; config.stemming_enabled=true; config.stopwords_enabled=true;
         auto st = sec->createFulltextIndex("places", "description", config); ASSERT_TRUE(st.ok) << st.message;
         // Insert sample docs
-        BaseEntity a("p1"); a.setField("description", "coffee shop berlin"); a.setField("location", nlohmann::json{{"type","Point"},{"coordinates", {13.45,52.55}}}); sec->put("places", a);
-        BaseEntity b("p2"); b.setField("description", "coffee roastery berlin"); b.setField("location", nlohmann::json{{"type","Point"},{"coordinates", {13.46,52.551}}}); sec->put("places", b);
+        BaseEntity a("p1"); a.setField("description", std::string("coffee shop berlin")); a.setField("location", std::vector<float>{13.45f,52.55f}); sec->put("places", a);
+        BaseEntity b("p2"); b.setField("description", std::string("coffee roastery berlin")); b.setField("location", std::vector<float>{13.46f,52.551f}); sec->put("places", b);
     }
     void TearDown() override { engine.reset(); sec.reset(); db.reset(); std::filesystem::remove_all("data/themis_aql_proximity_dispatch_test"); }
     std::unique_ptr<RocksDBWrapper> db; std::unique_ptr<SecondaryIndexManager> sec; std::unique_ptr<QueryEngine> engine;

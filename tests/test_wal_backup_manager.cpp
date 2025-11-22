@@ -15,15 +15,14 @@ TEST(WALBackupManager, CreateAndRestore) {
     // Create RocksDBWrapper for testing
     RocksDBWrapper::Config config;
     config.db_path = tmp.string();
-    config.wal_enabled = true;
-    config.create_if_missing = true;
+    config.enable_wal = true;
     
     auto db_wrapper = std::make_shared<RocksDBWrapper>(config);
     ASSERT_TRUE(db_wrapper->open());
     
     // Insert some test data
-    db_wrapper->put("test_key_1", "test_value_1");
-    db_wrapper->put("test_key_2", "test_value_2");
+    db_wrapper->put("test_key_1", std::vector<uint8_t>{'t','e','s','t','_','v','a','l','u','e','_','1'});
+    db_wrapper->put("test_key_2", std::vector<uint8_t>{'t','e','s','t','_','v','a','l','u','e','_','2'});
 
     BackupManager mgr(db_wrapper);
 
@@ -49,7 +48,7 @@ TEST(WALBackupManager, CreateAndRestore) {
     ASSERT_TRUE(mgr.archiveWAL(arch.string(), ec));
     
     // Insert more data for incremental backup test
-    db_wrapper->put("test_key_3", "test_value_3");
+    db_wrapper->put("test_key_3", std::vector<uint8_t>{'t','e','s','t','_','v','a','l','u','e','_','3'});
     
     // Create incremental backup
     ASSERT_TRUE(mgr.createIncrementalBackup(dest.string(), ec));
@@ -64,9 +63,10 @@ TEST(WALBackupManager, CreateAndRestore) {
     ASSERT_FALSE(ec);
     
     // Verify data after restore
-    std::string value;
-    ASSERT_TRUE(db_wrapper->get("test_key_1", value));
-    ASSERT_EQ(value, "test_value_1");
+    auto val = db_wrapper->get("test_key_1");
+    ASSERT_TRUE(val.has_value());
+    std::string value(val->begin(), val->end());
+    ASSERT_EQ(value, std::string("test_value_1"));
 
     // cleanup
     db_wrapper->close();

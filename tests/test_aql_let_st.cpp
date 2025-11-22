@@ -18,23 +18,31 @@ protected:
     json callFunction(const std::string& funcName, const std::vector<json>& args) {
         LetNode letNode;
         letNode.variable = "result";
-        
-        auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-        funcCall->functionName = funcName;
-        
+
+        std::vector<std::shared_ptr<Expression>> convertedArgs;
+        convertedArgs.reserve(args.size());
         for (const auto& arg : args) {
-            funcCall->arguments.push_back(
-                std::make_shared<Expression::LiteralExpression>(arg)
-            );
+            if (arg.is_string()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.get<std::string>())));
+            } else if (arg.is_number_float()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.get<double>())));
+            } else if (arg.is_number_integer()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(static_cast<int64_t>(arg.get<int64_t>()))));
+            } else if (arg.is_boolean()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.get<bool>())));
+            } else {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.dump())));
+            }
         }
-        
+
+        auto funcCall = std::make_shared<FunctionCallExpr>(funcName, std::move(convertedArgs));
         letNode.expression = funcCall;
-        
+
         json emptyDoc = json::object();
         if (!evaluator.evaluateLet(letNode, emptyDoc)) {
             return json::object({{"error", "evaluation_failed"}});
         }
-        
+
         auto result = evaluator.resolveVariable("result");
         return result.has_value() ? result.value() : json();
     }
@@ -58,13 +66,12 @@ TEST_F(LetSTFunctionsTest, LET_ST_Buffer_Point) {
     LetNode letNode;
     letNode.variable = "buffered";
     
-    auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-    funcCall->functionName = "ST_Buffer";
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(point)
-    );
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(0.5)
+    auto funcCall = std::make_shared<FunctionCallExpr>(
+        std::string("ST_Buffer"),
+        std::vector<std::shared_ptr<Expression>>{
+            std::make_shared<LiteralExpr>(LiteralValue(point.dump())),
+            std::make_shared<LiteralExpr>(LiteralValue(0.5))
+        }
     );
     
     letNode.expression = funcCall;
@@ -89,13 +96,12 @@ TEST_F(LetSTFunctionsTest, LET_ST_Distance_BetweenPoints) {
     LetNode letNode;
     letNode.variable = "distance";
     
-    auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-    funcCall->functionName = "ST_Distance";
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(p1)
-    );
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(p2)
+    auto funcCall = std::make_shared<FunctionCallExpr>(
+        std::string("ST_Distance"),
+        std::vector<std::shared_ptr<Expression>>{
+            std::make_shared<LiteralExpr>(LiteralValue(p1.dump())),
+            std::make_shared<LiteralExpr>(LiteralValue(p2.dump()))
+        }
     );
     
     letNode.expression = funcCall;
@@ -116,10 +122,11 @@ TEST_F(LetSTFunctionsTest, LET_ST_AsText_WKT_Output) {
     LetNode letNode;
     letNode.variable = "wkt";
     
-    auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-    funcCall->functionName = "ST_AsText";
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(point)
+    auto funcCall = std::make_shared<FunctionCallExpr>(
+        std::string("ST_AsText"),
+        std::vector<std::shared_ptr<Expression>>{
+            std::make_shared<LiteralExpr>(LiteralValue(point.dump()))
+        }
     );
     
     letNode.expression = funcCall;
@@ -141,16 +148,13 @@ TEST_F(LetSTFunctionsTest, LET_ST_DWithin_Proximity) {
     LetNode letNode;
     letNode.variable = "is_within";
     
-    auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-    funcCall->functionName = "ST_DWithin";
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(center)
-    );
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(nearby)
-    );
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(1.0)
+    auto funcCall = std::make_shared<FunctionCallExpr>(
+        std::string("ST_DWithin"),
+        std::vector<std::shared_ptr<Expression>>{
+            std::make_shared<LiteralExpr>(LiteralValue(center.dump())),
+            std::make_shared<LiteralExpr>(LiteralValue(nearby.dump())),
+            std::make_shared<LiteralExpr>(LiteralValue(1.0))
+        }
     );
     
     letNode.expression = funcCall;
@@ -172,13 +176,12 @@ TEST_F(LetSTFunctionsTest, LET_ST_Union_MBR) {
     LetNode letNode;
     letNode.variable = "union_result";
     
-    auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-    funcCall->functionName = "ST_Union";
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(p1)
-    );
-    funcCall->arguments.push_back(
-        std::make_shared<Expression::LiteralExpression>(p2)
+    auto funcCall = std::make_shared<FunctionCallExpr>(
+        std::string("ST_Union"),
+        std::vector<std::shared_ptr<Expression>>{
+            std::make_shared<LiteralExpr>(LiteralValue(p1.dump())),
+            std::make_shared<LiteralExpr>(LiteralValue(p2.dump()))
+        }
     );
     
     letNode.expression = funcCall;

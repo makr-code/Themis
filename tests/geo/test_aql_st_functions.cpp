@@ -24,23 +24,32 @@ protected:
     json callFunction(const std::string& funcName, const std::vector<json>& args) {
         LetNode letNode;
         letNode.variable = "result";
-        
-        auto funcCall = std::make_shared<Expression::FunctionCallExpression>();
-        funcCall->functionName = funcName;
-        
+
+        std::vector<std::shared_ptr<Expression>> convertedArgs;
+        convertedArgs.reserve(args.size());
         for (const auto& arg : args) {
-            funcCall->arguments.push_back(
-                std::make_shared<Expression::LiteralExpression>(arg)
-            );
+            if (arg.is_string()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.get<std::string>())));
+            } else if (arg.is_number_float()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.get<double>())));
+            } else if (arg.is_number_integer()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(static_cast<int64_t>(arg.get<int64_t>()))));
+            } else if (arg.is_boolean()) {
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.get<bool>())));
+            } else {
+                // Fallback: serialize complex JSON (Point/Polygon) to string WKT/GeoJSON
+                convertedArgs.push_back(std::make_shared<LiteralExpr>(LiteralValue(arg.dump())));
+            }
         }
-        
+
+        auto funcCall = std::make_shared<FunctionCallExpr>(funcName, std::move(convertedArgs));
         letNode.expression = funcCall;
-        
+
         json emptyDoc = json::object();
         if (!evaluator.evaluateLet(letNode, emptyDoc)) {
             return json::object({{"error", "evaluation_failed"}});
         }
-        
+
         auto result = evaluator.resolveVariable("result");
         return result.has_value() ? result.value() : json();
     }
@@ -833,8 +842,4 @@ TEST_F(STFunctionsTest, Integration_BoundingBoxCheck) {
     EXPECT_FALSE(containsOutside.get<bool>());
 }
 
-// Run all tests
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+ 

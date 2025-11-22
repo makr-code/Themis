@@ -289,7 +289,7 @@ TEST_F(InputValidatorTest, ValidateNonObjectPayload) {
 // ============================================================================
 
 TEST_F(InputValidatorTest, SanitizeForLogs) {
-    std::string input = "normal text\x00\x01\x1Fcontrol\x7Fchars";
+    std::string input = "normal text\x00\x01\x1F" "control" "\x7F" "chars";
     std::string sanitized = validator_->sanitizeForLogs(input);
     
     // Control characters should be removed

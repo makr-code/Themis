@@ -105,7 +105,4 @@ TEST(AdminAPITest, EndpointConstants) {
     EXPECT_STREQ(AdminAPI::Endpoints::STATS, "/admin/stats");
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+ 

@@ -318,8 +318,8 @@ TEST_F(SubqueryTest, SubqueryExecution_ScalarResult) {
     
     // Verify subquery structure
     auto subq = std::static_pointer_cast<SubqueryExpr>(letNode.expression);
-    ASSERT_NE(subq->query, nullptr);
-    EXPECT_EQ(subq->query->for_node.collection, "products");
+    ASSERT_NE(subq->subquery, nullptr);
+    EXPECT_EQ(subq->subquery->for_node.collection, "products");
 }
 
 TEST_F(SubqueryTest, SubqueryExecution_ArrayResult) {

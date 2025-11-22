@@ -15,7 +15,7 @@
 #include "index/graph_index.h"
 #include "storage/base_entity.h"
 #include "utils/logger.h"
-#include "utils/tracer.h"
+#include "utils/tracing.h"
 
 #include <benchmark/benchmark.h>
 #include <nlohmann/json.hpp>
@@ -297,7 +297,7 @@ BENCHMARK(BM_AQL_Parse_Translate_Only)->Unit(benchmark::kMicrosecond);
 int main(int argc, char** argv) {
     // Initialize logger
     themis::Logger::init();
-    themis::Tracer::init("bench_hybrid_aql", "127.0.0.1:4317", false);
+    themis::Tracer::initialize("bench_hybrid_aql", "http://127.0.0.1:4318");
     
     THEMIS_INFO("Starting Hybrid AQL Benchmark Suite");
     

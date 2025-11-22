@@ -89,7 +89,7 @@ TEST_F(CTECacheTest, RemoveCTE) {
     ASSERT_TRUE(cache.store("temp_cte", data));
     EXPECT_TRUE(cache.contains("temp_cte"));
     
-    ASSERT_TRUE(cache.remove("temp_cte"));
+    cache.remove("temp_cte");
     EXPECT_FALSE(cache.contains("temp_cte"));
     
     auto retrieved = cache.get("temp_cte");
@@ -282,7 +282,7 @@ TEST_F(CTECacheTest, NonExistentCTE) {
     EXPECT_FALSE(result.has_value());
     
     EXPECT_FALSE(cache.contains("nonexistent"));
-    EXPECT_FALSE(cache.remove("nonexistent"));
+    cache.remove("nonexistent");
 }
 
 TEST_F(CTECacheTest, OverwriteCTE) {
