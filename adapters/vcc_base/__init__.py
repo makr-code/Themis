@@ -10,7 +10,7 @@ This library provides:
 - Shared configuration management
 - Error handling and logging utilities
 
-NO UDS3 FRAMEWORK DEPENDENCY - Direct HTTP connections to ThemisDB.
+Direct HTTP connections to ThemisDB - no external framework dependencies required.
 """
 
 from .themis_client import ThemisVCCClient

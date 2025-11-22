@@ -3,6 +3,8 @@ ThemisDB HTTP Client for VCC Adapters
 
 Provides a unified HTTP client for all VCC adapters to interact with ThemisDB.
 Supports all ThemisDB APIs: content import, query, vector search, etc.
+
+Uses direct HTTP connections - no external frameworks required.
 """
 
 import os
@@ -17,7 +19,7 @@ class ThemisVCCClient:
     """
     HTTP client for ThemisDB with VCC-specific conveniences.
     
-    This client provides direct access to ThemisDB without any UDS3 framework.
+    This client provides direct access to ThemisDB without any external framework dependencies.
     """
     
     def __init__(
