@@ -12,6 +12,7 @@ VCC-Veritas focuses on:
 
 import os
 import sys
+import string
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.responses import JSONResponse
@@ -333,7 +334,10 @@ async def validate_integrity(entity_key: str = Body(...)):
             }, status_code=200)
         
         # Validate checksum format (SHA-256 is 64 hex characters)
-        is_valid_format = len(stored_checksum) == 64 and all(c in '0123456789abcdef' for c in stored_checksum.lower())
+        is_valid_format = (
+            len(stored_checksum) == 64 and 
+            all(c in string.hexdigits.lower() for c in stored_checksum.lower())
+        )
         
         # Check if verification metadata is present
         has_verification_meta = "verification_status" in user_metadata
@@ -377,18 +381,33 @@ async def classify_data(
         # or require manual verification for sensitive classifications.
         if auto_classify:
             text_lower = text.lower()
-            # Count occurrences to reduce false positives
-            confidential_score = sum(1 for kw in ["confidential", "secret", "classified", "restricted"] if kw in text_lower)
-            internal_score = sum(1 for kw in ["internal only", "employee only", "staff only"] if kw in text_lower)
-            public_score = sum(1 for kw in ["public", "press release", "published"] if kw in text_lower)
             
-            # Require multiple indicators or strong keywords
-            if confidential_score >= 2 or "classified" in text_lower or "restricted" in text_lower:
+            # Count keyword occurrences (each counted once per document)
+            has_classified = "classified" in text_lower
+            has_restricted = "restricted" in text_lower
+            has_confidential = "confidential" in text_lower
+            has_secret = "secret" in text_lower
+            
+            has_internal_only = "internal only" in text_lower
+            has_employee_only = "employee only" in text_lower
+            has_staff_only = "staff only" in text_lower
+            
+            has_public = "public" in text_lower
+            has_press_release = "press release" in text_lower
+            has_published = "published" in text_lower
+            
+            # Score based on presence of keywords
+            confidential_indicators = sum([has_classified, has_restricted, has_confidential, has_secret])
+            internal_indicators = sum([has_internal_only, has_employee_only, has_staff_only])
+            public_indicators = sum([has_public, has_press_release, has_published])
+            
+            # Classify based on strongest signal, with safety defaults
+            if has_classified or has_restricted or confidential_indicators >= 2:
                 classification = "confidential"
-                logger.warning(f"Auto-classified as confidential (score={confidential_score}). Manual review recommended.")
-            elif internal_score >= 2:
+                logger.warning(f"Auto-classified as confidential (indicators={confidential_indicators}). Manual review recommended.")
+            elif internal_indicators >= 1:
                 classification = "internal"
-            elif public_score >= 1:
+            elif public_indicators >= 1:
                 classification = "public"
             else:
                 # Default to internal for safety
