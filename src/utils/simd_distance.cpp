@@ -93,7 +93,7 @@ static inline float neon_l2_sq(const float* a, const float* b, std::size_t dim) 
     float32x2_t sum1 = vpadd_f32(sum2, sum2);
     float res = vget_lane_f32(sum1, 0);
     
-    // Handle remaining elements
+    // Handle remaining elements (not enough for a full SIMD vector)
     if (i < dim) {
         res += scalar_l2_sq(a + i, b + i, dim - i);
     }

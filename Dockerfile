@@ -27,19 +27,19 @@ ENV CXX=/usr/bin/g++
 # Supports x64-linux (amd64), arm64-linux (aarch64), arm-linux (armv7)
 ARG TARGETARCH
 ARG VCPKG_TRIPLET
-RUN if [ -z "$VCPKG_TRIPLET" ]; then \
+RUN TRIPLET="${VCPKG_TRIPLET}"; \
+    if [ -z "$TRIPLET" ]; then \
       case "${TARGETARCH}" in \
-        amd64) export VCPKG_TRIPLET=x64-linux ;; \
-        arm64) export VCPKG_TRIPLET=arm64-linux ;; \
-        arm) export VCPKG_TRIPLET=arm-linux ;; \
-        *) export VCPKG_TRIPLET=x64-linux ;; \
+        amd64) TRIPLET=x64-linux ;; \
+        arm64) TRIPLET=arm64-linux ;; \
+        arm) TRIPLET=arm-linux ;; \
+        *) TRIPLET=x64-linux ;; \
       esac; \
     fi && \
-    echo "VCPKG_TRIPLET=${VCPKG_TRIPLET}" > /tmp/triplet.env
+    echo "export VCPKG_TRIPLET=${TRIPLET}" > /etc/profile.d/vcpkg.sh && \
+    echo "Using vcpkg triplet: ${TRIPLET}"
 
-# Load the triplet
-RUN export $(cat /tmp/triplet.env | xargs) && \
-    echo "Using vcpkg triplet: ${VCPKG_TRIPLET}"
+# Set default triplet environment variable
 ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET:-x64-linux}
 
 WORKDIR /src
@@ -58,7 +58,7 @@ RUN cd ${VCPKG_ROOT} \
 # Disable compiler tracking and metrics for faster, more stable builds
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV VCPKG_DISABLE_METRICS=1
-RUN export $(cat /tmp/triplet.env | xargs) && \
+RUN . /etc/profile.d/vcpkg.sh && \
     echo "Installing dependencies for ${VCPKG_TRIPLET}..." && \
     ${VCPKG_ROOT}/vcpkg install --triplet=${VCPKG_TRIPLET}
 
@@ -68,7 +68,7 @@ COPY include ./include
 COPY src ./src
 
 # Build ThemisDB
-RUN export $(cat /tmp/triplet.env | xargs) && \
+RUN . /etc/profile.d/vcpkg.sh && \
     echo "Building ThemisDB for ${VCPKG_TRIPLET}..." && \
     cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
