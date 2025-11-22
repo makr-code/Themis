@@ -340,6 +340,18 @@ Performance scales with:
 - [Deployment Guide](deployment.md) - Production setup
 - [Memory Tuning](memory_tuning.md) - Performance optimization
 - [Architecture Overview](architecture.md) - System design
+- [CI/CD for Multi-Architecture](CI_CD_MULTIARCH.md) - Automated builds and testing
+
+## Continuous Integration
+
+ThemisDB includes automated CI/CD for ARM builds:
+
+- **GitHub Actions workflows** test ARM64 and ARMv7 builds on every commit
+- **Docker multi-arch images** automatically built and published
+- **Cross-compilation tests** ensure ARM compatibility
+- See [CI/CD documentation](CI_CD_MULTIARCH.md) for details
+
+Build status: [![ARM Build](https://github.com/makr-code/ThemisDB/actions/workflows/arm-build.yml/badge.svg)](https://github.com/makr-code/ThemisDB/actions/workflows/arm-build.yml)
 
 ## vcpkg ARM Support
 

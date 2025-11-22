@@ -229,13 +229,19 @@ ThemisDB is now **fully compatible** with ARM and Raspberry Pi platforms:
 
 The implementation maintains full backward compatibility with x86_64 while adding comprehensive ARM support with platform-specific optimizations.
 
-## Next Steps (Optional Enhancements)
+## Completed Enhancements
 
-Future improvements could include:
+1. ✅ **CI/CD:** GitHub Actions workflows for ARM builds
+   - `arm-build.yml`: ARM64/ARMv7 Docker builds with QEMU
+   - `build-multiarch.yml`: Multi-architecture build matrix
+   - Automated testing on every commit
+   - Docker multi-arch image publishing
+   - See [CI/CD documentation](docs/CI_CD_MULTIARCH.md)
 
-1. **CI/CD:** Add GitHub Actions workflows for ARM builds
+## Future Enhancements (Optional)
+
 2. **Benchmarks:** Create ARM-specific benchmark suite
-3. **Package:** Pre-built ARM64/ARMv7 binaries
+3. **Package:** Pre-built ARM64/ARMv7 binaries/packages
 4. **Tuning:** Additional Raspberry Pi-specific optimizations
 5. **Testing:** Automated testing on actual Raspberry Pi hardware
 

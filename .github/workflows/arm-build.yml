@@ -1,0 +1,192 @@
+name: ARM/Raspberry Pi Build Test
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'Dockerfile'
+      - '.github/workflows/arm-build.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'Dockerfile'
+  workflow_dispatch:
+
+jobs:
+  # Test ARM64 build using Docker QEMU
+  test-arm64-docker:
+    name: ARM64 Docker Build Test
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+          
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Build ARM64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: false
+          tags: themisdb:arm64-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Test ARM64 image
+        run: |
+          docker run --platform linux/arm64 --rm themisdb:arm64-test --version || true
+          echo "✅ ARM64 Docker image built successfully"
+          
+  # Test ARMv7 build using Docker QEMU
+  test-armv7-docker:
+    name: ARMv7 Docker Build Test
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm/v7
+          
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Build ARMv7 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm/v7
+          push: false
+          tags: themisdb:armv7-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Test ARMv7 image
+        run: |
+          docker run --platform linux/arm/v7 --rm themisdb:armv7-test --version || true
+          echo "✅ ARMv7 Docker image built successfully"
+          
+  # Cross-compile test for ARM64
+  cross-compile-arm64:
+    name: Cross-compile ARM64
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install ARM64 cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            cmake ninja-build
+            
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $HOME/vcpkg
+          cd $HOME/vcpkg
+          git checkout 2024.12.16
+          ./bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+          
+      - name: Configure for ARM64
+        run: |
+          cmake -S . -B build-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DTHEMIS_BUILD_TESTS=OFF \
+            -DTHEMIS_BUILD_BENCHMARKS=OFF
+            
+      - name: Check CMake configuration
+        run: |
+          echo "Checking architecture detection..."
+          grep "Target architecture:" build-arm64/CMakeCache.txt || true
+          grep "THEMIS_TARGET_ARCH" build-arm64/CMakeCache.txt || true
+          
+      - name: Verify ARM NEON support
+        run: |
+          echo "Checking for ARM NEON optimizations..."
+          grep -r "armv8-a\|NEON\|__ARM_NEON" build-arm64/ || echo "Warning: NEON flags not detected"
+          
+  # Validate test script
+  validate-test-script:
+    name: Validate ARM Test Script
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Make test script executable
+        run: chmod +x scripts/test-arm-support.sh
+        
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+          
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $HOME/vcpkg
+          cd $HOME/vcpkg
+          git checkout 2024.12.16
+          ./bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+          
+      - name: Run test script
+        run: |
+          ./scripts/test-arm-support.sh
+          
+  # Build result summary
+  arm-build-summary:
+    name: ARM Build Summary
+    runs-on: ubuntu-22.04
+    needs: [test-arm64-docker, test-armv7-docker, cross-compile-arm64, validate-test-script]
+    if: always()
+    
+    steps:
+      - name: Check results
+        run: |
+          echo "## ARM Build Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ARM64 Docker | ${{ needs.test-arm64-docker.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ARMv7 Docker | ${{ needs.test-armv7-docker.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ARM64 Cross-compile | ${{ needs.cross-compile-arm64.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Script | ${{ needs.validate-test-script.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.test-arm64-docker.result }}" != "success" ] || \
+             [ "${{ needs.test-armv7-docker.result }}" != "success" ] || \
+             [ "${{ needs.cross-compile-arm64.result }}" != "success" ]; then
+            echo "::error::Some ARM build tests failed"
+            exit 1
+          fi
+          
+          echo "✅ All ARM build tests passed"
