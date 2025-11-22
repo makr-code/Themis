@@ -297,6 +297,7 @@ set(THEMIS_CORE_SOURCES
     src/server/auth_middleware.cpp
     src/server/rate_limiter.cpp
     src/server/update_api_handler.cpp
+    src/server/hot_reload_api_handler.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp
@@ -335,6 +336,11 @@ set(THEMIS_CORE_SOURCES
     src/utils/normalizer.cpp
     src/utils/simd_distance.cpp
     src/utils/update_checker.cpp
+    
+    # Updates (hot-reload)
+    src/updates/release_manifest.cpp
+    src/updates/manifest_database.cpp
+    src/updates/hot_reload_engine.cpp
     
     # Geo utilities
     src/utils/geo/ewkb.cpp
