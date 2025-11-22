@@ -310,43 +310,48 @@ async def record_audit_entry(
 @app.post("/validate/integrity")
 async def validate_integrity(entity_key: str = Body(...)):
     """
-    Validate data integrity by comparing checksums.
+    Validate data integrity by checking stored checksum metadata.
     
-    Retrieves entity from ThemisDB and verifies its checksum.
+    NOTE: This is a basic implementation that verifies the checksum exists
+    and is properly formatted. For full integrity validation, the original
+    data would need to be stored or reconstructed, which is beyond the scope
+    of this adapter. Consider using ThemisDB's built-in audit features for
+    comprehensive integrity verification.
     """
     try:
         # Get entity from ThemisDB
         entity = await client.get_entity(entity_key)
         
         # Extract stored checksum
-        stored_checksum = entity.get("user_metadata", {}).get("checksum")
+        user_metadata = entity.get("user_metadata", {})
+        stored_checksum = user_metadata.get("checksum")
         
         if not stored_checksum:
             return JSONResponse(content={
                 "status": "no_checksum",
-                "message": "Entity does not have a stored checksum"
+                "message": "Entity does not have a stored checksum for verification"
             }, status_code=200)
         
-        # Recalculate checksum
-        # Note: This is simplified - real implementation would reconstruct original data
-        entity_json = json.dumps(entity, sort_keys=True)
-        calculated_checksum = hashlib.sha256(entity_json.encode()).hexdigest()
+        # Validate checksum format (SHA-256 is 64 hex characters)
+        is_valid_format = len(stored_checksum) == 64 and all(c in '0123456789abcdef' for c in stored_checksum.lower())
         
-        # Compare
-        is_valid = (stored_checksum == calculated_checksum)
+        # Check if verification metadata is present
+        has_verification_meta = "verification_status" in user_metadata
         
-        logger.info(f"Integrity validation for {entity_key}: {'valid' if is_valid else 'INVALID'}")
+        logger.info(f"Integrity check for {entity_key}: checksum_present=True, format_valid={is_valid_format}")
         
         return JSONResponse(content={
-            "status": "validated",
+            "status": "checked",
             "entity_key": entity_key,
-            "is_valid": is_valid,
+            "checksum_present": True,
+            "checksum_format_valid": is_valid_format,
+            "has_verification_metadata": has_verification_meta,
             "stored_checksum": stored_checksum,
-            "calculated_checksum": calculated_checksum
+            "note": "Full integrity validation requires original data. Use ThemisDB audit features for comprehensive verification."
         }, status_code=200)
         
     except Exception as e:
-        logger.error(f"Integrity validation failed: {e}")
+        logger.error(f"Integrity check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -367,16 +372,28 @@ async def classify_data(
         text = raw.decode("utf-8", errors="ignore")
         
         # Auto-classification (basic keyword-based)
+        # WARNING: This is a simplified heuristic and may produce false positives.
+        # Production systems should use more sophisticated classification methods
+        # or require manual verification for sensitive classifications.
         if auto_classify:
             text_lower = text.lower()
-            if any(kw in text_lower for kw in ["confidential", "secret", "private"]):
+            # Count occurrences to reduce false positives
+            confidential_score = sum(1 for kw in ["confidential", "secret", "classified", "restricted"] if kw in text_lower)
+            internal_score = sum(1 for kw in ["internal only", "employee only", "staff only"] if kw in text_lower)
+            public_score = sum(1 for kw in ["public", "press release", "published"] if kw in text_lower)
+            
+            # Require multiple indicators or strong keywords
+            if confidential_score >= 2 or "classified" in text_lower or "restricted" in text_lower:
                 classification = "confidential"
-            elif any(kw in text_lower for kw in ["internal", "employee"]):
+                logger.warning(f"Auto-classified as confidential (score={confidential_score}). Manual review recommended.")
+            elif internal_score >= 2:
                 classification = "internal"
-            elif any(kw in text_lower for kw in ["public", "press release"]):
+            elif public_score >= 1:
                 classification = "public"
             else:
+                # Default to internal for safety
                 classification = classification or "internal"
+                logger.info("Auto-classification defaulted to 'internal' - manual review recommended.")
         
         # Calculate checksum
         checksum = hashlib.sha256(raw).hexdigest()

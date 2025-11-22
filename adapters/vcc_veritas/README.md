@@ -155,13 +155,17 @@ curl -X POST http://localhost:8003/validate/integrity \
 Response:
 ```json
 {
-  "status": "validated",
+  "status": "checked",
   "entity_key": "users:alice",
-  "is_valid": true,
+  "checksum_present": true,
+  "checksum_format_valid": true,
+  "has_verification_metadata": true,
   "stored_checksum": "abc123...",
-  "calculated_checksum": "abc123..."
+  "note": "Full integrity validation requires original data. Use ThemisDB audit features for comprehensive verification."
 }
 ```
+
+**Note:** This endpoint performs basic checksum verification. For comprehensive integrity validation requiring data reconstruction, use ThemisDB's built-in audit and compliance features.
 
 ### Classify Data
 
@@ -188,11 +192,19 @@ VCC-Veritas supports standard data classification levels:
 3. **Confidential** - Sensitive information requiring protection
 4. **Restricted** - Highly sensitive information with strict access controls
 
-Auto-classification uses keyword detection:
-- "confidential", "secret", "private" → **Confidential**
-- "internal", "employee" → **Internal**
-- "public", "press release" → **Public**
-- Default → **Internal**
+### Auto-Classification
+
+Auto-classification uses keyword detection with scoring to reduce false positives:
+
+**High Confidence Indicators:**
+- "classified", "restricted" → **Confidential**
+- Multiple occurrences of "confidential", "secret" → **Confidential**
+- "internal only", "employee only", "staff only" → **Internal**
+- "public", "press release", "published" → **Public**
+
+**Important:** Auto-classification is a heuristic aid and may produce false positives in contexts where sensitive keywords appear in non-sensitive contexts (e.g., discussing classification policies). Always use manual verification for truly sensitive data, especially for "confidential" or "restricted" classifications.
+
+Default classification when auto-classification is inconclusive: **Internal** (safe default)
 
 ## Verification Metadata
 
