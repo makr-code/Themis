@@ -10,10 +10,15 @@ on:
         required: true
         default: '1.0.0'
 
+permissions:
+  contents: write  # Required to upload release assets
+
 jobs:
   build-deb:
     name: Build Debian Package
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write  # Required to upload artifacts to release
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,6 +54,8 @@ jobs:
   build-rpm:
     name: Build RPM Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to upload artifacts to release
     container:
       image: fedora:39
     steps:
@@ -109,6 +116,8 @@ jobs:
   build-arch:
     name: Build Arch Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to upload artifacts to release
     container:
       image: archlinux:latest
     steps:
@@ -157,6 +166,8 @@ jobs:
   build-windows:
     name: Build Windows Package
     runs-on: windows-latest
+    permissions:
+      contents: write  # Required to upload artifacts to release
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -216,6 +227,8 @@ jobs:
   build-macos:
     name: Build macOS Package
     runs-on: macos-latest
+    permissions:
+      contents: write  # Required to upload artifacts to release
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -267,6 +280,8 @@ jobs:
     name: Publish Summary
     needs: [build-deb, build-rpm, build-arch, build-windows, build-macos]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # Minimal permissions for summary job
     if: github.event_name == 'release'
     steps:
       - name: Create summary
