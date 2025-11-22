@@ -880,9 +880,43 @@ docker pull themisdb/themis:latest
 
 # Run with Docker Compose
 docker compose up
+
+# For ARM/Raspberry Pi (multi-architecture support)
+docker compose -f docker-compose-arm.yml up
 ```
 
+**Multi-Architecture Support:**
+ThemisDB Docker images support multiple architectures:
+- `linux/amd64` (x86_64)
+- `linux/arm64` (ARM64/AArch64 - Raspberry Pi 3/4/5)
+- `linux/arm/v7` (ARMv7 - Raspberry Pi 2/3)
+
+Docker automatically pulls the correct image for your platform.
+
 For detailed packaging and distribution information, see [docs/packaging.md](docs/packaging.md).
+
+### ARM and Raspberry Pi
+
+ThemisDB fully supports ARM-based systems including Raspberry Pi. See the dedicated guide:
+- **[ARM & Raspberry Pi Build Guide](docs/ARM_RASPBERRY_PI_BUILD.md)**
+
+Quick start on Raspberry Pi:
+```bash
+# Clone repository
+git clone https://github.com/makr-code/ThemisDB.git
+cd ThemisDB
+
+# Setup and build
+./setup.sh
+cmake --preset rpi-arm64-gcc-release
+cmake --build --preset rpi-arm64-gcc-release
+```
+
+Features on ARM:
+- ✅ ARM NEON SIMD optimizations for vector operations
+- ✅ Architecture-specific compiler flags (armv8-a, armv7-a+neon)
+- ✅ All core features supported (no GPU required)
+- ✅ Docker multi-arch images available
 
 ## Quick Start
 

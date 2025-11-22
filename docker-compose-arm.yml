@@ -1,0 +1,140 @@
+# Docker Compose configuration for ThemisDB on ARM/Raspberry Pi
+# This file demonstrates how to run ThemisDB on ARM-based systems
+
+version: '3.8'
+
+services:
+  themisdb-arm:
+    # Use pre-built multi-arch image or build locally
+    image: themisdb:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Automatically uses host architecture (arm64, arm/v7, etc.)
+      platforms:
+        - linux/arm64
+        - linux/arm/v7
+    
+    container_name: themisdb-arm
+    hostname: themisdb-arm
+    
+    # Port mapping
+    ports:
+      - "8765:8765"    # API server
+      - "18765:18765"  # Optional: metrics endpoint
+    
+    # Volume mounts for data persistence
+    volumes:
+      # Data directory - persists database files
+      - themisdb-data-arm:/data
+      
+      # Configuration - mount local config or use default
+      - ./config/config.yaml:/etc/themis/config.yaml:ro
+      
+      # Optional: mount logs directory
+      - themisdb-logs-arm:/var/log/themis
+    
+    # Environment variables
+    environment:
+      # Server configuration
+      - THEMIS_HOST=0.0.0.0
+      - THEMIS_PORT=8765
+      
+      # Resource limits for Raspberry Pi
+      - THEMIS_WORKER_THREADS=4
+      - THEMIS_MEMTABLE_SIZE_MB=128
+      - THEMIS_BLOCK_CACHE_SIZE_MB=512
+      
+      # Logging
+      - THEMIS_LOG_LEVEL=info
+    
+    # Resource limits (adjust based on your Raspberry Pi model)
+    deploy:
+      resources:
+        limits:
+          # Raspberry Pi 4 with 4GB RAM
+          cpus: '4'
+          memory: 3G
+        reservations:
+          cpus: '2'
+          memory: 1G
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Prometheus for metrics collection
+  prometheus-arm:
+    image: prom/prometheus:latest
+    container_name: prometheus-arm
+    
+    ports:
+      - "9090:9090"
+    
+    volumes:
+      - ./config/prometheus-arm.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data-arm:/prometheus
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    
+    restart: unless-stopped
+    
+    depends_on:
+      - themisdb-arm
+
+  # Optional: Grafana for visualization
+  grafana-arm:
+    image: grafana/grafana:latest
+    container_name: grafana-arm
+    
+    ports:
+      - "3000:3000"
+    
+    volumes:
+      - grafana-data-arm:/var/lib/grafana
+    
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    
+    restart: unless-stopped
+    
+    depends_on:
+      - prometheus-arm
+
+# Named volumes for data persistence
+volumes:
+  themisdb-data-arm:
+    driver: local
+  
+  themisdb-logs-arm:
+    driver: local
+  
+  prometheus-data-arm:
+    driver: local
+  
+  grafana-data-arm:
+    driver: local
+
+# Network configuration
+networks:
+  default:
+    name: themisdb-arm-network
+    driver: bridge
