@@ -474,48 +474,40 @@ cp ../ThemisDB/packaging/homebrew/themisdb.rb Formula/
 
 ---
 
-## Continuous Integration
+## Manual Package Builds
 
-Consider automating package builds using GitHub Actions:
+All packages should be built manually/offline before distribution. The packaging files provided support building on the target platform or in Docker containers for reproducibility.
 
-```yaml
-name: Build Packages
+### Building in Docker Containers
 
-on:
-  release:
-    types: [published]
+For consistent builds across environments, use Docker containers:
 
-jobs:
-  build-deb:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build Debian package
-        run: |
-          sudo apt-get install -y debhelper devscripts
-          dpkg-buildpackage -us -uc -b
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: debian-package
-          path: ../*.deb
-
-  build-rpm:
-    runs-on: ubuntu-latest
-    container: fedora:latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build RPM package
-        run: |
-          dnf install -y rpm-build rpmdevtools
-          rpmdev-setuptree
-          rpmbuild -ba themisdb.spec
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: rpm-package
-          path: ~/rpmbuild/RPMS/x86_64/*.rpm
+**Debian/Ubuntu:**
+```bash
+docker run -it --rm -v $(pwd):/build ubuntu:22.04
+cd /build
+apt-get update && apt-get install -y debhelper devscripts build-essential
+dpkg-buildpackage -us -uc -b
 ```
+
+**Fedora/RHEL:**
+```bash
+docker run -it --rm -v $(pwd):/build fedora:39
+cd /build
+dnf install -y rpm-build rpmdevtools
+rpmdev-setuptree
+rpmbuild -ba themisdb.spec
+```
+
+**Arch Linux:**
+```bash
+docker run -it --rm -v $(pwd):/build archlinux:latest
+cd /build
+pacman -Syu --noconfirm base-devel
+makepkg
+```
+
+> **Note**: Automated CI/CD builds via GitHub Actions are planned for future releases but should be implemented after initial manual testing and distribution approval.
 
 ---
 

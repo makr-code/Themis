@@ -213,13 +213,11 @@ Get-FileHash themisdb-VERSION.zip -Algorithm SHA256
 - **WinGet**: https://github.com/microsoft/winget-pkgs
 - **Homebrew Core**: https://github.com/Homebrew/homebrew-core
 
-## Automated Builds
+## Manual Builds
 
-GitHub Actions workflow `.github/workflows/build-packages.yml` automatically builds packages when:
-- A new release is published
-- Manually triggered via workflow_dispatch
+All packages are currently built manually/offline. Use the commands in the "Build Commands Quick Reference" section above to build packages locally or in Docker containers for testing before distribution.
 
-Artifacts are uploaded to the GitHub release.
+> **Note**: Automated builds via GitHub Actions may be added in future releases after initial manual testing and distribution approval.
 
 ## Support
 

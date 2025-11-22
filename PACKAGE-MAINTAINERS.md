@@ -302,10 +302,11 @@ We will:
 - **WinGet**: `packaging/winget/`
 - **Homebrew**: `packaging/homebrew/themisdb.rb`
 
-### CI/CD
-- **GitHub Actions**: `.github/workflows/build-packages.yml`
-- Builds packages for all platforms on release
-- Artifacts uploaded to GitHub Releases
+### Build Process
+- All packages are currently built manually/offline
+- Use the provided packaging files on target platforms or in Docker containers
+- See `docs/packaging.md` for detailed build instructions
+- Automated CI/CD may be added in future releases
 
 ## License
 
