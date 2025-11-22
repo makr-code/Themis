@@ -423,6 +423,44 @@ HttpServer::HttpServer(
     reports_api_ = std::make_unique<themis::server::ReportsApiHandler>();
     THEMIS_INFO("Reports API Handler initialized");
 
+    // Initialize Update Checker (if feature enabled)
+    if (config_.feature_update_checker) {
+        try {
+            themis::utils::UpdateCheckerConfig update_config;
+            update_config.github_owner = "makr-code";
+            update_config.github_repo = "ThemisDB";
+#ifdef THEMIS_VERSION_STRING
+            update_config.current_version = THEMIS_VERSION_STRING;
+#else
+            update_config.current_version = "1.0.0"; // Fallback if version not defined
+#endif
+            update_config.check_interval = std::chrono::seconds(3600); // 1 hour
+            
+            // Allow configuration via environment variables
+            if (auto token = themis_get_env("THEMIS_GITHUB_API_TOKEN")) {
+                update_config.github_api_token = *token;
+            }
+            if (auto interval = themis_get_env("THEMIS_UPDATE_CHECK_INTERVAL")) {
+                try {
+                    update_config.check_interval = std::chrono::seconds(std::stoul(*interval));
+                } catch (...) {}
+            }
+            if (auto auto_update = themis_get_env("THEMIS_AUTO_UPDATE_ENABLED")) {
+                update_config.auto_update_enabled = (*auto_update == "true" || *auto_update == "1");
+            }
+            
+            update_checker_ = std::make_shared<themis::utils::UpdateChecker>(update_config);
+            update_api_ = std::make_unique<themis::server::UpdateApiHandler>(update_checker_);
+            
+            // Start background checking
+            update_checker_->start();
+            
+            THEMIS_INFO("Update Checker initialized (interval: {}s)", update_config.check_interval.count());
+        } catch (const std::exception& e) {
+            THEMIS_WARN("Failed to initialize Update Checker: {}", e.what());
+        }
+    }
+
     // Initialize Policy Engine (Governance)
     policy_engine_ = std::make_unique<themis::PolicyEngine>();
     try {
@@ -925,6 +963,12 @@ namespace {
        AuditQueryGet,
        AuditExportCsvGet,
        
+    // Update API
+    UpdateStatusGet,
+    UpdateCheckPost,
+    UpdateConfigGet,
+    UpdateConfigPut,
+       
     // G5: Spatial Index Management
     SpatialIndexCreatePost,
     SpatialIndexRebuildPost,
@@ -1052,6 +1096,11 @@ namespace {
     // Audit API endpoints
     if (path_only == "/api/audit" && method == http::verb::get) return Route::AuditQueryGet;
     if (path_only == "/api/audit/export/csv" && method == http::verb::get) return Route::AuditExportCsvGet;
+    // Update API endpoints
+    if (path_only == "/api/updates" && method == http::verb::get) return Route::UpdateStatusGet;
+    if (path_only == "/api/updates/check" && method == http::verb::post) return Route::UpdateCheckPost;
+    if (path_only == "/api/updates/config" && method == http::verb::get) return Route::UpdateConfigGet;
+    if (path_only == "/api/updates/config" && method == http::verb::put) return Route::UpdateConfigPut;
         if (target == "/transaction" && method == http::verb::post) return Route::TransactionPost;
         if (target == "/transaction/begin" && method == http::verb::post) return Route::TransactionBeginPost;
         if (target == "/transaction/commit" && method == http::verb::post) return Route::TransactionCommitPost;
@@ -1426,6 +1475,17 @@ http::response<http::string_body> HttpServer::routeRequest(
             break;
         case Route::AuditExportCsvGet:
             response = handleAuditExportCsv(req);
+            break;
+        case Route::UpdateStatusGet:
+        case Route::UpdateCheckPost:
+        case Route::UpdateConfigGet:
+        case Route::UpdateConfigPut:
+            if (update_api_) {
+                response = update_api_->handleRequest(req);
+            } else {
+                response = makeErrorResponse(http::status::service_unavailable,
+                    "Update checker not enabled", req);
+            }
             break;
         case Route::TransactionPost:
             response = handleTransaction(req);

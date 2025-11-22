@@ -296,6 +296,8 @@ set(THEMIS_CORE_SOURCES
     src/server/policy_engine.cpp
     src/server/auth_middleware.cpp
     src/server/rate_limiter.cpp
+    src/server/update_api_handler.cpp
+    src/server/hot_reload_api_handler.cpp
     
     src/content/content_type.cpp
     src/content/content_manager.cpp
@@ -333,6 +335,13 @@ set(THEMIS_CORE_SOURCES
     src/utils/pii_pseudonymizer.cpp
     src/utils/normalizer.cpp
     src/utils/simd_distance.cpp
+    src/utils/update_checker.cpp
+    
+    # Updates (hot-reload)
+    src/updates/release_manifest.cpp
+    src/updates/manifest_database.cpp
+    src/updates/hot_reload_engine.cpp
+    src/updates/updates_config.cpp
     
     # Geo utilities
     src/utils/geo/ewkb.cpp
@@ -483,6 +492,19 @@ if(DEFINED THEMIS_ZSTD_TARGET)
     target_link_libraries(themis_core PUBLIC ${THEMIS_ZSTD_TARGET})
     target_compile_definitions(themis_core PUBLIC THEMIS_HAS_ZSTD)
 endif()
+
+# Define THEMIS_ENABLE_CURL if CURL is found
+if(CURL_FOUND)
+    target_compile_definitions(themis_core PUBLIC THEMIS_ENABLE_CURL)
+endif()
+
+# Define version string for runtime use
+target_compile_definitions(themis_core PUBLIC 
+    THEMIS_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    THEMIS_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    THEMIS_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    THEMIS_VERSION_STRING="${PROJECT_VERSION}"
+)
 
 if(THEMIS_ENABLE_GPU)
     target_link_libraries(themis_core PUBLIC faiss)
@@ -696,6 +718,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_shard_communication.cpp
         tests/test_rebalance_migration.cpp
         tests/test_monitoring_ops.cpp
+        tests/update_checker_test.cpp
     )
     
     target_link_libraries(themis_tests
