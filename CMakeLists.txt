@@ -703,6 +703,7 @@ if(THEMIS_BUILD_TESTS)
         tests/test_shard_communication.cpp
         tests/test_rebalance_migration.cpp
         tests/test_monitoring_ops.cpp
+        tests/update_checker_test.cpp
     )
     
     target_link_libraries(themis_tests
