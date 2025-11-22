@@ -1,0 +1,33 @@
+[Unit]
+Description=ThemisDB Multi-Model Database Server
+Documentation=https://makr-code.github.io/ThemisDB/
+After=network.target
+
+[Service]
+Type=simple
+User=themisdb
+Group=themisdb
+WorkingDirectory=/var/lib/themisdb
+ExecStart=/usr/bin/themis_server --config /etc/themisdb/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/themisdb
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Environment
+Environment="THEMIS_DATA_DIR=/var/lib/themisdb"
+
+[Install]
+WantedBy=multi-user.target

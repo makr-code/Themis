@@ -1,0 +1,30 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    purge)
+        # Remove data directory on purge (not on remove)
+        rm -rf /var/lib/themisdb
+        
+        # Remove themisdb user and group
+        if getent passwd themisdb >/dev/null; then
+            deluser themisdb || true
+        fi
+        
+        if getent group themisdb >/dev/null; then
+            delgroup themisdb || true
+        fi
+        ;;
+        
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+        
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

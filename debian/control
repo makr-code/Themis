@@ -1,0 +1,64 @@
+Source: themisdb
+Section: database
+Priority: optional
+Maintainer: ThemisDB Team <info@themisdb.org>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.20),
+               g++ (>= 11),
+               ninja-build,
+               git,
+               pkg-config,
+               libssl-dev,
+               librocksdb-dev,
+               libtbb-dev,
+               libarrow-dev,
+               libboost-system-dev,
+               libboost-filesystem-dev,
+               libspdlog-dev,
+               nlohmann-json3-dev,
+               libcurl4-openssl-dev,
+               libyaml-cpp-dev,
+               libzstd-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/makr-code/ThemisDB
+Vcs-Browser: https://github.com/makr-code/ThemisDB
+Vcs-Git: https://github.com/makr-code/ThemisDB.git
+Rules-Requires-Root: no
+
+Package: themisdb
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libssl3 | libssl1.1,
+         librocksdb8.1 | librocksdb6.11,
+         libtbb12 | libtbb2,
+         libarrow1500 | libarrow1300 | libarrow1000,
+         libboost-system1.74.0 | libboost-system1.71.0,
+         libspdlog1 | libspdlog1.10,
+         libcurl4,
+         libyaml-cpp0.7 | libyaml-cpp0.6,
+         libzstd1
+Suggests: prometheus
+Description: Multi-model database system with ACID transactions
+ ThemisDB is a high-performance multi-model database system that supports:
+  * Relational data with secondary indexes
+  * Graph traversals (BFS, Dijkstra, A*)
+  * Vector search with HNSW index
+  * Time-series data with Gorilla compression
+  * Document storage
+  * Full ACID transactions with MVCC
+  * Advanced Query Language (AQL)
+  * OpenTelemetry tracing and Prometheus metrics
+ .
+ This package contains the ThemisDB server daemon and command-line tools.
+
+Package: themisdb-dev
+Architecture: any
+Section: libdevel
+Depends: themisdb (= ${binary:Version}),
+         ${misc:Depends}
+Description: Development files for ThemisDB
+ Development headers and libraries for building applications that
+ link against ThemisDB.
+ .
+ This package contains C++ header files and static libraries.

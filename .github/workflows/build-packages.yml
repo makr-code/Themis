@@ -1,0 +1,304 @@
+name: Build Distribution Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build-deb:
+    name: Build Debian Package
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debhelper devscripts build-essential \
+            cmake ninja-build pkg-config \
+            libssl-dev librocksdb-dev libtbb-dev libarrow-dev \
+            libboost-system-dev libspdlog-dev nlohmann-json3-dev \
+            libcurl4-openssl-dev libyaml-cpp-dev libzstd-dev
+
+      - name: Build Debian package
+        run: |
+          dpkg-buildpackage -us -uc -b
+
+      - name: Upload Debian packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-packages
+          path: |
+            ../*.deb
+          retention-days: 30
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ../*.deb
+
+  build-rpm:
+    name: Build RPM Package
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:39
+    steps:
+      - name: Install Git (needed for checkout)
+        run: |
+          dnf install -y git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          dnf install -y rpm-build rpmdevtools
+          dnf install -y gcc-c++ cmake ninja-build git pkg-config \
+            openssl-devel rocksdb-devel tbb-devel arrow-devel \
+            boost-devel spdlog-devel json-devel \
+            libcurl-devel yaml-cpp-devel libzstd-devel \
+            systemd-rpm-macros
+
+      - name: Setup RPM build environment
+        run: |
+          rpmdev-setuptree
+          
+      - name: Create source tarball
+        run: |
+          VERSION="${{ github.event.release.tag_name || github.event.inputs.version }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+          tar czf ~/rpmbuild/SOURCES/ThemisDB-${VERSION}.tar.gz \
+            --transform "s,^,ThemisDB-${VERSION}/," \
+            --exclude=.git \
+            --exclude=build* \
+            .
+
+      - name: Copy spec file
+        run: |
+          cp themisdb.spec ~/rpmbuild/SPECS/
+
+      - name: Build RPM package
+        run: |
+          cd ~/rpmbuild/SPECS
+          rpmbuild -ba themisdb.spec
+
+      - name: Upload RPM packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages
+          path: |
+            ~/rpmbuild/RPMS/x86_64/*.rpm
+          retention-days: 30
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ~/rpmbuild/RPMS/x86_64/*.rpm
+
+  build-arch:
+    name: Build Arch Package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install base-devel and git
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          pacman -S --noconfirm cmake ninja openssl rocksdb intel-tbb \
+            arrow boost spdlog nlohmann-json curl yaml-cpp zstd
+
+      - name: Copy PKGBUILD and service file
+        run: |
+          cp PKGBUILD /tmp/
+          cp debian/themisdb.service /tmp/
+
+      - name: Build package as non-root user
+        run: |
+          # Create a build user (makepkg cannot run as root)
+          useradd -m builder
+          chown -R builder:builder /tmp
+          chown -R builder:builder .
+          
+          # Build package
+          cd /tmp
+          su builder -c "makepkg --noconfirm"
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: /tmp/*.pkg.tar.zst
+          retention-days: 30
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: /tmp/*.pkg.tar.zst
+
+  build-windows:
+    name: Build Windows Package
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '2024.12.16'
+
+      - name: Build ThemisDB
+        run: |
+          .\build.ps1 -BuildType Release
+
+      - name: Create distribution archive
+        run: |
+          $version = "${{ github.event.release.tag_name || github.event.inputs.version }}"
+          $version = $version.TrimStart('v')
+          $distDir = "dist\themisdb-$version-win64"
+          
+          New-Item -ItemType Directory -Force -Path $distDir\bin
+          Copy-Item build-msvc\Release\themis_server.exe $distDir\bin\
+          Copy-Item config\config.yaml $distDir\
+          Copy-Item LICENSE $distDir\
+          Copy-Item README.md $distDir\
+          
+          Compress-Archive -Path $distDir\* -DestinationPath "themisdb-$version-win64.zip"
+          
+          # Calculate SHA256
+          $hash = (Get-FileHash "themisdb-$version-win64.zip" -Algorithm SHA256).Hash
+          Write-Output "SHA256: $hash"
+          $hash | Out-File "themisdb-$version-win64.zip.sha256"
+
+      - name: Build Chocolatey package
+        run: |
+          cd packaging\chocolatey
+          choco pack
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            themisdb-*.zip
+            themisdb-*.zip.sha256
+            packaging/chocolatey/*.nupkg
+          retention-days: 30
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            themisdb-*.zip
+            themisdb-*.zip.sha256
+            packaging/chocolatey/*.nupkg
+
+  build-macos:
+    name: Build macOS Package
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja pkg-config openssl@3 rocksdb tbb \
+            apache-arrow boost spdlog nlohmann-json curl yaml-cpp zstd
+
+      - name: Build ThemisDB
+        run: |
+          ./build.sh BUILD_TYPE=Release
+
+      - name: Create distribution archive
+        run: |
+          VERSION="${{ github.event.release.tag_name || github.event.inputs.version }}"
+          VERSION="${VERSION#v}"
+          DIST_DIR="dist/themisdb-$VERSION-macos"
+          
+          mkdir -p $DIST_DIR/bin
+          cp build/themis_server $DIST_DIR/bin/
+          cp config/config.yaml $DIST_DIR/
+          cp LICENSE $DIST_DIR/
+          cp README.md $DIST_DIR/
+          
+          tar czf themisdb-$VERSION-macos.tar.gz -C dist themisdb-$VERSION-macos
+          
+          # Calculate SHA256
+          shasum -a 256 themisdb-$VERSION-macos.tar.gz | tee themisdb-$VERSION-macos.tar.gz.sha256
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-package
+          path: |
+            themisdb-*.tar.gz
+            themisdb-*.tar.gz.sha256
+          retention-days: 30
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            themisdb-*.tar.gz
+            themisdb-*.tar.gz.sha256
+
+  publish-summary:
+    name: Publish Summary
+    needs: [build-deb, build-rpm, build-arch, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # ThemisDB Distribution Packages Built Successfully
+          
+          ## Available Packages
+          
+          ### Linux
+          - ✅ Debian/Ubuntu (.deb)
+          - ✅ Fedora/RHEL/CentOS (.rpm)
+          - ✅ Arch Linux (.pkg.tar.zst)
+          
+          ### Windows
+          - ✅ Portable ZIP archive
+          - ✅ Chocolatey package (.nupkg)
+          
+          ### macOS
+          - ✅ Portable tarball (.tar.gz)
+          
+          ## Next Steps
+          
+          1. **Test packages** on target platforms
+          2. **Submit to repositories**:
+             - Debian PPA / Ubuntu Launchpad
+             - Fedora Copr / EPEL
+             - Arch AUR
+             - Chocolatey Community
+             - WinGet Community Repository
+             - Homebrew Core / Tap
+          3. **Update documentation** with installation instructions
+          
+          See [docs/packaging.md](https://github.com/makr-code/ThemisDB/blob/main/docs/packaging.md) for details.
+          EOF

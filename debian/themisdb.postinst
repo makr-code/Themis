@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create themisdb user and group if they don't exist
+        if ! getent group themisdb >/dev/null; then
+            addgroup --system themisdb
+        fi
+        
+        if ! getent passwd themisdb >/dev/null; then
+            adduser --system --ingroup themisdb --home /var/lib/themisdb \
+                    --no-create-home --disabled-password \
+                    --gecos "ThemisDB Database Server" themisdb
+        fi
+        
+        # Set ownership of data directory
+        chown -R themisdb:themisdb /var/lib/themisdb
+        chmod 750 /var/lib/themisdb
+        
+        # Set ownership of config directory
+        chown -R root:themisdb /etc/themisdb
+        chmod 750 /etc/themisdb
+        chmod 640 /etc/themisdb/config.yaml
+        ;;
+        
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+        
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

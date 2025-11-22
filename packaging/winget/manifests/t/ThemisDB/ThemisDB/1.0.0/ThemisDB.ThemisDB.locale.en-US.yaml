@@ -1,0 +1,49 @@
+PackageIdentifier: ThemisDB.ThemisDB
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: ThemisDB Team
+PublisherUrl: https://github.com/makr-code/ThemisDB
+PublisherSupportUrl: https://github.com/makr-code/ThemisDB/issues
+Author: ThemisDB Team
+PackageName: ThemisDB
+PackageUrl: https://github.com/makr-code/ThemisDB
+License: MIT
+LicenseUrl: https://github.com/makr-code/ThemisDB/blob/main/LICENSE
+Copyright: Copyright (c) 2024 ThemisDB Team
+ShortDescription: Multi-model database system with ACID transactions
+Description: |-
+  ThemisDB is a high-performance multi-model database system that supports:
+  
+  - Relational Data: Secondary indexes (single, composite, range)
+  - Graph Database: BFS, Dijkstra, A* traversals with variable depth
+  - Vector Search: HNSW index with L2, Cosine, Dot Product metrics
+  - Time-Series: Gorilla compression with continuous aggregates
+  - Document Storage: JSON with fast field extraction
+  - ACID Transactions: Full MVCC with Snapshot Isolation
+  - Advanced Query Language (AQL): Hybrid queries across all models
+  - Enterprise Security: TLS 1.3, RBAC, audit logging, secrets management
+  - Observability: OpenTelemetry tracing and Prometheus metrics
+  - Change Data Capture: Real-time event streaming
+Moniker: themisdb
+Tags:
+- database
+- multi-model
+- graph
+- vector
+- timeseries
+- nosql
+- acid
+- mvcc
+- aql
+ReleaseNotes: |-
+  Initial release of ThemisDB v1.0.0
+  - Multi-model database with relational, graph, vector, and time-series support
+  - Full ACID transactions with MVCC
+  - Advanced Query Language (AQL) with graph traversals
+  - HNSW vector index with persistence
+  - Enterprise security features
+  - OpenTelemetry tracing and Prometheus metrics
+ReleaseNotesUrl: https://github.com/makr-code/ThemisDB/releases/tag/v1.0.0
+DocumentationUrl: https://makr-code.github.io/ThemisDB/
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
