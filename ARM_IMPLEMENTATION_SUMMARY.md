@@ -245,9 +245,17 @@ The implementation maintains full backward compatibility with x86_64 while addin
    - Platform-specific optimization guidance
    - See [ARM Benchmarks documentation](docs/ARM_BENCHMARKS.md)
 
+3. ✅ **Packages:** Pre-built ARM64/ARMv7 binaries/packages
+   - `build-arm-packages.yml`: Automated package building workflow
+   - DEB packages for Debian/Ubuntu/Raspberry Pi OS (ARM64 & ARMv7)
+   - RPM packages for RHEL/Fedora/Rocky Linux (ARM64)
+   - Arch Linux packages (ARM64)
+   - `build-arm-packages.sh`: Local package building script
+   - See [ARM Packages documentation](docs/ARM_PACKAGES.md)
+
 ## Future Enhancements (Optional)
 
-3. **Package:** Pre-built ARM64/ARMv7 binaries/packages
+4. **Tuning:** Additional Raspberry Pi-specific optimizations
 4. **Tuning:** Additional Raspberry Pi-specific optimizations
 5. **Testing:** Automated testing on actual Raspberry Pi hardware
 

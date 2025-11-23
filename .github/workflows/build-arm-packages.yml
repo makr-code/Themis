@@ -1,0 +1,342 @@
+name: Build ARM Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+env:
+  VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+
+jobs:
+  # Build Debian/Ubuntu packages for ARM64
+  build-deb-arm64:
+    name: Build DEB (ARM64)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+          
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="1.0.0"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+          
+      - name: Build ARM64 DEB in Docker
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            debian:bookworm \
+            bash -c '
+              apt-get update
+              apt-get install -y build-essential cmake ninja-build git \
+                dpkg-dev debhelper devscripts \
+                libssl-dev libcurl4-openssl-dev libyaml-cpp-dev libzstd-dev
+              
+              # Build package
+              dpkg-buildpackage -b -uc -us -j$(nproc)
+              
+              # Move packages to output directory
+              mkdir -p /workspace/packages
+              mv ../*.deb /workspace/packages/ || true
+            '
+            
+      - name: Upload DEB packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: themisdb-deb-arm64-${{ steps.version.outputs.VERSION }}
+          path: packages/*.deb
+          retention-days: 30
+          
+  # Build Debian/Ubuntu packages for ARMv7
+  build-deb-armv7:
+    name: Build DEB (ARMv7)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm/v7
+          
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="1.0.0"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          
+      - name: Build ARMv7 DEB in Docker
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            debian:bookworm \
+            bash -c '
+              apt-get update
+              apt-get install -y build-essential cmake ninja-build git \
+                dpkg-dev debhelper devscripts \
+                libssl-dev libcurl4-openssl-dev libyaml-cpp-dev libzstd-dev
+              
+              # Build package
+              dpkg-buildpackage -b -uc -us -j$(nproc)
+              
+              # Move packages to output directory
+              mkdir -p /workspace/packages
+              mv ../*.deb /workspace/packages/ || true
+            '
+            
+      - name: Upload DEB packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: themisdb-deb-armv7-${{ steps.version.outputs.VERSION }}
+          path: packages/*.deb
+          retention-days: 30
+          
+  # Build RPM packages for ARM64 (Fedora/RHEL/Rocky)
+  build-rpm-arm64:
+    name: Build RPM (ARM64)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+          
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="1.0.0"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          
+      - name: Build ARM64 RPM in Docker
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            fedora:39 \
+            bash -c '
+              dnf install -y rpm-build rpmdevtools gcc-c++ cmake ninja-build git \
+                openssl-devel libcurl-devel yaml-cpp-devel libzstd-devel
+              
+              # Setup RPM build tree
+              rpmdev-setuptree
+              
+              # Create source tarball
+              VERSION=${{ steps.version.outputs.VERSION }}
+              mkdir -p ~/rpmbuild/SOURCES
+              tar czf ~/rpmbuild/SOURCES/themisdb-${VERSION}.tar.gz \
+                --transform "s,^,ThemisDB-${VERSION}/," \
+                --exclude=.git --exclude=build* .
+              
+              # Build RPM
+              rpmbuild -bb themisdb.spec \
+                --define "version ${VERSION}" \
+                --define "_topdir ${HOME}/rpmbuild"
+              
+              # Copy packages
+              mkdir -p /workspace/packages
+              cp ~/rpmbuild/RPMS/*/*.rpm /workspace/packages/
+            '
+            
+      - name: Upload RPM packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: themisdb-rpm-arm64-${{ steps.version.outputs.VERSION }}
+          path: packages/*.rpm
+          retention-days: 30
+          
+  # Build Arch Linux packages for ARM64
+  build-arch-arm64:
+    name: Build Arch (ARM64)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+          
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="1.0.0"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          
+      - name: Build ARM64 Arch package in Docker
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            archlinux:latest \
+            bash -c '
+              # Setup build environment
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm base-devel cmake ninja git \
+                openssl rocksdb intel-tbb arrow boost spdlog curl yaml-cpp zstd
+              
+              # Create build user (makepkg cannot run as root)
+              useradd -m builder
+              chown -R builder:builder /workspace
+              
+              # Build package as builder user
+              su - builder -c "
+                cd /workspace
+                makepkg -s --noconfirm
+                mkdir -p packages
+                mv *.pkg.tar.zst packages/
+              "
+            '
+            
+      - name: Upload Arch packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: themisdb-arch-arm64-${{ steps.version.outputs.VERSION }}
+          path: packages/*.pkg.tar.zst
+          retention-days: 30
+          
+  # Create release with all packages
+  create-release-assets:
+    name: Create Release Assets
+    needs: [build-deb-arm64, build-deb-armv7, build-rpm-arm64, build-arch-arm64]
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'release'
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          
+      - name: List packages
+        run: |
+          echo "Downloaded packages:"
+          find packages -type f
+          
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: packages/**/*
+          
+  # Generate package index/manifest
+  generate-manifest:
+    name: Generate Package Manifest
+    needs: [build-deb-arm64, build-deb-armv7, build-rpm-arm64, build-arch-arm64]
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="1.0.0"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          
+      - name: Generate manifest
+        run: |
+          cat > packages/MANIFEST.md << 'EOF'
+          # ThemisDB ARM Packages - Version ${{ steps.version.outputs.VERSION }}
+          
+          Built on: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Available Packages
+          
+          ### Debian/Ubuntu (ARM64)
+          EOF
+          
+          find packages/themisdb-deb-arm64-* -name "*.deb" -exec basename {} \; >> packages/MANIFEST.md || echo "No ARM64 DEB packages" >> packages/MANIFEST.md
+          
+          cat >> packages/MANIFEST.md << 'EOF'
+          
+          ### Debian/Ubuntu (ARMv7)
+          EOF
+          
+          find packages/themisdb-deb-armv7-* -name "*.deb" -exec basename {} \; >> packages/MANIFEST.md || echo "No ARMv7 DEB packages" >> packages/MANIFEST.md
+          
+          cat >> packages/MANIFEST.md << 'EOF'
+          
+          ### RHEL/Fedora/Rocky (ARM64)
+          EOF
+          
+          find packages/themisdb-rpm-arm64-* -name "*.rpm" -exec basename {} \; >> packages/MANIFEST.md || echo "No ARM64 RPM packages" >> packages/MANIFEST.md
+          
+          cat >> packages/MANIFEST.md << 'EOF'
+          
+          ### Arch Linux (ARM64)
+          EOF
+          
+          find packages/themisdb-arch-arm64-* -name "*.pkg.tar.zst" -exec basename {} \; >> packages/MANIFEST.md || echo "No Arch packages" >> packages/MANIFEST.md
+          
+          cat packages/MANIFEST.md
+          
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-manifest-${{ steps.version.outputs.VERSION }}
+          path: packages/MANIFEST.md
+          retention-days: 90

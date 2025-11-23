@@ -2,6 +2,19 @@
 
 This guide explains how to build and run ThemisDB on ARM-based systems, including Raspberry Pi.
 
+## Quick Start: Pre-built Packages
+
+**Prefer pre-built packages?** See **[ARM Packages Guide](ARM_PACKAGES.md)** for ready-to-install DEB, RPM, and Arch packages for ARM64 and ARMv7.
+
+**Debian/Ubuntu/Raspberry Pi OS:**
+```bash
+wget https://github.com/makr-code/ThemisDB/releases/latest/download/themisdb_1.0.0-1_arm64.deb
+sudo apt install ./themisdb_1.0.0-1_arm64.deb
+sudo systemctl start themisdb
+```
+
+For building from source, continue reading below.
+
 ## Architecture Support
 
 ThemisDB supports the following ARM architectures:
@@ -361,9 +374,48 @@ cmake --build --preset rpi-arm64-gcc-release
 
 See [ARM Benchmarks Guide](ARM_BENCHMARKS.md) for detailed documentation.
 
+## Pre-built Packages
+
+Pre-built packages are available for easier installation:
+
+**Available Formats:**
+- DEB packages (Debian, Ubuntu, Raspberry Pi OS) - ARM64 & ARMv7
+- RPM packages (Fedora, RHEL, Rocky Linux) - ARM64
+- Arch Linux packages - ARM64
+
+**Installation:**
+```bash
+# Debian/Ubuntu/Raspberry Pi OS (ARM64)
+wget https://github.com/makr-code/ThemisDB/releases/latest/download/themisdb_1.0.0-1_arm64.deb
+sudo apt install ./themisdb_1.0.0-1_arm64.deb
+
+# Raspberry Pi OS (ARMv7 32-bit)
+wget https://github.com/makr-code/ThemisDB/releases/latest/download/themisdb_1.0.0-1_armhf.deb
+sudo apt install ./themisdb_1.0.0-1_armhf.deb
+
+# Fedora/RHEL (ARM64)
+wget https://github.com/makr-code/ThemisDB/releases/latest/download/themisdb-1.0.0-1.fc39.aarch64.rpm
+sudo dnf install themisdb-1.0.0-1.fc39.aarch64.rpm
+```
+
+See [ARM Packages Guide](ARM_PACKAGES.md) for complete installation and configuration instructions.
+
+**Building packages locally:**
+```bash
+# Build DEB package for ARM64
+./scripts/build-arm-packages.sh
+
+# Build with custom version
+VERSION=1.1.0 ./scripts/build-arm-packages.sh
+
+# Build RPM for ARM64
+FORMAT=rpm ARCH=arm64 ./scripts/build-arm-packages.sh
+```
+
 ## Additional Resources
 
 - [Main README](../README.md) - General build instructions
+- [ARM Packages Guide](ARM_PACKAGES.md) - Pre-built package installation
 - [ARM Benchmarks Guide](ARM_BENCHMARKS.md) - Performance testing and optimization
 - [Deployment Guide](deployment.md) - Production setup
 - [Memory Tuning](memory_tuning.md) - Performance optimization

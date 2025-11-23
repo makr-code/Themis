@@ -899,10 +899,21 @@ For detailed packaging and distribution information, see [docs/packaging.md](doc
 
 ### ARM and Raspberry Pi
 
-ThemisDB fully supports ARM-based systems including Raspberry Pi. See the dedicated guide:
-- **[ARM & Raspberry Pi Build Guide](docs/ARM_RASPBERRY_PI_BUILD.md)**
+ThemisDB fully supports ARM-based systems including Raspberry Pi. 
 
-Quick start on Raspberry Pi:
+**Quick Install (Pre-built Packages):**
+```bash
+# Debian/Ubuntu/Raspberry Pi OS (ARM64)
+wget https://github.com/makr-code/ThemisDB/releases/latest/download/themisdb_1.0.0-1_arm64.deb
+sudo apt install ./themisdb_1.0.0-1_arm64.deb
+sudo systemctl start themisdb
+
+# Raspberry Pi OS (ARMv7 32-bit)
+wget https://github.com/makr-code/ThemisDB/releases/latest/download/themisdb_1.0.0-1_armhf.deb
+sudo apt install ./themisdb_1.0.0-1_armhf.deb
+```
+
+**Or Build from Source:**
 ```bash
 # Clone repository
 git clone https://github.com/makr-code/ThemisDB.git
@@ -914,11 +925,16 @@ cmake --preset rpi-arm64-gcc-release
 cmake --build --preset rpi-arm64-gcc-release
 ```
 
+**Documentation:**
+- **[ARM Packages Guide](docs/ARM_PACKAGES.md)** - Pre-built package installation
+- **[ARM & Raspberry Pi Build Guide](docs/ARM_RASPBERRY_PI_BUILD.md)** - Build from source
+
 Features on ARM:
 - ✅ ARM NEON SIMD optimizations for vector operations
 - ✅ Architecture-specific compiler flags (armv8-a, armv7-a+neon)
 - ✅ All core features supported (no GPU required)
 - ✅ Docker multi-arch images available
+- ✅ Pre-built DEB, RPM, and Arch packages
 
 ## Quick Start
 
