@@ -6,8 +6,9 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include <random>
 
-using namespace themis::timeseries;
+using namespace themis;
 
 class GorillaCodecEdgeCasesTest : public ::testing::Test {
 protected:
@@ -17,18 +18,20 @@ protected:
         
         GorillaEncoder encoder;
         for (const auto& [timestamp, value] : input) {
-            encoder.addPoint(timestamp, value);
+            encoder.add(timestamp, value);
         }
-        
+
         auto compressed = encoder.finish();
-        
+
         GorillaDecoder decoder(compressed);
         std::vector<std::pair<int64_t, double>> output;
-        
-        while (decoder.hasNext()) {
-            output.push_back(decoder.next());
+
+        while (true) {
+            auto p = decoder.next();
+            if (!p.has_value()) break;
+            output.push_back(*p);
         }
-        
+
         return output;
     }
 };
@@ -163,17 +166,18 @@ TEST_F(GorillaCodecEdgeCasesTest, HandlesOutOfOrderTimestamps) {
     
     GorillaEncoder encoder;
     for (const auto& [timestamp, value] : input) {
-        encoder.addPoint(timestamp, value);
+        encoder.add(timestamp, value);
     }
-    
+
     auto compressed = encoder.finish();
     EXPECT_GT(compressed.size(), 0);
     
     // Decoder should still work, though ordering may not be preserved
     GorillaDecoder decoder(compressed);
     int count = 0;
-    while (decoder.hasNext()) {
-        decoder.next();
+    while (true) {
+        auto p = decoder.next();
+        if (!p.has_value()) break;
         count++;
     }
     
@@ -190,16 +194,18 @@ TEST_F(GorillaCodecEdgeCasesTest, HandlesDuplicateTimestamps) {
     
     GorillaEncoder encoder;
     for (const auto& [timestamp, value] : input) {
-        encoder.addPoint(timestamp, value);
+        encoder.add(timestamp, value);
     }
-    
+
     auto compressed = encoder.finish();
     
     GorillaDecoder decoder(compressed);
     std::vector<std::pair<int64_t, double>> output;
     
-    while (decoder.hasNext()) {
-        output.push_back(decoder.next());
+    while (true) {
+        auto p = decoder.next();
+        if (!p.has_value()) break;
+        output.push_back(*p);
     }
     
     // Should preserve all points
@@ -307,7 +313,7 @@ TEST_F(GorillaCodecEdgeCasesTest, HandlesEmptyInput) {
     auto compressed = encoder.finish();
     
     GorillaDecoder decoder(compressed);
-    EXPECT_FALSE(decoder.hasNext());
+    EXPECT_FALSE(decoder.next().has_value());
 }
 
 TEST_F(GorillaCodecEdgeCasesTest, HandlesSinglePoint) {
@@ -385,9 +391,9 @@ TEST_F(GorillaCodecEdgeCasesTest, CompressesRealisticSensorData) {
     
     GorillaEncoder encoder;
     for (const auto& [ts, val] : input) {
-        encoder.addPoint(ts, val);
+        encoder.add(ts, val);
     }
-    
+
     auto compressed = encoder.finish();
     
     size_t raw_size = input.size() * (sizeof(int64_t) + sizeof(double));
@@ -401,8 +407,9 @@ TEST_F(GorillaCodecEdgeCasesTest, CompressesRealisticSensorData) {
     // Verify decompression works
     GorillaDecoder decoder(compressed);
     int count = 0;
-    while (decoder.hasNext()) {
-        decoder.next();
+    while (true) {
+        auto p = decoder.next();
+        if (!p.has_value()) break;
         count++;
     }
     

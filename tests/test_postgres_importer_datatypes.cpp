@@ -256,7 +256,10 @@ TEST(PostgreSQLImporterTest, LargeObjectHandling) {
     EXPECT_EQ(std::get<std::vector<int64_t>>(large_arr_val).size(), 1000);
 }
 
+// Disabled custom main to avoid multiple definition; rely on gtest_main.
+#if 0
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+#endif

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <vector>
+#include <random>
 
 using namespace themis;
 
@@ -37,7 +38,7 @@ public:
         }
         
         // Create changefeed
-        changefeed_ = std::make_unique<Changefeed>(db_->getDB(), nullptr);
+        changefeed_ = std::make_unique<Changefeed>(db_->getRawDB(), nullptr);
     }
     
     void TearDown(const ::benchmark::State& /*state*/) override {
@@ -108,9 +109,9 @@ BENCHMARK_DEFINE_F(ChangefeedBenchmarkFixture, EventPolling)(benchmark::State& s
     
     for (auto _ : state) {
         Changefeed::ListOptions options;
-        options.start_sequence = last_sequence;
+        options.from_sequence = last_sequence;
         options.limit = 100; // Poll 100 events at a time
-        options.timeout_ms = 0; // No blocking
+        options.long_poll_ms = 0; // No blocking
         
         auto events = changefeed_->listEvents(options);
         benchmark::DoNotOptimize(events);
@@ -158,9 +159,9 @@ BENCHMARK_DEFINE_F(ChangefeedBenchmarkFixture, ConcurrentSubscribers)(benchmark:
             
             while (should_run) {
                 Changefeed::ListOptions options;
-                options.start_sequence = last_sequence;
+                options.from_sequence = last_sequence;
                 options.limit = 10;
-                options.timeout_ms = 10; // 10ms poll interval
+                options.long_poll_ms = 10; // 10ms poll interval
                 
                 auto events = changefeed_->listEvents(options);
                 
@@ -227,7 +228,7 @@ static void BM_EventTypeMix(benchmark::State& state) {
     
     auto db = std::make_unique<RocksDBWrapper>(config);
     db->open();
-    auto changefeed = std::make_unique<Changefeed>(db->getDB(), nullptr);
+    auto changefeed = std::make_unique<Changefeed>(db->getRawDB(), nullptr);
     
     std::mt19937 rng(42);
     std::uniform_int_distribution<int> type_dist(0, 3);
@@ -289,11 +290,10 @@ static void BM_BurstWrites(benchmark::State& state) {
     RocksDBWrapper::Config config;
     config.db_path = test_db_path;
     config.memtable_size_mb = 256;
-    config.write_buffer_size = 256 * 1024 * 1024;
     
     auto db = std::make_unique<RocksDBWrapper>(config);
     db->open();
-    auto changefeed = std::make_unique<Changefeed>(db->getDB(), nullptr);
+    auto changefeed = std::make_unique<Changefeed>(db->getRawDB(), nullptr);
     
     const int burst_size = state.range(0);
     size_t event_count = 0;
@@ -351,7 +351,7 @@ static void BM_ReplicationLag(benchmark::State& state) {
     
     auto db = std::make_unique<RocksDBWrapper>(config);
     db->open();
-    auto changefeed = std::make_unique<Changefeed>(db->getDB(), nullptr);
+    auto changefeed = std::make_unique<Changefeed>(db->getRawDB(), nullptr);
     
     // Pre-populate with events
     const int total_events = 10000;
@@ -372,9 +372,9 @@ static void BM_ReplicationLag(benchmark::State& state) {
         
         while (events_read < total_events) {
             Changefeed::ListOptions options;
-            options.start_sequence = last_sequence;
+            options.from_sequence = last_sequence;
             options.limit = 100;
-            options.timeout_ms = 0;
+            options.long_poll_ms = 0;
             
             auto events = changefeed->listEvents(options);
             
@@ -409,4 +409,4 @@ BENCHMARK(BM_ReplicationLag)
     ->Unit(benchmark::kMillisecond)
     ->Iterations(5);
 
-BENCHMARK_MAIN();
+// benchmark_main wird über CMake verlinkt

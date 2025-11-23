@@ -4,10 +4,11 @@ services:
   themis:
     build:
       context: .
+      dockerfile: Dockerfile.qnap
       args:
         # QNAP x86_64: x64-linux; bei ARM-Modellen ggf. arm64-linux setzen
         VCPKG_TRIPLET: x64-linux
-    image: themis:latest
+    image: themisdb:qnap
     container_name: themis
     restart: unless-stopped
     ports:
