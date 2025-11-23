@@ -364,7 +364,10 @@ TEST(PluginLifecycleTest, LoadOrderTracking) {
     EXPECT_EQ(load_order[1], "plugin2");
 }
 
+// Disabled custom main to avoid multiple definition; rely on gtest_main.
+#if 0
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+#endif

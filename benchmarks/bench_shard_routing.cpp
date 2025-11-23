@@ -5,38 +5,16 @@
 #include "sharding/consistent_hash.h"
 #include "sharding/urn_resolver.h"
 #include "sharding/remote_executor.h"
+#include "sharding/shard_topology.h"
 #include "sharding/urn.h"
 #include <benchmark/benchmark.h>
 #include <memory>
 #include <random>
 #include <string>
+#include <map>
+#include <cmath>
 
 using namespace themis::sharding;
-
-// ============================================================================
-// Test Setup - Mock Components
-// ============================================================================
-
-class MockRemoteExecutor : public RemoteExecutor {
-public:
-    struct Response {
-        bool success = true;
-        nlohmann::json data;
-    };
-    
-    Response execute(const std::string& /*endpoint*/, 
-                    const std::string& /*method*/,
-                    const std::string& /*path*/,
-                    const std::optional<nlohmann::json>& /*body*/) override {
-        // Simulate network latency (10-50 microseconds)
-        std::this_thread::sleep_for(std::chrono::microseconds(20));
-        
-        Response resp;
-        resp.success = true;
-        resp.data = nlohmann::json{{"result", "ok"}};
-        return resp;
-    }
-};
 
 // ============================================================================
 // Benchmark Fixtures
@@ -47,25 +25,41 @@ public:
     void SetUp(const ::benchmark::State& state) override {
         num_shards_ = state.range(0);
         
-        // Create consistent hash with specified number of shards
-        consistent_hash_ = std::make_shared<ConsistentHash>(num_shards_);
-        
-        // Add virtual nodes for better distribution
+        // Create consistent hash ring and topology
+        hash_ring_ = std::make_shared<ConsistentHashRing>();
+        ShardTopology::Config topo_cfg{ /*metadata_endpoint=*/"", /*cluster_name=*/"bench", /*refresh_interval_sec=*/0, /*enable_health_checks=*/false };
+        topology_ = std::make_shared<ShardTopology>(topo_cfg);
+
+        // Add shards to ring and topology
         for (int i = 0; i < num_shards_; i++) {
             std::string shard_id = "shard_" + std::to_string(i);
-            std::string endpoint = "http://shard" + std::to_string(i) + ".example.com:8080";
-            
-            consistent_hash_->addNode(shard_id, endpoint, 150); // 150 virtual nodes per shard
+            hash_ring_->addShard(shard_id, 150); // 150 virtual nodes per shard
+
+            ShardInfo info;
+            info.shard_id = shard_id;
+            info.primary_endpoint = "http://" + shard_id + ".example.com:8080";
+            info.datacenter = "dc1";
+            info.rack = "rack01";
+            info.token_start = 0;
+            info.token_end = 0;
+            info.is_healthy = true;
+            info.capabilities = {"read", "write"};
+            topology_->addShard(info);
         }
-        
-        // Create URN resolver and remote executor
-        resolver_ = std::make_shared<URNResolver>(consistent_hash_);
-        executor_ = std::make_shared<MockRemoteExecutor>();
-        
+
+        // Create URN resolver and remote executor; make all requests local to avoid network
+        local_shard_id_ = "shard_0";
+        resolver_ = std::make_shared<URNResolver>(topology_, hash_ring_, local_shard_id_);
+
+        RemoteExecutor::Config rexec_cfg{};
+        rexec_cfg.local_shard_id = local_shard_id_;
+        executor_ = std::make_shared<RemoteExecutor>(rexec_cfg);
+
         // Create shard router
         ShardRouter::Config config;
-        config.scatter_gather_timeout_ms = 5000;
-        config.max_parallel_requests = 16;
+        config.local_shard_id = local_shard_id_;
+        config.scatter_timeout_ms = 5000;
+        config.max_concurrent_shards = 16;
         router_ = std::make_unique<ShardRouter>(resolver_, executor_, config);
         
         // Pre-generate random URNs for testing
@@ -73,8 +67,22 @@ public:
         std::uniform_int_distribution<int> dist(1, 1000000);
         
         for (int i = 0; i < 10000; i++) {
-            std::string urn_str = "urn:themis:user:" + std::to_string(dist(rng));
-            test_urns_.push_back(URN::parse(urn_str).value());
+            // Build a valid URN: urn:themis:{model}:{namespace}:{collection}:{uuid}
+            // Generate a pseudo UUID v4-like string
+            auto to_hex = [](uint32_t x) {
+                static const char* hex = "0123456789abcdef";
+                std::string s(8, '0');
+                for (int i = 7; i >= 0; --i) { s[i] = hex[x & 0xF]; x >>= 4; }
+                return s;
+            };
+            uint32_t a = static_cast<uint32_t>(dist(rng));
+            uint32_t b = static_cast<uint32_t>(dist(rng));
+            uint32_t c = static_cast<uint32_t>(dist(rng));
+            uint32_t d = static_cast<uint32_t>(dist(rng));
+            std::string uuid = to_hex(a).substr(0,8) + "-" + to_hex(b).substr(0,4) + "-" + to_hex(c).substr(0,4) + "-" + to_hex(d).substr(0,4) + "-" + to_hex(a^b^c^d);
+
+            URN u{"document", "bench", "users", uuid};
+            test_urns_.push_back(u);
         }
     }
     
@@ -82,17 +90,20 @@ public:
         router_.reset();
         executor_.reset();
         resolver_.reset();
-        consistent_hash_.reset();
+        hash_ring_.reset();
+        topology_.reset();
         test_urns_.clear();
     }
     
 protected:
     int num_shards_;
-    std::shared_ptr<ConsistentHash> consistent_hash_;
+    std::shared_ptr<ConsistentHashRing> hash_ring_;
+    std::shared_ptr<ShardTopology> topology_;
     std::shared_ptr<URNResolver> resolver_;
-    std::shared_ptr<MockRemoteExecutor> executor_;
+    std::shared_ptr<RemoteExecutor> executor_;
     std::unique_ptr<ShardRouter> router_;
     std::vector<URN> test_urns_;
+    std::string local_shard_id_;
 };
 
 // ============================================================================
@@ -135,8 +146,8 @@ BENCHMARK_DEFINE_F(ShardRoutingFixture, ConsistentHashPerformance)(benchmark::St
         const URN& urn = test_urns_[urn_index % test_urns_.size()];
         
         // Direct hash lookup (without full routing)
-        auto shard_info = consistent_hash_->getNode(urn.toString());
-        benchmark::DoNotOptimize(shard_info);
+        auto shard_id = hash_ring_->getShardForURN(urn);
+        benchmark::DoNotOptimize(shard_id);
         
         urn_index++;
     }
@@ -198,13 +209,12 @@ static void BM_DistributionQuality(benchmark::State& state) {
     const int num_shards = state.range(0);
     const int num_keys = 10000;
     
-    auto hash = std::make_shared<ConsistentHash>(num_shards);
+    auto ring = std::make_shared<ConsistentHashRing>();
     
-    // Add nodes
+    // Add shards
     for (int i = 0; i < num_shards; i++) {
         std::string shard_id = "shard_" + std::to_string(i);
-        std::string endpoint = "http://shard" + std::to_string(i) + ".example.com:8080";
-        hash->addNode(shard_id, endpoint, 150);
+        ring->addShard(shard_id, 150);
     }
     
     // Generate keys and measure distribution
@@ -217,11 +227,22 @@ static void BM_DistributionQuality(benchmark::State& state) {
         shard_counts.clear();
         
         for (int i = 0; i < num_keys; i++) {
-            std::string key = "key_" + std::to_string(dist(rng));
-            auto shard_info = hash->getNode(key);
-            
-            if (shard_info) {
-                shard_counts[shard_info->shard_id]++;
+            // Build a URN and map via ring
+            auto to_hex = [](uint32_t x) {
+                static const char* hex = "0123456789abcdef";
+                std::string s(8, '0');
+                for (int i = 7; i >= 0; --i) { s[i] = hex[x & 0xF]; x >>= 4; }
+                return s;
+            };
+            uint32_t a = static_cast<uint32_t>(dist(rng));
+            uint32_t b = static_cast<uint32_t>(dist(rng));
+            uint32_t c = static_cast<uint32_t>(dist(rng));
+            uint32_t d = static_cast<uint32_t>(dist(rng));
+            std::string uuid = to_hex(a).substr(0,8) + "-" + to_hex(b).substr(0,4) + "-" + to_hex(c).substr(0,4) + "-" + to_hex(d).substr(0,4) + "-" + to_hex(a^b^c^d);
+            URN urn{"document", "bench", "keys", uuid};
+            auto shard_id = ring->getShardForURN(urn);
+            if (!shard_id.empty()) {
+                shard_counts[shard_id]++;
             }
         }
         
@@ -286,4 +307,4 @@ BENCHMARK_REGISTER_F(ShardRoutingFixture, HotShardPattern)
     ->Arg(1000)
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK_MAIN();
+// benchmark_main wird über CMake verlinkt

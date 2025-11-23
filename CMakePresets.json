@@ -72,6 +72,17 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "linux-ninja-clang-debug-bench",
+      "inherits": ["linux-ninja-clang-debug"],
+      "binaryDir": "${sourceDir}/build-linux-clang-debug-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "THEMIS_BUILD_BENCHMARKS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "/mnt/c/Users/mkrueger/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "THREADS_PREFER_PTHREAD_FLAG": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -98,6 +109,10 @@
     {
       "name": "linux-ninja-clang-release",
       "configurePreset": "linux-ninja-clang-release"
+    },
+    {
+      "name": "linux-ninja-clang-debug-bench",
+      "configurePreset": "linux-ninja-clang-debug-bench"
     }
   ],
   "testPresets": [
@@ -124,6 +139,10 @@
     {
       "name": "linux-ninja-clang-release",
       "configurePreset": "linux-ninja-clang-release"
+    },
+    {
+      "name": "linux-ninja-clang-debug-bench",
+      "configurePreset": "linux-ninja-clang-debug-bench"
     }
   ]
 }

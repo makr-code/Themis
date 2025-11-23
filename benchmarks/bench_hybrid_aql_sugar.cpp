@@ -16,6 +16,7 @@
 #include "storage/base_entity.h"
 #include "utils/logger.h"
 #include "utils/tracing.h"
+#include "utils/geo/ewkb.h"
 
 #include <benchmark/benchmark.h>
 #include <nlohmann/json.hpp>
@@ -39,58 +40,63 @@ constexpr size_t NUM_HOTELS = 1000;
 constexpr size_t VECTOR_DIM = 128;
 
 static void SetupTestData() {
-    g_db = new RocksDBWrapper();
-    g_db->open("bench_hybrid_aql_tmp.db");
-    
+    // RocksDBWrapper benötigt Config
+    RocksDBWrapper::Config cfg; cfg.db_path = "bench_hybrid_aql_tmp.db"; 
+    g_db = new RocksDBWrapper(cfg);
+    g_db->open();
+
     g_secIdx = new SecondaryIndexManager(*g_db);
     g_vectorIdx = new VectorIndexManager(*g_db);
     g_spatialIdx = new SpatialIndexManager(*g_db);
     g_graphIdx = new GraphIndexManager(*g_db);
-    
+
     g_engine = new QueryEngine(*g_db, *g_secIdx, *g_graphIdx, g_vectorIdx, g_spatialIdx);
-    
-    // Create indices
+
+    // Sekundär-/Range-/Composite-Indizes
     g_secIdx->createIndex("hotels", "city");
     g_secIdx->createRangeIndex("hotels", "stars");
     g_secIdx->createCompositeIndex("hotels", {"city", "category"});
+    // Fulltext wird im Content Benchmark lazy erstellt
+    // Räumlicher Index
     g_spatialIdx->createSpatialIndex("hotels", "location");
-    
-    // Generate synthetic hotel data
+
+    // Vector Index initialisieren
+    g_vectorIdx->init("hotels", static_cast<int>(VECTOR_DIM));
+
     std::mt19937 rng(42);
-    std::uniform_real_distribution<float> lon_dist(13.0f, 13.8f);
-    std::uniform_real_distribution<float> lat_dist(52.3f, 52.7f);
+    std::uniform_real_distribution<double> lon_dist(13.0, 13.8);
+    std::uniform_real_distribution<double> lat_dist(52.3, 52.7);
     std::uniform_int_distribution<int> stars_dist(1, 5);
     std::uniform_real_distribution<float> vec_dist(-1.0f, 1.0f);
-    
+
     std::vector<std::string> cities = {"Berlin", "Munich", "Hamburg"};
     std::vector<std::string> categories = {"budget", "mid-range", "luxury"};
-    
+
     for (size_t i = 0; i < NUM_HOTELS; ++i) {
-        nlohmann::json hotel;
-        hotel["name"] = "Hotel_" + std::to_string(i);
-        hotel["city"] = cities[i % cities.size()];
-        hotel["category"] = categories[i % categories.size()];
-        hotel["stars"] = stars_dist(rng);
-        
-        // Location (GeoJSON Point)
-        nlohmann::json location;
-        location["type"] = "Point";
-        location["coordinates"] = {lon_dist(rng), lat_dist(rng)};
-        hotel["location"] = location;
-        
-        // Embedding vector
-        std::vector<float> embedding(VECTOR_DIM);
-        for (auto& v : embedding) v = vec_dist(rng);
-        hotel["embedding"] = embedding;
-        
-        BaseEntity entity("hotel_" + std::to_string(i), hotel);
+        BaseEntity::FieldMap fields;
+        fields["name"] = std::string("Hotel_" + std::to_string(i));
+        fields["city"] = cities[i % cities.size()];
+        fields["category"] = categories[i % categories.size()];
+        fields["stars"] = static_cast<int64_t>(stars_dist(rng));
+        // Embedding
+        std::vector<float> embedding(VECTOR_DIM); for (auto &v : embedding) v = vec_dist(rng); fields["embedding"] = embedding;
+        // Geo: Punkt
+        double lon = lon_dist(rng); double lat = lat_dist(rng);
+        // Für vereinfachte Speicherung: separate Felder lon/lat und GeoJSON serialisiert
+        fields["lon"] = lon;
+        fields["lat"] = lat;
+        // Entity anlegen
+        BaseEntity entity("hotel_" + std::to_string(i), fields);
+        // GeoSidecar erstellen und am Entity setzen
+        geo::MBR mbr(lon, lat, lon, lat);
+        geo::GeoSidecar sidecar(mbr);
+        entity.setGeoSidecar(sidecar);
+        // Persist & Indizes pflegen
         g_secIdx->put("hotels", entity);
-        g_spatialIdx->indexEntity("hotels", entity);
+        g_vectorIdx->addEntity(entity, "embedding");
+        g_spatialIdx->insert("hotels", entity.getPrimaryKey(), sidecar);
     }
-    
-    // Build vector index
-    g_vectorIdx->buildIndex("hotels", "embedding", VECTOR_DIM);
-    
+
     THEMIS_INFO("Benchmark test data setup complete: {} hotels", NUM_HOTELS);
 }
 
@@ -122,11 +128,9 @@ static void BM_VectorGeo_AQL_Sugar(benchmark::State& state) {
     
     // Query vector
     std::vector<float> queryVec(VECTOR_DIM, 0.5f);
-    nlohmann::json params;
-    params["queryVec"] = queryVec;
     
     for (auto _ : state) {
-        auto [st, result] = query::executeAql(aql, *g_engine, params);
+        auto [st, result] = executeAql(aql, *g_engine);
         benchmark::DoNotOptimize(result);
         if (!st.ok) state.SkipWithError(st.message.c_str());
     }
@@ -151,31 +155,20 @@ static void BM_VectorGeo_CPP_API(benchmark::State& state) {
     q.k = 10;
     
     // Build spatial filter AST
-    auto bbox = std::make_shared<query::ArrayLiteralExpr>();
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(13.3));
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(52.4));
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(13.7));
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(52.6));
-    
-    auto loc = std::make_shared<query::FieldAccessExpr>();
-    loc->object = std::make_shared<query::VariableExpr>("doc");
-    loc->field = "location";
-    
-    auto spatialCall = std::make_shared<query::FunctionCallExpr>();
-    spatialCall->name = "ST_Within";
-    spatialCall->args.push_back(loc);
-    spatialCall->args.push_back(bbox);
+    auto bbox = std::make_shared<query::ArrayLiteralExpr>(std::vector<std::shared_ptr<query::Expression>>{
+        std::make_shared<query::LiteralExpr>(13.3),
+        std::make_shared<query::LiteralExpr>(52.4),
+        std::make_shared<query::LiteralExpr>(13.7),
+        std::make_shared<query::LiteralExpr>(52.6)
+    });
+    auto loc = std::make_shared<query::FieldAccessExpr>(std::make_shared<query::VariableExpr>("doc"), "location");
+    auto spatialCall = std::make_shared<query::FunctionCallExpr>("ST_Within", std::vector<std::shared_ptr<query::Expression>>{loc, bbox});
     q.spatial_filter = spatialCall;
     
     // Equality filter
-    auto city_fa = std::make_shared<query::FieldAccessExpr>();
-    city_fa->object = std::make_shared<query::VariableExpr>("doc");
-    city_fa->field = "city";
+    auto city_fa = std::make_shared<query::FieldAccessExpr>(std::make_shared<query::VariableExpr>("doc"), "city");
     auto city_lit = std::make_shared<query::LiteralExpr>(std::string("Berlin"));
-    auto city_eq = std::make_shared<query::BinaryOpExpr>();
-    city_eq->op = query::BinaryOperator::Eq;
-    city_eq->left = city_fa;
-    city_eq->right = city_lit;
+    auto city_eq = std::make_shared<query::BinaryOpExpr>(query::BinaryOperator::Eq, city_fa, city_lit);
     q.extra_filters.push_back(city_eq);
     
     for (auto _ : state) {
@@ -211,7 +204,7 @@ static void BM_ContentGeo_AQL_Sugar(benchmark::State& state) {
     )";
     
     for (auto _ : state) {
-        auto [st, result] = query::executeAql(aql, *g_engine);
+        auto [st, result] = executeAql(aql, *g_engine);
         benchmark::DoNotOptimize(result);
         if (!st.ok) state.SkipWithError(st.message.c_str());
     }
@@ -235,20 +228,14 @@ static void BM_ContentGeo_CPP_API(benchmark::State& state) {
     q.center_point = std::vector<float>{13.5f, 52.52f};
     
     // Spatial filter
-    auto bbox = std::make_shared<query::ArrayLiteralExpr>();
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(13.3));
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(52.4));
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(13.7));
-    bbox->elements.push_back(std::make_shared<query::LiteralExpr>(52.6));
-    
-    auto loc = std::make_shared<query::FieldAccessExpr>();
-    loc->object = std::make_shared<query::VariableExpr>("doc");
-    loc->field = "location";
-    
-    auto spatialCall = std::make_shared<query::FunctionCallExpr>();
-    spatialCall->name = "ST_Within";
-    spatialCall->args.push_back(loc);
-    spatialCall->args.push_back(bbox);
+    auto bbox = std::make_shared<query::ArrayLiteralExpr>(std::vector<std::shared_ptr<query::Expression>>{
+        std::make_shared<query::LiteralExpr>(13.3),
+        std::make_shared<query::LiteralExpr>(52.4),
+        std::make_shared<query::LiteralExpr>(13.7),
+        std::make_shared<query::LiteralExpr>(52.6)
+    });
+    auto loc = std::make_shared<query::FieldAccessExpr>(std::make_shared<query::VariableExpr>("doc"), "location");
+    auto spatialCall = std::make_shared<query::FunctionCallExpr>("ST_Within", std::vector<std::shared_ptr<query::Expression>>{loc, bbox});
     q.spatial_filter = spatialCall;
     
     for (auto _ : state) {
@@ -275,15 +262,15 @@ static void BM_AQL_Parse_Translate_Only(benchmark::State& state) {
     )";
     
     for (auto _ : state) {
-        query::Parser parser(aql);
-        auto ast = parser.parse();
-        benchmark::DoNotOptimize(ast);
-        
-        if (ast) {
-            query::Translator translator;
-            auto result = translator.translate(*ast);
-            benchmark::DoNotOptimize(result);
+        query::AQLParser parser;
+        auto parseResult = parser.parse(aql);
+        if (!parseResult.success) {
+            state.SkipWithError(parseResult.error.message.c_str());
+            continue;
         }
+        benchmark::DoNotOptimize(parseResult.query);
+        auto tr = AQLTranslator::translate(parseResult.query);
+        benchmark::DoNotOptimize(tr);
     }
     
     state.SetItemsProcessed(state.iterations());
@@ -295,21 +282,14 @@ BENCHMARK(BM_AQL_Parse_Translate_Only)->Unit(benchmark::kMicrosecond);
 // ============================================================================
 
 int main(int argc, char** argv) {
-    // Initialize logger
-    themis::Logger::init();
+    themis::utils::Logger::init();
     themis::Tracer::initialize("bench_hybrid_aql", "http://127.0.0.1:4318");
-    
-    THEMIS_INFO("Starting Hybrid AQL Benchmark Suite");
-    
+    THEMIS_INFO("Starting Hybrid AQL Benchmark Suite (hybrid queries)");
     SetupTestData();
-    
     ::benchmark::Initialize(&argc, argv);
     ::benchmark::RunSpecifiedBenchmarks();
-    
     TeardownTestData();
-    
     ::benchmark::Shutdown();
-    
     THEMIS_INFO("Benchmark suite completed");
     return 0;
 }
