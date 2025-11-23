@@ -1,0 +1,43 @@
+# Prometheus configuration for monitoring ThemisDB on ARM/Raspberry Pi
+# Save this as config/prometheus-arm.yml
+
+global:
+  scrape_interval: 15s      # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  
+  # Attach these labels to any time series or alerts
+  external_labels:
+    monitor: 'themisdb-arm'
+    architecture: 'arm64'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - 'alertmanager:9093'
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # ThemisDB metrics endpoint
+  - job_name: 'themisdb'
+    static_configs:
+      - targets: ['themisdb-arm:8765']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Optional: Node Exporter for system metrics
+  # Uncomment if you want to monitor Raspberry Pi system metrics
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']

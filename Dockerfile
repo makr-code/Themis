@@ -22,8 +22,25 @@ RUN git clone https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} \
 # Set up environment
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
-ARG VCPKG_TRIPLET=x64-linux
-ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET}
+
+# Auto-detect architecture and set appropriate vcpkg triplet
+# Supports x64-linux (amd64), arm64-linux (aarch64), arm-linux (armv7)
+ARG TARGETARCH
+ARG VCPKG_TRIPLET
+RUN TRIPLET="${VCPKG_TRIPLET}"; \
+    if [ -z "$TRIPLET" ]; then \
+      case "${TARGETARCH}" in \
+        amd64) TRIPLET=x64-linux ;; \
+        arm64) TRIPLET=arm64-linux ;; \
+        arm) TRIPLET=arm-linux ;; \
+        *) TRIPLET=x64-linux ;; \
+      esac; \
+    fi && \
+    echo "export VCPKG_TRIPLET=${TRIPLET}" > /etc/profile.d/vcpkg.sh && \
+    echo "Using vcpkg triplet: ${TRIPLET}"
+
+# Set default triplet environment variable
+ENV VCPKG_DEFAULT_TRIPLET=${VCPKG_TRIPLET:-x64-linux}
 
 WORKDIR /src
 
@@ -41,7 +58,9 @@ RUN cd ${VCPKG_ROOT} \
 # Disable compiler tracking and metrics for faster, more stable builds
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV VCPKG_DISABLE_METRICS=1
-RUN ${VCPKG_ROOT}/vcpkg install --triplet=${VCPKG_TRIPLET}
+RUN . /etc/profile.d/vcpkg.sh && \
+    echo "Installing dependencies for ${VCPKG_TRIPLET}..." && \
+    ${VCPKG_ROOT}/vcpkg install --triplet=${VCPKG_TRIPLET}
 
 # Copy source code
 COPY CMakeLists.txt ./
@@ -49,7 +68,9 @@ COPY include ./include
 COPY src ./src
 
 # Build ThemisDB
-RUN cmake -S . -B build -G Ninja \
+RUN . /etc/profile.d/vcpkg.sh && \
+    echo "Building ThemisDB for ${VCPKG_TRIPLET}..." && \
+    cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
     -DTHEMIS_BUILD_TESTS=OFF \
@@ -69,7 +90,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=build /src/build/themis_server /usr/local/bin/themis_server
 
 # Copy vcpkg installed libraries that are needed at runtime
-COPY --from=build /opt/vcpkg/installed/x64-linux/lib/*.so* /usr/local/lib/ || true
+# Auto-detect triplet from build stage
+ARG TARGETARCH
+RUN VCPKG_TRIPLET_COPY="x64-linux"; \
+    case "${TARGETARCH}" in \
+      amd64) VCPKG_TRIPLET_COPY="x64-linux" ;; \
+      arm64) VCPKG_TRIPLET_COPY="arm64-linux" ;; \
+      arm) VCPKG_TRIPLET_COPY="arm-linux" ;; \
+    esac && \
+    echo "Copying libraries from ${VCPKG_TRIPLET_COPY}..." && \
+    cp -v /opt/vcpkg/installed/${VCPKG_TRIPLET_COPY}/lib/*.so* /usr/local/lib/ 2>/dev/null || true
 
 # Copy configuration files
 RUN mkdir -p /etc/themis /usr/local/share/themis

@@ -6,6 +6,8 @@
   #include <immintrin.h>
 #elif defined(__AVX2__)
   #include <immintrin.h>
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+  #include <arm_neon.h>
 #endif
 
 namespace themis {
@@ -63,6 +65,50 @@ static inline float avx2_l2_sq(const float* a, const float* b, std::size_t dim) 
     if (i < dim) res += scalar_l2_sq(a + i, b + i, dim - i);
     return res;
 }
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+static inline float neon_l2_sq(const float* a, const float* b, std::size_t dim) {
+    std::size_t i = 0;
+    float32x4_t acc0 = vdupq_n_f32(0.0f);
+    float32x4_t acc1 = vdupq_n_f32(0.0f);
+    const std::size_t step = 8;
+    
+    // Process 8 floats at a time (2x NEON registers)
+    for (; i + step <= dim; i += step) {
+        float32x4_t va0 = vld1q_f32(a + i);
+        float32x4_t vb0 = vld1q_f32(b + i);
+        float32x4_t diff0 = vsubq_f32(va0, vb0);
+        // Use FMA for better performance and accuracy (available on ARMv8+)
+        // Falls back to vmlaq_f32 on older architectures
+        #if defined(__ARM_FEATURE_FMA)
+        acc0 = vfmaq_f32(acc0, diff0, diff0);  // Fused multiply-add
+        #else
+        acc0 = vmlaq_f32(acc0, diff0, diff0);  // Regular multiply-add
+        #endif
+        
+        float32x4_t va1 = vld1q_f32(a + i + 4);
+        float32x4_t vb1 = vld1q_f32(b + i + 4);
+        float32x4_t diff1 = vsubq_f32(va1, vb1);
+        #if defined(__ARM_FEATURE_FMA)
+        acc1 = vfmaq_f32(acc1, diff1, diff1);
+        #else
+        acc1 = vmlaq_f32(acc1, diff1, diff1);
+        #endif
+    }
+    
+    // Combine accumulators
+    float32x4_t acc = vaddq_f32(acc0, acc1);
+    
+    // Horizontal sum: reduce 4 lanes to scalar
+    float32x2_t sum2 = vadd_f32(vget_low_f32(acc), vget_high_f32(acc));
+    float32x2_t sum1 = vpadd_f32(sum2, sum2);
+    float res = vget_lane_f32(sum1, 0);
+    
+    // Handle remaining elements (not enough for a full SIMD vector)
+    if (i < dim) {
+        res += scalar_l2_sq(a + i, b + i, dim - i);
+    }
+    return res;
+}
 #endif
 
 float l2_distance_sq(const float* a, const float* b, std::size_t dim) {
@@ -70,6 +116,8 @@ float l2_distance_sq(const float* a, const float* b, std::size_t dim) {
     return avx512_l2_sq(a, b, dim);
 #elif defined(__AVX2__)
     return avx2_l2_sq(a, b, dim);
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+    return neon_l2_sq(a, b, dim);
 #else
     return scalar_l2_sq(a, b, dim);
 #endif

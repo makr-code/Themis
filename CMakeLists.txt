@@ -70,6 +70,18 @@ option(THEMIS_GEO_H3 "Enable H3 integration (enterprise add-in)" OFF)
 option(THEMIS_GEO_GEOS_PLUGIN "Enable GEOS prepared geometries plugin (enterprise add-in)" OFF)
 option(THEMIS_ENTERPRISE "Enable enterprise capabilities bundle" OFF)
 
+# Detect target architecture
+set(THEMIS_TARGET_ARCH "unknown")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64|x64)$")
+    set(THEMIS_TARGET_ARCH "x86_64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    set(THEMIS_TARGET_ARCH "aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm|ARM|armv7l)$")
+    set(THEMIS_TARGET_ARCH "armv7")
+endif()
+
+message(STATUS "Target architecture: ${THEMIS_TARGET_ARCH} (${CMAKE_SYSTEM_PROCESSOR})")
+
 # Compiler warnings and optimizations
 if(MSVC)
     add_compile_options(/W4 /utf-8 /wd4701 /bigobj /FS)
@@ -82,7 +94,7 @@ if(MSVC)
     add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS _WIN32_WINNT=0x0A00)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_compile_options(/O2 /GL)
-        if(THEMIS_ENABLE_AVX2)
+        if(THEMIS_ENABLE_AVX2 AND THEMIS_TARGET_ARCH STREQUAL "x86_64")
             add_compile_options(/arch:AVX2)
         endif()
         # Ensure Link-Time Code Generation to avoid link restart messages
@@ -94,7 +106,24 @@ else()
         add_compile_options(-Werror)
     endif()
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        add_compile_options(-O3 -march=native)
+        add_compile_options(-O3)
+        # Architecture-specific optimizations
+        if(THEMIS_TARGET_ARCH STREQUAL "x86_64")
+            # Use native optimizations for x86_64
+            add_compile_options(-march=native)
+        elseif(THEMIS_TARGET_ARCH STREQUAL "aarch64")
+            # ARM64/AArch64 optimizations - enable NEON (standard on AArch64)
+            add_compile_options(-march=armv8-a)
+            message(STATUS "Enabling ARM64 NEON optimizations")
+        elseif(THEMIS_TARGET_ARCH STREQUAL "armv7")
+            # ARMv7 optimizations - enable NEON if available
+            # Note: Not all ARMv7 CPUs have NEON, but Raspberry Pi 2/3 do
+            add_compile_options(-march=armv7-a -mfpu=neon -mfloat-abi=hard)
+            message(STATUS "Enabling ARMv7 NEON optimizations")
+        else()
+            # Generic optimizations for unknown architectures
+            message(STATUS "Using generic optimizations for ${THEMIS_TARGET_ARCH}")
+        endif()
     endif()
 endif()
 

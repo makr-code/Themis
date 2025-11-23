@@ -74,6 +74,68 @@
       }
     },
     {
+      "name": "linux-arm64-gcc-debug",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-arm64-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_SYSTEM_PROCESSOR": "aarch64"
+      }
+    },
+    {
+      "name": "linux-arm64-gcc-release",
+      "inherits": ["linux-arm64-gcc-debug"],
+      "binaryDir": "${sourceDir}/build-arm64-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "rpi-arm64-gcc-debug",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-rpi-arm64-debug",
+      "displayName": "Raspberry Pi ARM64 Debug",
+      "description": "Debug build for Raspberry Pi 3/4/5 (ARM64)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_SYSTEM_PROCESSOR": "aarch64"
+      }
+    },
+    {
+      "name": "rpi-arm64-gcc-release",
+      "inherits": ["rpi-arm64-gcc-debug"],
+      "binaryDir": "${sourceDir}/build-rpi-arm64-release",
+      "displayName": "Raspberry Pi ARM64 Release",
+      "description": "Release build for Raspberry Pi 3/4/5 (ARM64)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "rpi-armv7-gcc-debug",
+      "inherits": ["base"],
+      "binaryDir": "${sourceDir}/build-rpi-armv7-debug",
+      "displayName": "Raspberry Pi ARMv7 Debug",
+      "description": "Debug build for Raspberry Pi 2/3 (ARMv7 32-bit)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_SYSTEM_PROCESSOR": "armv7l"
+      }
+    },
+    {
+      "name": "rpi-armv7-gcc-release",
+      "inherits": ["rpi-armv7-gcc-debug"],
+      "binaryDir": "${sourceDir}/build-rpi-armv7-release",
+      "displayName": "Raspberry Pi ARMv7 Release",
+      "description": "Release build for Raspberry Pi 2/3 (ARMv7 32-bit)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
       "name": "linux-ninja-clang-debug-bench",
       "inherits": ["linux-ninja-clang-debug"],
       "binaryDir": "${sourceDir}/build-linux-clang-debug-bench",
@@ -111,6 +173,28 @@
       "configurePreset": "linux-ninja-clang-release"
     },
     {
+      "name": "linux-arm64-gcc-debug",
+      "configurePreset": "linux-arm64-gcc-debug"
+    },
+    {
+      "name": "linux-arm64-gcc-release",
+      "configurePreset": "linux-arm64-gcc-release"
+    },
+    {
+      "name": "rpi-arm64-gcc-debug",
+      "configurePreset": "rpi-arm64-gcc-debug"
+    },
+    {
+      "name": "rpi-arm64-gcc-release",
+      "configurePreset": "rpi-arm64-gcc-release"
+    },
+    {
+      "name": "rpi-armv7-gcc-debug",
+      "configurePreset": "rpi-armv7-gcc-debug"
+    },
+    {
+      "name": "rpi-armv7-gcc-release",
+      "configurePreset": "rpi-armv7-gcc-release"
       "name": "linux-ninja-clang-debug-bench",
       "configurePreset": "linux-ninja-clang-debug-bench"
     }
@@ -141,6 +225,28 @@
       "configurePreset": "linux-ninja-clang-release"
     },
     {
+      "name": "linux-arm64-gcc-debug",
+      "configurePreset": "linux-arm64-gcc-debug"
+    },
+    {
+      "name": "linux-arm64-gcc-release",
+      "configurePreset": "linux-arm64-gcc-release"
+    },
+    {
+      "name": "rpi-arm64-gcc-debug",
+      "configurePreset": "rpi-arm64-gcc-debug"
+    },
+    {
+      "name": "rpi-arm64-gcc-release",
+      "configurePreset": "rpi-arm64-gcc-release"
+    },
+    {
+      "name": "rpi-armv7-gcc-debug",
+      "configurePreset": "rpi-armv7-gcc-debug"
+    },
+    {
+      "name": "rpi-armv7-gcc-release",
+      "configurePreset": "rpi-armv7-gcc-release"
       "name": "linux-ninja-clang-debug-bench",
       "configurePreset": "linux-ninja-clang-debug-bench"
     }
