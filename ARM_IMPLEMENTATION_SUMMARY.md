@@ -253,10 +253,16 @@ The implementation maintains full backward compatibility with x86_64 while addin
    - `build-arm-packages.sh`: Local package building script
    - See [ARM Packages documentation](docs/ARM_PACKAGES.md)
 
+4. ✅ **Tuning:** Raspberry Pi-specific optimizations
+   - `config.rpi3.json`: Optimized config for Raspberry Pi 3 (2GB RAM)
+   - `config.rpi4.json`: Optimized config for Raspberry Pi 4 (4GB RAM)
+   - `config.rpi5.json`: Optimized config for Raspberry Pi 5 (8GB RAM)
+   - `optimize-rpi.sh`: Automated system tuning script
+   - CPU governor, THP, swap, network optimizations
+   - See [Raspberry Pi Tuning Guide](docs/RASPBERRY_PI_TUNING.md)
+
 ## Future Enhancements (Optional)
 
-4. **Tuning:** Additional Raspberry Pi-specific optimizations
-4. **Tuning:** Additional Raspberry Pi-specific optimizations
 5. **Testing:** Automated testing on actual Raspberry Pi hardware
 
 ## References

@@ -163,6 +163,44 @@ Or use the build script output directory:
 ./build-arm/themis_server --config config.yaml
 ```
 
+## Performance Optimization
+
+After installation, optimize your Raspberry Pi for best performance:
+
+**Quick Setup (Automated):**
+```bash
+# Run optimization script (interactive)
+./scripts/optimize-rpi.sh
+
+# Or apply all optimizations automatically
+./scripts/optimize-rpi.sh --all
+```
+
+**This script will:**
+- Set CPU governor to performance mode
+- Disable transparent huge pages
+- Configure swap settings
+- Tune network parameters
+- Apply model-specific ThemisDB configuration
+- Set systemd service limits
+
+**Manual Configuration:**
+
+Use pre-optimized configs for your Raspberry Pi model:
+
+```bash
+# Raspberry Pi 5 (8GB)
+cp config/config.rpi5.json config/config.json
+
+# Raspberry Pi 4 (4GB)
+cp config/config.rpi4.json config/config.json
+
+# Raspberry Pi 3 (2GB)
+cp config/config.rpi3.json config/config.json
+```
+
+See **[Raspberry Pi Tuning Guide](RASPBERRY_PI_TUNING.md)** for comprehensive optimization strategies.
+
 ## Cross-Compilation
 
 You can cross-compile for ARM on an x86_64 host for faster builds:
@@ -415,6 +453,7 @@ FORMAT=rpm ARCH=arm64 ./scripts/build-arm-packages.sh
 ## Additional Resources
 
 - [Main README](../README.md) - General build instructions
+- [Raspberry Pi Tuning Guide](RASPBERRY_PI_TUNING.md) - **Performance optimization strategies**
 - [ARM Packages Guide](ARM_PACKAGES.md) - Pre-built package installation
 - [ARM Benchmarks Guide](ARM_BENCHMARKS.md) - Performance testing and optimization
 - [Deployment Guide](deployment.md) - Production setup

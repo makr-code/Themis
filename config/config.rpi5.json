@@ -1,0 +1,64 @@
+{
+  "_comment": "ThemisDB optimized configuration for Raspberry Pi 5 (8GB RAM)",
+  "storage": {
+    "rocksdb_path": "./data/rocksdb",
+    "memtable_size_mb": 256,
+    "block_cache_size_mb": 1024,
+    "enable_blobdb": true,
+    "max_background_jobs": 4,
+    "compression": {
+      "default": "lz4",
+      "bottommost": "zstd"
+    },
+    "bloom_filter_bits_per_key": 10,
+    "block_size_kb": 32,
+    "write_buffer_size_mb": 128
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8765,
+    "worker_threads": 4,
+    "io_threads": 2,
+    "max_connections": 200
+  },
+  "vector_index": {
+    "object_name": "documents",
+    "dimension": 256,
+    "metric": "COSINE",
+    "engine": "hnsw",
+    "hnsw_m": 20,
+    "hnsw_ef_construction": 200,
+    "ef_search": 64,
+    "use_gpu": false,
+    "auto_save": true,
+    "save_path": "./data/vector_indexes",
+    "save_on_shutdown": true,
+    "load_on_startup": true,
+    "max_elements": 200000
+  },
+  "tracing": {
+    "enabled": true,
+    "service_name": "themis-rpi5",
+    "otlp_endpoint": "http://localhost:4318"
+  },
+  "features": {
+    "semantic_cache": true,
+    "llm_store": true,
+    "cdc": true,
+    "timeseries": true,
+    "retention": {
+      "enabled": true,
+      "interval_hours": 24,
+      "policies_path": "./config/retention_policies.yaml"
+    }
+  },
+  "sse": {
+    "max_events_per_second": 200
+  },
+  "performance": {
+    "enable_statistics": true,
+    "cache_index_and_filter_blocks": true,
+    "pin_l0_filter_and_index_blocks": true,
+    "optimize_for_point_lookup": false
+  }
+}
