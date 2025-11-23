@@ -334,9 +334,37 @@ Performance scales with:
 - Storage speed (SSD vs SD card)
 - Workload characteristics
 
+## Performance Benchmarking
+
+ThemisDB includes ARM-specific benchmarks to measure and optimize performance:
+
+**Run benchmarks:**
+```bash
+# Build with benchmarks enabled
+cmake --preset rpi-arm64-gcc-release -DTHEMIS_BUILD_BENCHMARKS=ON
+cmake --build --preset rpi-arm64-gcc-release
+
+# Run ARM benchmarks
+./scripts/run-arm-benchmarks.sh
+```
+
+**Benchmark Suite:**
+- `bench_arm_simd` - SIMD performance (NEON vs scalar)
+- `bench_arm_memory` - Memory access patterns and cache efficiency
+- `bench_simd_distance` - Cross-platform SIMD testing
+
+**Expected Results (Raspberry Pi 4):**
+- SIMD speedup: 2-4x over scalar code
+- L1 cache: ~2.5 GB/s bandwidth
+- L2 cache: ~1.5 GB/s bandwidth
+- Sequential RAM: ~1 GB/s
+
+See [ARM Benchmarks Guide](ARM_BENCHMARKS.md) for detailed documentation.
+
 ## Additional Resources
 
 - [Main README](../README.md) - General build instructions
+- [ARM Benchmarks Guide](ARM_BENCHMARKS.md) - Performance testing and optimization
 - [Deployment Guide](deployment.md) - Production setup
 - [Memory Tuning](memory_tuning.md) - Performance optimization
 - [Architecture Overview](architecture.md) - System design
@@ -349,6 +377,7 @@ ThemisDB includes automated CI/CD for ARM builds:
 - **GitHub Actions workflows** test ARM64 and ARMv7 builds on every commit
 - **Docker multi-arch images** automatically built and published
 - **Cross-compilation tests** ensure ARM compatibility
+- **Benchmark tracking** (planned) will monitor performance regression
 - See [CI/CD documentation](CI_CD_MULTIARCH.md) for details
 
 Build status: [![ARM Build](https://github.com/makr-code/ThemisDB/actions/workflows/arm-build.yml/badge.svg)](https://github.com/makr-code/ThemisDB/actions/workflows/arm-build.yml)

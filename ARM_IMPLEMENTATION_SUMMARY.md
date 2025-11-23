@@ -238,9 +238,15 @@ The implementation maintains full backward compatibility with x86_64 while addin
    - Docker multi-arch image publishing
    - See [CI/CD documentation](docs/CI_CD_MULTIARCH.md)
 
+2. ✅ **Benchmarks:** ARM-specific benchmark suite
+   - `bench_arm_simd.cpp`: SIMD performance testing (NEON vs scalar)
+   - `bench_arm_memory.cpp`: Memory access pattern analysis
+   - `run-arm-benchmarks.sh`: Automated benchmark runner
+   - Platform-specific optimization guidance
+   - See [ARM Benchmarks documentation](docs/ARM_BENCHMARKS.md)
+
 ## Future Enhancements (Optional)
 
-2. **Benchmarks:** Create ARM-specific benchmark suite
 3. **Package:** Pre-built ARM64/ARMv7 binaries/packages
 4. **Tuning:** Additional Raspberry Pi-specific optimizations
 5. **Testing:** Automated testing on actual Raspberry Pi hardware
